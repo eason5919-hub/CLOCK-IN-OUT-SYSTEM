@@ -9,6 +9,9 @@ import {
 } from "../../../../db/runtime";
 import {
   calculateAttendanceTotals,
+  localDayOfWeek,
+  localMinutesSinceMidnight,
+  localWorkDate,
   type AttendanceSchedule,
 } from "../../../../db/attendance-calculations";
 
@@ -27,6 +30,7 @@ type WarehouseRow = {
   latitude: number;
   longitude: number;
   allowed_radius_meters: number;
+  timezone: string;
 };
 
 type AttendanceRow = {
@@ -59,7 +63,7 @@ export async function POST(request: Request) {
     const qrHash = await sha256Hex(payload.qrToken!);
     const warehouse = await db
       .prepare(
-        `SELECT w.id, w.name, w.latitude, w.longitude, w.allowed_radius_meters
+        `SELECT w.id, w.name, w.latitude, w.longitude, w.allowed_radius_meters, w.timezone
          FROM qr_codes q
          JOIN warehouses w ON w.id = q.warehouse_id
          WHERE q.token_hash = ? AND q.is_active = 1`,
@@ -109,12 +113,13 @@ export async function POST(request: Request) {
 
     const now = new Date();
     const timestamp = now.toISOString();
-    const workDate = timestamp.slice(0, 10);
+    const timeZone = warehouse.timezone || "Asia/Kuala_Lumpur";
+    const workDate = localWorkDate(timestamp, timeZone);
     const schedule = await db
       .prepare(
         "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = ? AND day_of_week = ?",
       )
-      .bind(warehouse.id, now.getUTCDay())
+      .bind(warehouse.id, localDayOfWeek(timestamp, timeZone))
       .first<ScheduleRow>();
     const existing = await db
       .prepare("SELECT id, clock_in_at, clock_out_at FROM attendance WHERE employee_id = ? AND work_date = ?")
@@ -129,7 +134,7 @@ export async function POST(request: Request) {
       }
 
       const lateMinutes = schedule?.start_time
-        ? Math.max(0, minutesSinceMidnight(timestamp) - timeToMinutes(schedule.start_time))
+        ? Math.max(0, localMinutesSinceMidnight(timestamp, timeZone) - timeToMinutes(schedule.start_time))
         : 0;
       const status = lateMinutes > 0 ? "late" : "present";
       const attendanceId = existing?.id ?? crypto.randomUUID();
@@ -196,7 +201,7 @@ export async function POST(request: Request) {
       return json(request, { error: "Clock out already recorded for today." }, 409);
     }
 
-    const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule);
+    const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone);
     const status =
       totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
 
@@ -286,11 +291,6 @@ async function resolveDevice(db: D1Database, payload: ClockPayload) {
     .bind(id, payload.employeeId, payload.deviceFingerprint, payload.deviceModel)
     .run();
   return { id };
-}
-
-function minutesSinceMidnight(value: string) {
-  const date = new Date(value);
-  return date.getUTCHours() * 60 + date.getUTCMinutes();
 }
 
 function timeToMinutes(value: string) {

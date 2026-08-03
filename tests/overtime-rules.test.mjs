@@ -28,11 +28,11 @@ test("weekday overtime uses grace for eligibility and scheduled end for counting
     is_off_day: 0,
   };
 
-  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T18:10:00.000Z", weekday), 0);
-  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T18:15:00.000Z", weekday), 0);
-  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T18:16:00.000Z", weekday), 16);
-  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T18:30:00.000Z", weekday), 30);
-  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T19:00:00.000Z", weekday), 60);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00+08:00", "2026-08-03T18:10:00+08:00", weekday), 0);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00+08:00", "2026-08-03T18:15:00+08:00", weekday), 0);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00+08:00", "2026-08-03T18:16:00+08:00", weekday), 16);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00+08:00", "2026-08-03T18:30:00+08:00", weekday), 30);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00+08:00", "2026-08-03T19:00:00+08:00", weekday), 60);
 });
 
 test("saturday and sunday overtime rules are applied", async () => {
@@ -50,7 +50,14 @@ test("saturday and sunday overtime rules are applied", async () => {
     is_off_day: 1,
   };
 
-  assert.equal(calculateOvertimeMinutes("2026-08-08T09:00:00.000Z", "2026-08-08T13:15:00.000Z", saturday), 0);
-  assert.equal(calculateOvertimeMinutes("2026-08-08T09:00:00.000Z", "2026-08-08T13:16:00.000Z", saturday), 16);
-  assert.equal(calculateOvertimeMinutes("2026-08-09T10:00:00.000Z", "2026-08-09T12:30:00.000Z", sunday), 150);
+  assert.equal(calculateOvertimeMinutes("2026-08-08T09:00:00+08:00", "2026-08-08T13:15:00+08:00", saturday), 0);
+  assert.equal(calculateOvertimeMinutes("2026-08-08T09:00:00+08:00", "2026-08-08T13:16:00+08:00", saturday), 16);
+  assert.equal(calculateOvertimeMinutes("2026-08-09T10:00:00+08:00", "2026-08-09T12:30:00+08:00", sunday), 150);
+});
+
+test("warehouse work date and weekday use Malaysia time", async () => {
+  const { localDayOfWeek, localWorkDate } = await loadCalculations();
+
+  assert.equal(localWorkDate("2026-08-03T16:30:00.000Z"), "2026-08-04");
+  assert.equal(localDayOfWeek("2026-08-03T16:30:00.000Z"), 2);
 });

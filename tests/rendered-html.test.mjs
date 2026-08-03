@@ -13,8 +13,8 @@ test("builds the warehouse attendance console assets", async () => {
 
   assert.match(layout, /Warehouse Attendance Management/);
   assert.match(server, /Warehouse Attendance Management/);
-  assert.match(pageChunk, /Register Official Phone/);
-  assert.match(pageChunk, /Employee Login/);
+  assert.match(pageChunk, /Open Attendance/);
+  assert.match(pageChunk, /Employee login/);
   assert.match(pageChunk, /Admin Login/);
   assert.match(pageChunk, /HR \/ Owner Console/);
   assert.match(pageChunk, /Employee code/);

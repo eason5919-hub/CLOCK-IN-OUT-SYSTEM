@@ -159,8 +159,8 @@ export default function Home() {
       employeeId: user.employeeId,
       requestedDate,
       missingType: missing === "Clock In" ? "clock_in" : missing === "Clock Out" ? "clock_out" : "both",
-      requestedClockInAt: missing !== "Clock Out" ? `${requestedDate}T${requestedTime}:00.000Z` : null,
-      requestedClockOutAt: missing !== "Clock In" ? `${requestedDate}T${requestedTime}:00.000Z` : null,
+      requestedClockInAt: missing !== "Clock Out" ? localDateTimeToIso(requestedDate, requestedTime) : null,
+      requestedClockOutAt: missing !== "Clock In" ? localDateTimeToIso(requestedDate, requestedTime) : null,
       reason: form.get("reason"),
     });
 
@@ -644,7 +644,7 @@ function AttendanceTable({
               <td>{formatTime(record.clock_in_at)}</td>
               <td>{formatTime(record.clock_out_at)}</td>
               <td>{formatMinutes(Number(record.total_minutes ?? 0))}</td>
-              <td>{formatMinutes(Number(record.overtime_minutes ?? 0))}</td>
+              <td>{formatOtMinutes(Number(record.overtime_minutes ?? 0))}</td>
               <td>
                 <Badge value={statusLabel(record.status)} />
               </td>
@@ -727,10 +727,27 @@ function formatMinutes(minutes: number) {
 
 function formatTime(value: unknown) {
   if (!value) return "-";
-  if (typeof value === "string" && value.includes("T")) {
-    return value.slice(11, 16);
-  }
+  if (typeof value === "string" && value.includes("T")) return formatDateTime(value);
   return String(value);
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(11, 16);
+  return date.toLocaleTimeString("en-MY", {
+    timeZone: "Asia/Kuala_Lumpur",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatOtMinutes(minutes: number) {
+  return minutes > 0 ? formatMinutes(minutes) : "-";
+}
+
+function localDateTimeToIso(date: string, time: string) {
+  return new Date(`${date}T${time}:00`).toISOString();
 }
 
 function formatGps(record: Record<string, string | number | null>) {

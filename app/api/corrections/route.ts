@@ -1,4 +1,5 @@
 import { ensureDatabase, getD1, getSessionFromRequest, isAdminSession } from "../../../db/runtime";
+import { calculateAttendanceTotals, localDayOfWeek } from "../../../db/attendance-calculations";
 
 export async function POST(request: Request) {
   try {
@@ -114,10 +115,47 @@ export async function PATCH(request: Request) {
         .run();
 
       const updated = await db
+        .prepare(
+          `SELECT a.*, w.timezone
+           FROM attendance a
+           JOIN warehouses w ON w.id = a.warehouse_id
+           WHERE a.employee_id = ? AND a.work_date = ?`,
+        )
+        .bind(correction.employee_id, correction.requested_date)
+        .first<Record<string, string | number | null>>();
+      if (updated?.clock_in_at && updated.clock_out_at) {
+        const timeZone = String(updated.timezone || "Asia/Kuala_Lumpur");
+        const schedule = await db
+          .prepare(
+            "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = ? AND day_of_week = ?",
+          )
+          .bind(updated.warehouse_id, localDayOfWeek(`${correction.requested_date}T12:00:00+08:00`, timeZone))
+          .first();
+        const totals = calculateAttendanceTotals(String(updated.clock_in_at), String(updated.clock_out_at), schedule, timeZone);
+        const status =
+          totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+        await db
+          .prepare(
+            `UPDATE attendance
+             SET total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
+                 overtime_minutes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+          )
+          .bind(
+            totals.totalMinutes,
+            totals.lateMinutes,
+            totals.earlyLeaveMinutes,
+            totals.overtimeMinutes,
+            status,
+            updated.id,
+          )
+          .run();
+      }
+      const recalculated = await db
         .prepare("SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?")
         .bind(correction.employee_id, correction.requested_date)
         .first<Record<string, unknown>>();
-      newRecordJson = updated ? JSON.stringify(updated) : null;
+      newRecordJson = recalculated ? JSON.stringify(recalculated) : null;
     }
 
     await db

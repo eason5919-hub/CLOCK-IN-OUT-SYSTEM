@@ -420,8 +420,8 @@ function bindEmployee() {
           employeeId: state.currentUser.employeeId,
           requestedDate,
           missingType: missing === "Clock In" ? "clock_in" : missing === "Clock Out" ? "clock_out" : "both",
-          requestedClockInAt: missing !== "Clock Out" ? `${requestedDate}T${requestedTime}:00.000Z` : null,
-          requestedClockOutAt: missing !== "Clock In" ? `${requestedDate}T${requestedTime}:00.000Z` : null,
+          requestedClockInAt: missing !== "Clock Out" ? localDateTimeToIso(requestedDate, requestedTime) : null,
+          requestedClockOutAt: missing !== "Clock In" ? localDateTimeToIso(requestedDate, requestedTime) : null,
           reason: String(data.get("reason")).trim(),
         }),
       });
@@ -656,7 +656,7 @@ function attendanceTable(records, employeeOnly) {
         <thead><tr>${employeeOnly ? "" : "<th>Employee</th>"}<th>Date</th><th>Clock In</th><th>Clock Out</th><th>Working Hours</th><th>OT</th><th>Status</th><th>GPS</th></tr></thead>
         <tbody>${records
           .map((row) => {
-            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employeeLabel(row))}</td>`}<td>${row.date}</td><td>${row.clockIn || "-"}</td><td>${row.clockOut || "-"}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
+            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employeeLabel(row))}</td>`}<td>${row.date}</td><td>${row.clockIn || "-"}</td><td>${row.clockOut || "-"}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatOtMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
           })
           .join("")}</tbody>
       </table>
@@ -891,7 +891,7 @@ function formatLiveTime(value) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value).slice(11, 16);
-  return date.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return date.toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function liveGpsLabel(row) {
@@ -938,6 +938,14 @@ function formatMinutes(minutes) {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return hours ? `${hours}h ${remainder}m` : `${remainder}m`;
+}
+
+function formatOtMinutes(minutes) {
+  return Number(minutes || 0) > 0 ? formatMinutes(Number(minutes)) : "-";
+}
+
+function localDateTimeToIso(date, time) {
+  return new Date(`${date}T${time}:00`).toISOString();
 }
 
 function localDate(date) {
