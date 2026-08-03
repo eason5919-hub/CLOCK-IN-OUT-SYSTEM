@@ -166,6 +166,7 @@ function employeeScreen() {
   const corrections = state.corrections;
   const leaveRequests = state.leaveRequests || [];
   const leaveRemaining = formatLeaveDays(state.currentUser.leaveRemainingDays || 0);
+  const leaveDefaultDate = defaultLeaveDate();
   const openRecord = currentOpenRecord(records);
   const clockAction = openRecord ? "out" : "in";
   const clockLabel = openRecord ? "Clock out" : "Clock in";
@@ -224,7 +225,14 @@ function employeeScreen() {
         </div>
         <form class="form" id="leave-form">
           <label>Type<select name="leaveType"><option value="leave">Annual Leave</option><option value="mc">MC</option></select></label>
-          <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" min="${malaysiaDateKey(new Date())}" required /></label>
+          <div class="field">
+            <span>Date</span>
+            <input name="date" type="hidden" value="${leaveDefaultDate}" required />
+            <button class="date-picker-button" type="button" data-open-leave-calendar>
+              <span data-selected-leave-date>${formatLeaveDateDisplay(leaveDefaultDate)}</span>
+            </button>
+            <div class="leave-calendar" data-leave-calendar hidden></div>
+          </div>
           <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select><small class="muted" data-leave-rule></small></label>
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
           <button>Submit Annual Leave/MC</button>
@@ -587,7 +595,7 @@ function bindEmployee() {
     }
   });
   const leaveForm = document.querySelector("#leave-form");
-  leaveForm?.querySelector('input[name="date"]')?.addEventListener("change", () => handleLeaveDateChange(leaveForm));
+  if (leaveForm) setupLeaveCalendar(leaveForm);
   leaveForm?.querySelector('select[name="duration"]')?.addEventListener("change", () => updateLeaveDurationRule(leaveForm));
   if (leaveForm) updateLeaveDurationRule(leaveForm);
 }
@@ -850,20 +858,44 @@ function updateLeaveDurationRule(form) {
         : "";
 }
 
-function handleLeaveDateChange(form) {
+function setupLeaveCalendar(form) {
   const dateInput = form.querySelector('input[name="date"]');
-  if (!dateInput) return;
+  const button = form.querySelector("[data-open-leave-calendar]");
+  const label = form.querySelector("[data-selected-leave-date]");
+  const calendar = form.querySelector("[data-leave-calendar]");
+  if (!dateInput || !button || !label || !calendar) return;
 
-  const today = malaysiaDateKey(new Date());
-  if (dateInput.value && dateInput.value < today) {
-    dateInput.value = today;
-    toast("Past dates cannot be selected for Annual Leave/MC.");
-  }
-  if (leaveDateDayOfWeek(dateInput.value) === 0) {
-    dateInput.value = nextAllowedLeaveDate(dateInput.value);
-    toast("Sunday cannot be selected for Annual Leave/MC.");
-  }
-  updateLeaveDurationRule(form);
+  const refresh = () => {
+    label.textContent = formatLeaveDateDisplay(dateInput.value);
+    calendar.innerHTML = leaveCalendarMarkup(dateInput.value, calendar.dataset.month || dateInput.value);
+    updateLeaveDurationRule(form);
+  };
+
+  button.addEventListener("click", () => {
+    calendar.hidden = !calendar.hidden;
+    if (!calendar.hidden) refresh();
+  });
+
+  calendar.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+
+    const monthButton = target.closest("[data-calendar-month]");
+    if (monthButton) {
+      calendar.dataset.month = monthButton.dataset.calendarMonth;
+      refresh();
+      return;
+    }
+
+    const dayButton = target.closest("[data-calendar-date]");
+    if (!dayButton || dayButton.disabled) return;
+    dateInput.value = dayButton.dataset.calendarDate;
+    calendar.dataset.month = dateInput.value;
+    calendar.hidden = true;
+    refresh();
+  });
+
+  refresh();
 }
 
 function validateLeaveDateAndDuration(date, duration) {
@@ -881,15 +913,82 @@ function leaveDateDayOfWeek(value) {
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
-function nextAllowedLeaveDate(value) {
+function defaultLeaveDate() {
+  const today = malaysiaDateKey(new Date());
+  if (leaveDateDayOfWeek(today) !== 0) return today;
+  return nextLeaveDate(today);
+}
+
+function nextLeaveDate(value) {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   do {
     date.setUTCDate(date.getUTCDate() + 1);
   } while (date.getUTCDay() === 0);
-  const next = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function leaveCalendarMarkup(selectedDate, monthValue) {
   const today = malaysiaDateKey(new Date());
-  return next < today ? today : next;
+  const monthDate = leaveCalendarMonth(monthValue);
+  const monthLabel = monthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
+  const monthKey = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, "0")}`;
+  const todayMonthKey = today.slice(0, 7);
+  const firstDay = monthDate.getUTCDay();
+  const daysInMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0)).getUTCDate();
+  const previousMonth = addCalendarMonths(monthDate, -1);
+  const nextMonth = addCalendarMonths(monthDate, 1);
+  const cells = [];
+
+  for (let index = 0; index < firstDay; index += 1) {
+    cells.push(`<span class="calendar-spacer" aria-hidden="true"></span>`);
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateKey = `${monthKey}-${String(day).padStart(2, "0")}`;
+    const dayOfWeek = leaveDateDayOfWeek(dateKey);
+    const isPast = dateKey < today;
+    const isSunday = dayOfWeek === 0;
+    const isDisabled = isPast || isSunday;
+    const classes = ["calendar-day", isSunday ? "is-sunday" : "", isPast ? "is-past" : "", isDisabled ? "is-disabled" : "", dateKey === selectedDate ? "is-selected" : ""]
+      .filter(Boolean)
+      .join(" ");
+    cells.push(`<button class="${classes}" type="button" data-calendar-date="${dateKey}" ${isDisabled ? "disabled" : ""}>${day}</button>`);
+  }
+
+  return `
+    <div class="calendar-head">
+      <button class="secondary calendar-nav" type="button" data-calendar-month="${calendarMonthKey(previousMonth)}" ${monthKey <= todayMonthKey ? "disabled" : ""}>Prev</button>
+      <strong>${monthLabel}</strong>
+      <button class="secondary calendar-nav" type="button" data-calendar-month="${calendarMonthKey(nextMonth)}">Next</button>
+    </div>
+    <div class="calendar-weekdays">
+      ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => `<span>${day}</span>`).join("")}
+    </div>
+    <div class="calendar-grid">${cells.join("")}</div>
+  `;
+}
+
+function leaveCalendarMonth(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day || 1));
+}
+
+function addCalendarMonths(date, offset) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1));
+}
+
+function calendarMonthKey(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function formatLeaveDateDisplay(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("en-MY", {
+    timeZone: "UTC",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function adminCorrectionCard(correction) {
