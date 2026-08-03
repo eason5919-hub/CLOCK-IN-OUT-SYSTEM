@@ -27,7 +27,11 @@ let pendingScanAction = null;
 let qrScanController = null;
 
 window.addEventListener("hashchange", () => {
-  if (!state.currentUser) render();
+  if (window.location.hash.toLowerCase() === "#admin" && state.currentUser?.role === "employee") {
+    state.currentUser = null;
+    saveState();
+  }
+  render();
 });
 
 function loadState() {
@@ -251,6 +255,7 @@ function adminScreen() {
           <label>Position<input name="position" /></label>
           <button>Add Employee</button>
         </form>
+        <small class="muted">On GitHub Pages, employees added here are saved only in this HR browser.</small>
       </section>
       <section class="panel">
         <div class="heading"><div><p class="eyebrow">Devices</p><h3>Official phones</h3></div></div>
@@ -382,11 +387,18 @@ function bindAdmin() {
   document.querySelector("#add-employee").addEventListener("submit", (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
+    const code = String(data.get("code")).trim().toUpperCase();
+    const name = String(data.get("name")).trim();
+    const phone = String(data.get("phone")).trim();
+    if (!code || !name || !phone) return toast("Employee code, name and phone are required.");
+    if (state.employees.some((employee) => employee.code.toUpperCase() === code)) {
+      return toast("Employee code already exists.");
+    }
     state.employees.push({
       id: `emp-${Date.now()}`,
-      code: String(data.get("code")).trim().toUpperCase(),
-      name: String(data.get("name")).trim(),
-      phone: String(data.get("phone")).trim(),
+      code,
+      name,
+      phone,
       department: String(data.get("department")).trim() || "Warehouse",
       position: String(data.get("position")).trim() || "Warehouse Associate",
       deviceFingerprint: null,
@@ -394,7 +406,8 @@ function bindAdmin() {
       deviceStatus: "Not registered",
     });
     saveState();
-    toast("Employee added.");
+    event.currentTarget.reset();
+    toast(`${code} added. This record is saved in this browser only.`);
     render();
   });
 
