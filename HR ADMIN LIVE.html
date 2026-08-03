@@ -84,6 +84,12 @@
       white-space: nowrap;
     }
 
+    td button {
+      min-height: 34px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
     button.secondary, .buttonLink.secondary {
       border-color: var(--line);
       background: #fff;
@@ -214,11 +220,12 @@
 
     .tableWrap {
       overflow-x: auto;
+      width: 100%;
     }
 
     table {
       width: 100%;
-      min-width: 1000px;
+      min-width: 940px;
       border-collapse: collapse;
     }
 
@@ -231,8 +238,6 @@
     }
 
     th {
-      position: sticky;
-      top: 75px;
       background: var(--green-dark);
       color: #fff;
       font-size: 12px;
@@ -261,6 +266,7 @@
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
+      min-width: 150px;
     }
 
     .empty {
@@ -277,7 +283,6 @@
       .cards { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
       .formGrid { grid-template-columns: 1fr; }
       .qrGrid { grid-template-columns: 1fr; }
-      th { top: 122px; }
     }
   </style>
 </head>
