@@ -7,8 +7,11 @@ test("leave calendar aligns August 2026 and disables Sundays only", async () => 
 
   assert.match(script, /calendar-empty/);
   assert.doesNotMatch(script, /grid-column-start/);
+  assert.match(script, /Date\.UTC\(year, month - 1, 1\)/, "Calendar month must always start from day 1, not the selected day");
 
-  const augustFirst = new Date(Date.UTC(2026, 7, 1)).getUTCDay();
+  const selectedDate = "2026-08-03";
+  const [selectedYear, selectedMonth] = selectedDate.split("-").map(Number);
+  const augustFirst = new Date(Date.UTC(selectedYear, selectedMonth - 1, 1)).getUTCDay();
   const sundays = Array.from({ length: 31 }, (_, index) => index + 1).filter(
     (day) => new Date(Date.UTC(2026, 7, day)).getUTCDay() === 0,
   );
