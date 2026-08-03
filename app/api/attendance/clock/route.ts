@@ -1,0 +1,324 @@
+import {
+  distanceMeters,
+  ensureDatabase,
+  getD1,
+  pickBestSample,
+  sha256Hex,
+  type GpsSample,
+} from "../../../../db/runtime";
+
+type ClockPayload = {
+  employeeId?: string;
+  action?: "clock_in" | "clock_out";
+  qrToken?: string;
+  deviceFingerprint?: string;
+  deviceModel?: string;
+  samples?: GpsSample[];
+};
+
+type WarehouseRow = {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  allowed_radius_meters: number;
+};
+
+type AttendanceRow = {
+  id: string;
+  clock_in_at: string | null;
+  clock_out_at: string | null;
+};
+
+type ScheduleRow = {
+  start_time: string | null;
+  end_time: string | null;
+  overtime_starts_at: string | null;
+  is_off_day: number;
+};
+
+export async function POST(request: Request) {
+  try {
+    const payload = (await request.json()) as ClockPayload;
+    const validation = validatePayload(payload);
+    if (validation) return Response.json({ error: validation }, { status: 400 });
+
+    const db = getD1();
+    await ensureDatabase(db);
+
+    const qrHash = await sha256Hex(payload.qrToken!);
+    const warehouse = await db
+      .prepare(
+        `SELECT w.id, w.name, w.latitude, w.longitude, w.allowed_radius_meters
+         FROM qr_codes q
+         JOIN warehouses w ON w.id = q.warehouse_id
+         WHERE q.token_hash = ? AND q.is_active = 1`,
+      )
+      .bind(qrHash)
+      .first<WarehouseRow>();
+
+    if (!warehouse) {
+      return Response.json({ error: "Invalid warehouse QR code." }, { status: 403 });
+    }
+
+    const bestSample = pickBestSample(payload.samples!);
+    const distance = distanceMeters(
+      bestSample.latitude,
+      bestSample.longitude,
+      warehouse.latitude,
+      warehouse.longitude,
+    );
+
+    if (bestSample.accuracy > 30 || distance > warehouse.allowed_radius_meters) {
+      return Response.json(
+        {
+          error:
+            "Unable to verify location. Please move closer to warehouse or enable GPS.",
+          accuracy: bestSample.accuracy,
+          distance,
+        },
+        { status: 403 },
+      );
+    }
+
+    const employee = await db
+      .prepare("SELECT id FROM employees WHERE id = ? AND status = 'active'")
+      .bind(payload.employeeId)
+      .first<{ id: string }>();
+
+    if (!employee) {
+      return Response.json({ error: "Employee account is inactive or missing." }, { status: 404 });
+    }
+
+    const device = await resolveDevice(db, payload);
+    if ("error" in device) return Response.json({ error: device.error }, { status: 403 });
+
+    const now = new Date();
+    const timestamp = now.toISOString();
+    const workDate = timestamp.slice(0, 10);
+    const schedule = await db
+      .prepare(
+        "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = ? AND day_of_week = ?",
+      )
+      .bind(warehouse.id, now.getUTCDay())
+      .first<ScheduleRow>();
+    const existing = await db
+      .prepare("SELECT id, clock_in_at, clock_out_at FROM attendance WHERE employee_id = ? AND work_date = ?")
+      .bind(payload.employeeId, workDate)
+      .first<AttendanceRow>();
+
+    const ip = request.headers.get("cf-connecting-ip") ?? "local";
+
+    if (payload.action === "clock_in") {
+      if (existing?.clock_in_at) {
+        return Response.json({ error: "Clock in already recorded for today." }, { status: 409 });
+      }
+
+      const lateMinutes = schedule?.start_time
+        ? Math.max(0, minutesSinceMidnight(timestamp) - timeToMinutes(schedule.start_time))
+        : 0;
+      const status = lateMinutes > 0 ? "late" : "present";
+      const attendanceId = existing?.id ?? crypto.randomUUID();
+
+      if (existing) {
+        await db
+          .prepare(
+            `UPDATE attendance
+             SET clock_in_at = ?, late_minutes = ?, status = ?, clock_in_latitude = ?,
+                 clock_in_longitude = ?, clock_in_accuracy = ?, clock_in_distance_meters = ?,
+                 device_id = ?, device_model = ?, ip_address = ?, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+          )
+          .bind(
+            timestamp,
+            lateMinutes,
+            status,
+            bestSample.latitude,
+            bestSample.longitude,
+            bestSample.accuracy,
+            distance,
+            device.id,
+            payload.deviceModel,
+            ip,
+            attendanceId,
+          )
+          .run();
+      } else {
+        await db
+          .prepare(
+            `INSERT INTO attendance
+             (id, employee_id, warehouse_id, work_date, clock_in_at, late_minutes, status,
+              clock_in_latitude, clock_in_longitude, clock_in_accuracy, clock_in_distance_meters,
+              device_id, device_model, ip_address)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            attendanceId,
+            payload.employeeId,
+            warehouse.id,
+            workDate,
+            timestamp,
+            lateMinutes,
+            status,
+            bestSample.latitude,
+            bestSample.longitude,
+            bestSample.accuracy,
+            distance,
+            device.id,
+            payload.deviceModel,
+            ip,
+          )
+          .run();
+      }
+
+      await writeAudit(db, "system", "clock_in", "attendance", attendanceId, null, { timestamp });
+      return Response.json({ ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
+    }
+
+    if (!existing?.clock_in_at) {
+      return Response.json({ error: "Clock in is required before clock out." }, { status: 409 });
+    }
+    if (existing.clock_out_at) {
+      return Response.json({ error: "Clock out already recorded for today." }, { status: 409 });
+    }
+
+    const totals = calculateTotals(existing.clock_in_at, timestamp, schedule);
+    const status =
+      totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+
+    await db
+      .prepare(
+        `UPDATE attendance
+         SET clock_out_at = ?, total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
+             overtime_minutes = ?, status = ?, clock_out_latitude = ?, clock_out_longitude = ?,
+             clock_out_accuracy = ?, clock_out_distance_meters = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+      )
+      .bind(
+        timestamp,
+        totals.totalMinutes,
+        totals.lateMinutes,
+        totals.earlyLeaveMinutes,
+        totals.overtimeMinutes,
+        status,
+        bestSample.latitude,
+        bestSample.longitude,
+        bestSample.accuracy,
+        distance,
+        existing.id,
+      )
+      .run();
+
+    await writeAudit(db, "system", "clock_out", "attendance", existing.id, null, { timestamp });
+    return Response.json({ ok: true, action: "clock_out", timestamp, distance, accuracy: bestSample.accuracy, totals });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected error";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
+
+function validatePayload(payload: ClockPayload) {
+  if (!payload.employeeId) return "employeeId is required.";
+  if (payload.action !== "clock_in" && payload.action !== "clock_out") {
+    return "action must be clock_in or clock_out.";
+  }
+  if (!payload.qrToken) return "qrToken is required.";
+  if (!payload.deviceFingerprint) return "deviceFingerprint is required.";
+  if (!payload.deviceModel) return "deviceModel is required.";
+  if (!payload.samples || payload.samples.length < 5) {
+    return "Minimum 5 GPS samples are required.";
+  }
+  return null;
+}
+
+async function resolveDevice(db: D1Database, payload: ClockPayload) {
+  const current = await db
+    .prepare("SELECT id, employee_id, status FROM devices WHERE device_fingerprint = ?")
+    .bind(payload.deviceFingerprint)
+    .first<{ id: string; employee_id: string; status: string }>();
+
+  if (current && current.employee_id !== payload.employeeId) {
+    return { error: "This phone is already registered to another employee." };
+  }
+  if (current && current.status !== "registered") {
+    return { error: "Device registration must be reset by Admin before login." };
+  }
+  if (current) {
+    await db
+      .prepare("UPDATE devices SET last_seen_at = CURRENT_TIMESTAMP, device_model = ? WHERE id = ?")
+      .bind(payload.deviceModel, current.id)
+      .run();
+    return { id: current.id };
+  }
+
+  const linked = await db
+    .prepare("SELECT id FROM devices WHERE employee_id = ? AND status = 'registered'")
+    .bind(payload.employeeId)
+    .first<{ id: string }>();
+
+  if (linked) {
+    return { error: "Employee account is linked to another phone. Ask Admin to reset the device." };
+  }
+
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      "INSERT INTO devices (id, employee_id, device_fingerprint, device_model, last_seen_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+    )
+    .bind(id, payload.employeeId, payload.deviceFingerprint, payload.deviceModel)
+    .run();
+  return { id };
+}
+
+function calculateTotals(clockInAt: string, clockOutAt: string, schedule?: ScheduleRow | null) {
+  const totalMinutes = Math.max(0, Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000));
+  const lateMinutes = schedule?.start_time
+    ? Math.max(0, minutesSinceMidnight(clockInAt) - timeToMinutes(schedule.start_time))
+    : 0;
+  const earlyLeaveMinutes =
+    schedule?.end_time && !schedule.is_off_day
+      ? Math.max(0, timeToMinutes(schedule.end_time) - minutesSinceMidnight(clockOutAt))
+      : 0;
+  const overtimeMinutes = schedule?.is_off_day
+    ? totalMinutes
+    : schedule?.overtime_starts_at
+      ? Math.max(0, minutesSinceMidnight(clockOutAt) - timeToMinutes(schedule.overtime_starts_at))
+      : 0;
+
+  return { totalMinutes, lateMinutes, earlyLeaveMinutes, overtimeMinutes };
+}
+
+function minutesSinceMidnight(value: string) {
+  const date = new Date(value);
+  return date.getUTCHours() * 60 + date.getUTCMinutes();
+}
+
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+async function writeAudit(
+  db: D1Database,
+  actorUserId: string,
+  action: string,
+  entityType: string,
+  entityId: string,
+  beforeJson: unknown,
+  afterJson: unknown,
+) {
+  await db
+    .prepare(
+      "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(
+      crypto.randomUUID(),
+      actorUserId,
+      action,
+      entityType,
+      entityId,
+      beforeJson ? JSON.stringify(beforeJson) : null,
+      JSON.stringify(afterJson),
+    )
+    .run();
+}
