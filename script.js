@@ -1,7 +1,12 @@
 const STORAGE_KEY = "warehouse-attendance-static-v2";
 const DEVICE_KEY = "warehouse-device-fingerprint";
+const DEVICE_COOKIE = "warehouseDeviceFingerprint";
 const EMPLOYEE_TOKEN_KEY = "warehouse-live-employee-token";
 const EMPLOYEE_TOKEN_EXPIRY_KEY = "warehouse-live-employee-token-expiry";
+const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
+const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
+const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
+const EMPLOYEE_LOGIN_STORE = "tokens";
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
   name: "Main Warehouse",
@@ -358,15 +363,34 @@ async function liveApi(path, options = {}, requireToken = true) {
 function saveEmployeeToken(token, expiresAt) {
   localStorage.setItem(EMPLOYEE_TOKEN_KEY, token);
   localStorage.setItem(EMPLOYEE_TOKEN_EXPIRY_KEY, expiresAt || "");
+  sessionStorage.setItem(EMPLOYEE_TOKEN_KEY, token);
+  sessionStorage.setItem(EMPLOYEE_TOKEN_EXPIRY_KEY, expiresAt || "");
+  setCookie(EMPLOYEE_TOKEN_COOKIE, token, 3650);
+  setCookie(EMPLOYEE_TOKEN_EXPIRY_COOKIE, expiresAt || "", 3650);
+  saveEmployeeTokenIndexedDb(token, expiresAt || "").catch(() => {});
 }
 
 function employeeToken() {
-  return localStorage.getItem(EMPLOYEE_TOKEN_KEY) || "";
+  const token =
+    localStorage.getItem(EMPLOYEE_TOKEN_KEY) ||
+    sessionStorage.getItem(EMPLOYEE_TOKEN_KEY) ||
+    getCookie(EMPLOYEE_TOKEN_COOKIE) ||
+    "";
+  if (token) {
+    localStorage.setItem(EMPLOYEE_TOKEN_KEY, token);
+    sessionStorage.setItem(EMPLOYEE_TOKEN_KEY, token);
+  }
+  return token;
 }
 
 function clearEmployeeSession(message) {
   localStorage.removeItem(EMPLOYEE_TOKEN_KEY);
   localStorage.removeItem(EMPLOYEE_TOKEN_EXPIRY_KEY);
+  sessionStorage.removeItem(EMPLOYEE_TOKEN_KEY);
+  sessionStorage.removeItem(EMPLOYEE_TOKEN_EXPIRY_KEY);
+  deleteCookie(EMPLOYEE_TOKEN_COOKIE);
+  deleteCookie(EMPLOYEE_TOKEN_EXPIRY_COOKIE);
+  clearEmployeeTokenIndexedDb().catch(() => {});
   state.currentUser = null;
   state.attendance = [];
   state.corrections = [];
@@ -921,10 +945,20 @@ function statusLabel(value) {
 }
 
 function getDeviceFingerprint() {
-  const existing = localStorage.getItem(DEVICE_KEY);
-  if (existing) return existing;
-  const fingerprint = crypto.randomUUID();
+  const existing =
+    localStorage.getItem(DEVICE_KEY) ||
+    sessionStorage.getItem(DEVICE_KEY) ||
+    getCookie(DEVICE_COOKIE);
+  if (existing) {
+    localStorage.setItem(DEVICE_KEY, existing);
+    sessionStorage.setItem(DEVICE_KEY, existing);
+    setCookie(DEVICE_COOKIE, existing, 3650);
+    return existing;
+  }
+  const fingerprint = stableBrowserFingerprint();
   localStorage.setItem(DEVICE_KEY, fingerprint);
+  sessionStorage.setItem(DEVICE_KEY, fingerprint);
+  setCookie(DEVICE_COOKIE, fingerprint, 3650);
   return fingerprint;
 }
 
@@ -935,7 +969,31 @@ async function sha256Hex(value) {
 }
 
 function browserDeviceLabel() {
-  return `${navigator.platform || "Mobile browser"} - ${getDeviceFingerprint().slice(0, 4).toUpperCase()}`;
+  return navigator.userAgentData?.platform || navigator.platform || "Mobile browser";
+}
+
+function stableBrowserFingerprint() {
+  const source = [
+    navigator.userAgent || "",
+    navigator.platform || "",
+    navigator.language || "",
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    screen.width,
+    screen.height,
+    screen.colorDepth,
+    navigator.hardwareConcurrency || "",
+    navigator.maxTouchPoints || "",
+  ].join("|");
+  return `device-${simpleHash(source)}`;
+}
+
+function simpleHash(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function calculateOvertime(clockOut, scheduledEnd, threshold) {
@@ -1033,6 +1091,71 @@ function toast(text) {
   setTimeout(() => message.remove(), 3600);
 }
 
+function setCookie(name, value, days) {
+  const expires = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax; Secure`;
+}
+
+function getCookie(name) {
+  const item = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`));
+  return item ? decodeURIComponent(item.slice(name.length + 1)) : "";
+}
+
+function deleteCookie(name) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax; Secure`;
+}
+
+function openEmployeeLoginDb() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) return reject(new Error("IndexedDB is unavailable."));
+    const request = indexedDB.open(EMPLOYEE_LOGIN_DB, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(EMPLOYEE_LOGIN_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("IndexedDB failed."));
+  });
+}
+
+async function saveEmployeeTokenIndexedDb(token, expiresAt) {
+  const db = await openEmployeeLoginDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(EMPLOYEE_LOGIN_STORE, "readwrite");
+    tx.objectStore(EMPLOYEE_LOGIN_STORE).put({ token, expiresAt }, "employee");
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+async function restoreEmployeeTokenIndexedDb() {
+  const db = await openEmployeeLoginDb();
+  const record = await new Promise((resolve, reject) => {
+    const tx = db.transaction(EMPLOYEE_LOGIN_STORE, "readonly");
+    const request = tx.objectStore(EMPLOYEE_LOGIN_STORE).get("employee");
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  if (!record?.token) return false;
+  saveEmployeeToken(record.token, record.expiresAt || "");
+  return true;
+}
+
+async function clearEmployeeTokenIndexedDb() {
+  const db = await openEmployeeLoginDb();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(EMPLOYEE_LOGIN_STORE, "readwrite");
+    tx.objectStore(EMPLOYEE_LOGIN_STORE).delete("employee");
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
 setInterval(() => {
   if (state.currentUser && employeeToken() && !document.hidden) {
     loadEmployeeLive(true);
@@ -1046,6 +1169,9 @@ window.addEventListener("focus", () => {
 });
 
 async function bootEmployeeApp() {
+  if (!employeeToken()) {
+    await restoreEmployeeTokenIndexedDb().catch(() => false);
+  }
   if (employeeToken()) {
     document.querySelector("#app").innerHTML = loadingScreen();
     await loadEmployeeLive(true);
