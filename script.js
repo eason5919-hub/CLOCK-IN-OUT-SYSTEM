@@ -114,6 +114,7 @@ function loginScreen() {
         <form class="auth-panel" id="employee-register">
           <div><p class="eyebrow">Employee first time</p><h3>Register Official Phone</h3></div>
           <label>Employee code<input name="code" placeholder="WH-001" required /></label>
+          <label>Full name<input name="name" placeholder="Employee name" required /></label>
           <label>Phone number<input name="phone" placeholder="+60 12-400 1001" required /></label>
           <button>Register Phone</button>
         </form>
@@ -270,9 +271,26 @@ function bindLogin() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const code = String(data.get("code")).trim().toUpperCase();
+    const name = String(data.get("name")).trim();
     const phone = normalizePhone(String(data.get("phone")));
-    const employee = state.employees.find((row) => row.code.toUpperCase() === code && normalizePhone(row.phone) === phone);
-    if (!employee) return toast("Employee code and phone number do not match HR records.");
+    let employee = state.employees.find((row) => row.code.toUpperCase() === code);
+    if (employee && normalizePhone(employee.phone) !== phone) {
+      return toast("Employee code exists with a different phone number.");
+    }
+    if (!employee) {
+      employee = {
+        id: `emp-${Date.now()}`,
+        code,
+        name,
+        phone: String(data.get("phone")).trim(),
+        department: "Warehouse",
+        position: "Warehouse Associate",
+        deviceFingerprint: null,
+        deviceModel: "Not registered",
+        deviceStatus: "Not registered",
+      };
+      state.employees.push(employee);
+    }
 
     const device = getDeviceFingerprint();
     if (employee.deviceFingerprint && employee.deviceFingerprint !== device) {
