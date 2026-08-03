@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       .prepare(
         `SELECT id
          FROM leave_requests
-         WHERE employee_id = ? AND leave_date = ? AND status NOT IN ('rejected', 'cancelled')
+         WHERE employee_id = ? AND leave_date = ? AND status IN ('pending', 'approved')
          LIMIT 1`,
       )
       .bind(session.employee_id, payload.leaveDate)

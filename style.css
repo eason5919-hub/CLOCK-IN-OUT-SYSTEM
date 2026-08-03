@@ -525,6 +525,11 @@ th {
   gap: 12px;
 }
 
+.leave-card strong,
+.leave-card span:not(.badge) {
+  display: block;
+}
+
 .employee-row {
   display: grid;
   grid-template-columns: minmax(200px, 1fr) auto auto;

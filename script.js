@@ -532,20 +532,37 @@ function bindEmployee() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     try {
-      await liveApi("/api/leave-requests", {
+      const leaveType = String(data.get("leaveType"));
+      const leaveDate = String(data.get("date"));
+      const duration = String(data.get("duration"));
+      const reason = String(data.get("reason")).trim();
+      const result = await liveApi("/api/leave-requests", {
         method: "POST",
         body: JSON.stringify({
           employeeId: state.currentUser.employeeId,
-          leaveType: String(data.get("leaveType")),
-          leaveDate: String(data.get("date")),
-          duration: String(data.get("duration")),
-          reason: String(data.get("reason")).trim(),
+          leaveType,
+          leaveDate,
+          duration,
+          reason,
         }),
       });
-      toast("Leave/MC request submitted.");
+      state.leaveRequests = [
+        {
+          id: result.leaveRequestId || `leave-${Date.now()}`,
+          employeeId: state.currentUser.employeeId,
+          date: leaveDate,
+          type: statusLabel(leaveType),
+          duration: statusLabel(duration),
+          reason,
+          status: "Pending",
+        },
+        ...(state.leaveRequests || []).filter((request) => request.id !== result.leaveRequestId),
+      ];
+      saveState();
       event.currentTarget.reset();
-      await loadEmployeeLive(true);
       render();
+      toast("Leave/MC submitted");
+      loadEmployeeLive(true).catch(() => {});
     } catch (error) {
       toast(error.message || "Unable to submit Leave/MC request.");
     }
