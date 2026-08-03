@@ -21,7 +21,9 @@ type AdminAction =
     }
   | { action: "deactivate_employee"; employeeId?: string }
   | { action: "delete_employee"; employeeId?: string }
-  | { action: "unlink_device"; deviceId?: string };
+  | { action: "unlink_device"; deviceId?: string }
+  | { action: "set_leave_entitlement"; employeeId?: string; entitlementDays?: number | string }
+  | { action: "review_leave_request"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string };
 
 export async function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -34,18 +36,28 @@ export async function GET(request: Request) {
     const auth = await requireAdmin(db, request);
     if ("error" in auth) return json(request, { error: auth.error }, auth.status);
 
-    const [employees, attendance, corrections, auditLogs] = await Promise.all([
+    const [employees, attendance, corrections, leaveRequests, auditLogs] = await Promise.all([
       db
         .prepare(
           `SELECT e.id, e.employee_code, e.full_name, e.department_id,
                   COALESCE(dep.name, e.department_id) AS department_name,
                   e.position, e.phone,
+                  e.leave_entitlement_days,
+                  COALESCE(leave_totals.taken_days, 0) AS leave_taken_days,
+                  MAX(e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0), 0) AS leave_remaining_days,
                   e.email, e.status, e.created_at,
                   d.id AS device_id, d.device_model, d.status AS device_status,
                   d.registered_at, d.last_seen_at
            FROM employees e
            LEFT JOIN departments dep ON dep.id = e.department_id
            LEFT JOIN devices d ON d.employee_id = e.id AND d.status = 'registered'
+           LEFT JOIN (
+             SELECT employee_id,
+                    SUM(CASE duration WHEN 'half_day' THEN 0.5 ELSE 1 END) AS taken_days
+             FROM leave_requests
+             WHERE status = 'approved'
+             GROUP BY employee_id
+           ) leave_totals ON leave_totals.employee_id = e.id
            WHERE e.status <> 'deleted'
            ORDER BY e.employee_code`,
         )
@@ -63,7 +75,16 @@ export async function GET(request: Request) {
           `SELECT c.*, e.employee_code, e.full_name
            FROM attendance_corrections c
            JOIN employees e ON e.id = c.employee_id
-           ORDER BY c.created_at DESC`,
+          ORDER BY c.created_at DESC`,
+        )
+        .all(),
+      db
+        .prepare(
+          `SELECT l.*, e.employee_code, e.full_name
+           FROM leave_requests l
+           JOIN employees e ON e.id = l.employee_id
+           WHERE e.status <> 'deleted'
+           ORDER BY l.created_at DESC`,
         )
         .all(),
       db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 30").all(),
@@ -73,6 +94,7 @@ export async function GET(request: Request) {
       employees: employees.results ?? [],
       attendance: attendance.results ?? [],
       corrections: corrections.results ?? [],
+      leaveRequests: leaveRequests.results ?? [],
       auditLogs: auditLogs.results ?? [],
       qrToken: "WAREHOUSE-MAIN-QR",
       warehouse: {
@@ -110,6 +132,12 @@ export async function POST(request: Request) {
     }
     if (payload.action === "unlink_device") {
       return unlinkDevice(db, request, payload.deviceId, auth.userId);
+    }
+    if (payload.action === "set_leave_entitlement") {
+      return setLeaveEntitlement(db, request, payload, auth.userId);
+    }
+    if (payload.action === "review_leave_request") {
+      return reviewLeaveRequest(db, request, payload, auth.userId);
     }
 
     return json(request, { error: "Unknown admin action." }, 400);
@@ -152,7 +180,7 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
   await db.batch([
     db
       .prepare(
-        "INSERT INTO employees (id, employee_code, full_name, department_id, position, phone, email, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'active')",
+        "INSERT INTO employees (id, employee_code, full_name, department_id, position, phone, email, leave_entitlement_days, status) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active')",
       )
       .bind(employeeId, code, name, departmentId, payload.position?.trim() || "Warehouse Associate", phone, email),
     db
@@ -270,6 +298,123 @@ async function unlinkDevice(db: D1Database, request: Request, deviceId: string |
   ]);
 
   return json(request, { ok: true });
+}
+
+async function setLeaveEntitlement(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "set_leave_entitlement" }>,
+  adminUserId: string,
+) {
+  const employeeId = payload.employeeId;
+  const entitlementDays = Number(payload.entitlementDays);
+  if (!employeeId || !Number.isFinite(entitlementDays) || entitlementDays < 0) {
+    return json(request, { error: "Employee and leave days are required." }, 400);
+  }
+
+  const before = await db.prepare("SELECT * FROM employees WHERE id = ?").bind(employeeId).first();
+  if (!before) return json(request, { error: "Employee was not found." }, 404);
+
+  const normalizedDays = Math.round(entitlementDays * 2) / 2;
+  await db.batch([
+    db
+      .prepare("UPDATE employees SET leave_entitlement_days = ? WHERE id = ?")
+      .bind(normalizedDays, employeeId),
+    db
+      .prepare(
+        "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        crypto.randomUUID(),
+        adminUserId,
+        "set_leave_entitlement",
+        "employee",
+        employeeId,
+        JSON.stringify(before),
+        JSON.stringify({ leave_entitlement_days: normalizedDays }),
+      ),
+  ]);
+
+  return json(request, { ok: true });
+}
+
+async function reviewLeaveRequest(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "review_leave_request" }>,
+  adminUserId: string,
+) {
+  if (!payload.requestId || (payload.status !== "approved" && payload.status !== "rejected")) {
+    return json(request, { error: "Leave request and review status are required." }, 400);
+  }
+
+  const before = await db.prepare("SELECT * FROM leave_requests WHERE id = ?").bind(payload.requestId).first();
+  if (!before) return json(request, { error: "Leave/MC request was not found." }, 404);
+
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE leave_requests
+         SET status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP, admin_note = ?
+         WHERE id = ?`,
+      )
+      .bind(payload.status, adminUserId, payload.adminNote?.trim() || null, payload.requestId),
+    db
+      .prepare(
+        "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        crypto.randomUUID(),
+        adminUserId,
+        `leave_${payload.status}`,
+        "leave_request",
+        payload.requestId,
+        JSON.stringify(before),
+        JSON.stringify({ status: payload.status }),
+      ),
+  ]);
+
+  if (payload.status === "approved") {
+    await applyHalfDayLeaveAttendanceRule(db, payload.requestId);
+  }
+
+  return json(request, { ok: true });
+}
+
+async function applyHalfDayLeaveAttendanceRule(db: D1Database, requestId: string) {
+  const leave = await db
+    .prepare("SELECT employee_id, leave_date, duration FROM leave_requests WHERE id = ? AND status = 'approved'")
+    .bind(requestId)
+    .first<{ employee_id: string; leave_date: string; duration: string }>();
+  if (leave?.duration !== "half_day") return;
+
+  const summary = await db
+    .prepare(
+      `SELECT COALESCE(SUM(total_minutes), 0) AS total_minutes
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND clock_out_at IS NOT NULL`,
+    )
+    .bind(leave.employee_id, leave.leave_date)
+    .first<{ total_minutes: number }>();
+  const shortMinutes = Math.max(0, 240 - Number(summary?.total_minutes || 0));
+  if (!shortMinutes) return;
+
+  const latest = await db
+    .prepare(
+      `SELECT id, late_minutes
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND clock_out_at IS NOT NULL
+       ORDER BY clock_out_at DESC, updated_at DESC
+       LIMIT 1`,
+    )
+    .bind(leave.employee_id, leave.leave_date)
+    .first<{ id: string; late_minutes: number }>();
+  if (!latest) return;
+
+  await db
+    .prepare("UPDATE attendance SET late_minutes = ?, status = 'late', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .bind(Math.max(Number(latest.late_minutes || 0), shortMinutes), latest.id)
+    .run();
 }
 
 async function requireAdmin(db: D1Database, request: Request) {

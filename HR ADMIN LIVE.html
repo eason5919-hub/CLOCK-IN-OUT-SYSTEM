@@ -202,6 +202,19 @@
       border-bottom: 1px solid var(--line);
     }
 
+    .leaveControl {
+      display: grid;
+      grid-template-columns: 82px auto;
+      gap: 6px;
+      align-items: center;
+      min-width: 150px;
+    }
+
+    .leaveControl input {
+      min-height: 34px;
+      padding: 0 8px;
+    }
+
     .qrGrid {
       display: grid;
       grid-template-columns: 180px 1fr;
@@ -225,7 +238,7 @@
 
     table {
       width: 100%;
-      min-width: 940px;
+      min-width: 1080px;
       border-collapse: collapse;
     }
 
@@ -372,6 +385,8 @@
               <th>Position</th>
               <th>Status</th>
               <th>Device</th>
+              <th>Leave</th>
+              <th>Remaining</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -379,6 +394,31 @@
         </table>
       </div>
       <div id="employeeEmpty" class="empty" hidden>No employees yet.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panelHead">
+        <h2>Leave / MC Requests</h2>
+        <span id="leaveCountText" class="status"></span>
+      </div>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Date</th>
+              <th>Employee</th>
+              <th>Type</th>
+              <th>Duration</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="leaveBody"></tbody>
+        </table>
+      </div>
+      <div id="leaveEmpty" class="empty" hidden>No Leave/MC requests yet.</div>
     </section>
 
     <section class="panel">
@@ -429,9 +469,12 @@
     const saveEmployeeButton = document.getElementById("saveEmployeeButton");
     const cancelEditButton = document.getElementById("cancelEditButton");
     const attendanceBody = document.getElementById("attendanceBody");
+    const leaveBody = document.getElementById("leaveBody");
     const employeeEmpty = document.getElementById("employeeEmpty");
     const attendanceEmpty = document.getElementById("attendanceEmpty");
+    const leaveEmpty = document.getElementById("leaveEmpty");
     const attendanceCountText = document.getElementById("attendanceCountText");
+    const leaveCountText = document.getElementById("leaveCountText");
     const employeeStatus = document.getElementById("employeeStatus");
     const qrImage = document.getElementById("qrImage");
     const downloadQrLink = document.getElementById("downloadQrLink");
@@ -439,6 +482,7 @@
 
     let employees = [];
     let attendance = [];
+    let leaveRequests = [];
     let loading = false;
     let editingEmployeeId = "";
 
@@ -537,6 +581,15 @@
       return hours ? `${hours}h ${rest}m` : `${rest}m`;
     }
 
+    function formatLeaveDays(value) {
+      const days = Number(value || 0);
+      return `${Number.isInteger(days) ? days : days.toFixed(1)} day${days === 1 ? "" : "s"}`;
+    }
+
+    function labelText(value) {
+      return String(value || "-").replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
+    }
+
     function todayKey() {
       return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
     }
@@ -587,6 +640,14 @@
               ${employee.last_seen_at ? `<small>Last seen ${escapeHtml(formatDateTime(employee.last_seen_at))}</small>` : ""}
             </td>
             <td>
+              <div class="leaveControl">
+                <input type="number" min="0" step="0.5" value="${Number(employee.leave_entitlement_days || 0)}" data-leave-days="${escapeHtml(employee.id)}" aria-label="Leave days for ${escapeHtml(employee.full_name)}">
+                <button class="secondary" type="button" data-save-leave="${escapeHtml(employee.id)}">Save</button>
+              </div>
+              <small>Taken ${escapeHtml(formatLeaveDays(employee.leave_taken_days))}</small>
+            </td>
+            <td><strong>${escapeHtml(formatLeaveDays(employee.leave_remaining_days))}</strong></td>
+            <td>
               <div class="actions">
                 <button class="blue" type="button"
                   data-edit-employee="${escapeHtml(employee.id)}"
@@ -604,6 +665,35 @@
         `;
       }).join("");
       employeeEmpty.hidden = rows.length > 0;
+    }
+
+    function renderLeaveRequests() {
+      const q = searchInput.value.trim().toLowerCase();
+      const rows = q ? leaveRequests.filter(item => searchable(item).includes(q)) : leaveRequests;
+      leaveBody.innerHTML = rows.map((request, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${escapeHtml(request.leave_date || "-")}</td>
+          <td>
+            <strong>${escapeHtml(request.full_name || "-")}</strong>
+            <small>${escapeHtml(request.employee_code || "-")}</small>
+          </td>
+          <td>${escapeHtml(labelText(request.leave_type))}</td>
+          <td>${escapeHtml(labelText(request.duration))}</td>
+          <td>${escapeHtml(request.reason || "-")}</td>
+          <td><span class="pill ${request.status === "pending" ? "warn" : request.status === "rejected" ? "bad" : ""}">${escapeHtml(labelText(request.status))}</span></td>
+          <td>
+            ${request.status === "pending" ? `
+              <div class="actions">
+                <button type="button" data-review-leave="${escapeHtml(request.id)}" data-status="approved">Approve</button>
+                <button class="danger" type="button" data-review-leave="${escapeHtml(request.id)}" data-status="rejected">Reject</button>
+              </div>
+            ` : "-"}
+          </td>
+        </tr>
+      `).join("");
+      leaveEmpty.hidden = rows.length > 0;
+      leaveCountText.textContent = `${rows.length} shown / ${leaveRequests.length} requests`;
     }
 
     function renderAttendance() {
@@ -631,6 +721,7 @@
     function renderAll() {
       renderMetrics();
       renderEmployees();
+      renderLeaveRequests();
       renderAttendance();
     }
 
@@ -654,6 +745,7 @@
         const data = await api(`/api/admin/live?refresh=${Date.now()}`);
         employees = Array.isArray(data.employees) ? data.employees : [];
         attendance = Array.isArray(data.attendance) ? data.attendance : [];
+        leaveRequests = Array.isArray(data.leaveRequests) ? data.leaveRequests : [];
         renderAll();
         setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}`, "ok");
       } catch (error) {
@@ -766,6 +858,41 @@
         } catch (error) {
           setStatus(employeeStatus, error.message || "Unable to delete employee", "error");
         }
+      }
+    });
+
+    employeesBody.addEventListener("change", event => {
+      const input = event.target.closest("[data-leave-days]");
+      if (input) input.dataset.changed = "1";
+    });
+
+    employeesBody.addEventListener("click", async event => {
+      const saveLeave = event.target.closest("[data-save-leave]");
+      if (!saveLeave) return;
+      const input = Array.from(employeesBody.querySelectorAll("[data-leave-days]"))
+        .find(item => item.dataset.leaveDays === saveLeave.dataset.saveLeave);
+      try {
+        await adminAction({
+          action: "set_leave_entitlement",
+          employeeId: saveLeave.dataset.saveLeave,
+          entitlementDays: input ? input.value : "0"
+        }, "Saving leave days...");
+      } catch (error) {
+        setStatus(employeeStatus, error.message || "Unable to save leave days", "error");
+      }
+    });
+
+    leaveBody.addEventListener("click", async event => {
+      const review = event.target.closest("[data-review-leave]");
+      if (!review) return;
+      try {
+        await adminAction({
+          action: "review_leave_request",
+          requestId: review.dataset.reviewLeave,
+          status: review.dataset.status
+        }, review.dataset.status === "approved" ? "Approving Leave/MC..." : "Rejecting Leave/MC...");
+      } catch (error) {
+        setStatus(employeeStatus, error.message || "Unable to review Leave/MC", "error");
       }
     });
 

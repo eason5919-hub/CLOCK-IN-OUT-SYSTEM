@@ -16,6 +16,7 @@ export const employees = sqliteTable("employees", {
   position: text("position").notNull().default("Warehouse Associate"),
   phone: text("phone"),
   email: text("email"),
+  leaveEntitlementDays: real("leave_entitlement_days").notNull().default(0),
   status: text("status", { enum: ["active", "inactive"] }).notNull().default("active"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
@@ -140,6 +141,27 @@ export const attendanceCorrections = sqliteTable(
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [index("idx_corrections_status").on(table.status)],
+);
+
+export const leaveRequests = sqliteTable(
+  "leave_requests",
+  {
+    id: text("id").primaryKey(),
+    employeeId: text("employee_id").notNull().references(() => employees.id),
+    leaveType: text("leave_type", { enum: ["leave", "mc"] }).notNull(),
+    leaveDate: text("leave_date").notNull(),
+    duration: text("duration", { enum: ["half_day", "full_day"] }).notNull(),
+    reason: text("reason"),
+    status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
+    reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
+    reviewedAt: text("reviewed_at"),
+    adminNote: text("admin_note"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("idx_leave_requests_employee_date").on(table.employeeId, table.leaveDate),
+    index("idx_leave_requests_status").on(table.status),
+  ],
 );
 
 export const settings = sqliteTable("settings", {

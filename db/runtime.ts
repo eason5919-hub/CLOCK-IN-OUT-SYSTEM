@@ -29,6 +29,7 @@ export function getD1() {
 
 export async function ensureDatabase(db: D1Database) {
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
+  await ensureSchemaMigrations(db);
   await ensureAttendanceIndexes(db);
 
   const existing = await db
@@ -167,6 +168,14 @@ async function ensureAttendanceIndexes(db: D1Database) {
     .run();
 }
 
+async function ensureSchemaMigrations(db: D1Database) {
+  const employeeColumns = await db.prepare("PRAGMA table_info(employees)").all<{ name: string }>();
+  const hasLeaveEntitlement = (employeeColumns.results ?? []).some((column) => column.name === "leave_entitlement_days");
+  if (!hasLeaveEntitlement) {
+    await db.prepare("ALTER TABLE employees ADD COLUMN leave_entitlement_days REAL NOT NULL DEFAULT 0").run();
+  }
+}
+
 export async function createSession(
   db: D1Database,
   user: { id: string; role: "owner" | "hr" | "employee"; employee_id: string | null },
@@ -292,6 +301,7 @@ const schemaStatements = [
     position TEXT NOT NULL DEFAULT 'Warehouse Associate',
     phone TEXT,
     email TEXT,
+    leave_entitlement_days REAL NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
@@ -392,6 +402,21 @@ const schemaStatements = [
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE INDEX IF NOT EXISTS idx_corrections_status ON attendance_corrections(status)`,
+  `CREATE TABLE IF NOT EXISTS leave_requests (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT NOT NULL REFERENCES employees(id),
+    leave_type TEXT NOT NULL,
+    leave_date TEXT NOT NULL,
+    duration TEXT NOT NULL,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    reviewed_by_user_id TEXT REFERENCES users(id),
+    reviewed_at TEXT,
+    admin_note TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_date ON leave_requests(employee_id, leave_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)`,
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

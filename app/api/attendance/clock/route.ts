@@ -47,6 +47,7 @@ type AttendanceRow = {
 type ScheduleRow = AttendanceSchedule;
 
 const MAX_GPS_ACCURACY_METERS = 30;
+const HALF_DAY_REQUIRED_MINUTES = 240;
 
 export async function POST(request: Request) {
   try {
@@ -181,7 +182,9 @@ export async function POST(request: Request) {
     const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone, {
       previousRegularMinutes,
     });
-    const lateMinutes = Number(existing.late_minutes || totals.lateMinutes);
+    const halfDayLeave = await hasApprovedHalfDayLeave(db, payload.employeeId, existing.work_date);
+    const halfDayShortMinutes = halfDayLeave ? Math.max(0, HALF_DAY_REQUIRED_MINUTES - totals.totalMinutes) : 0;
+    const lateMinutes = Math.max(Number(existing.late_minutes || totals.lateMinutes), halfDayShortMinutes);
     const status =
       lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
 
@@ -335,6 +338,20 @@ async function getPreviousRegularMinutes(
     (total, row) => total + Math.max(0, Number(row.total_minutes || 0) - Number(row.overtime_minutes || 0)),
     0,
   );
+}
+
+async function hasApprovedHalfDayLeave(db: D1Database, employeeId: string, workDate: string) {
+  const request = await db
+    .prepare(
+      `SELECT id
+       FROM leave_requests
+       WHERE employee_id = ? AND leave_date = ? AND duration = 'half_day' AND status = 'approved'
+       LIMIT 1`,
+    )
+    .bind(employeeId, workDate)
+    .first<{ id: string }>();
+
+  return Boolean(request);
 }
 
 async function writeAudit(

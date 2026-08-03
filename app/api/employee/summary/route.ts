@@ -11,9 +11,19 @@ export async function GET(request: Request) {
   const employee = await db
     .prepare(
       `SELECT e.id, e.employee_code, e.full_name, e.department_id, e.position, e.phone,
+              e.leave_entitlement_days,
+              COALESCE(leave_totals.taken_days, 0) AS leave_taken_days,
+              MAX(e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0), 0) AS leave_remaining_days,
               d.device_model, d.status AS device_status
        FROM employees e
        LEFT JOIN devices d ON d.employee_id = e.id AND d.status = 'registered'
+       LEFT JOIN (
+         SELECT employee_id,
+                SUM(CASE duration WHEN 'half_day' THEN 0.5 ELSE 1 END) AS taken_days
+         FROM leave_requests
+         WHERE status = 'approved'
+         GROUP BY employee_id
+       ) leave_totals ON leave_totals.employee_id = e.id
        WHERE e.id = ? AND e.status = 'active'`,
     )
     .bind(session.employee_id)
@@ -57,7 +67,22 @@ export async function GET(request: Request) {
     .bind(session.employee_id)
     .all();
 
-  return json(request, { employee, attendance: attendance.results, corrections: corrections.results });
+  const leaveRequests = await db
+    .prepare(
+      `SELECT id, leave_type, leave_date, duration, reason, status, created_at
+       FROM leave_requests
+       WHERE employee_id = ?
+       ORDER BY created_at DESC`,
+    )
+    .bind(session.employee_id)
+    .all();
+
+  return json(request, {
+    employee,
+    attendance: attendance.results,
+    corrections: corrections.results,
+    leaveRequests: leaveRequests.results,
+  });
 }
 
 export async function OPTIONS(request: Request) {

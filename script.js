@@ -22,6 +22,7 @@ const defaultState = {
   employees: [],
   attendance: [],
   corrections: [],
+  leaveRequests: [],
   auditLogs: [],
 };
 
@@ -138,7 +139,7 @@ function shell(content, subtitle) {
         </div>
         <nav class="nav">
           ${state.currentUser.role === "employee"
-            ? `<a href="#clock">Clock In/Out</a><a href="#month">Monthly View</a><a href="#history">History</a><a href="#corrections">Correction Request</a>`
+            ? `<a href="#clock">Clock In/Out</a><a href="#month">Monthly View</a><a href="#history">History</a><a href="#corrections">Correction Request</a><a href="#leave">Apply Leave/MC</a>`
             : `<a href="#warehouse-qr">QR Code</a><a href="#employees">Employees</a><a href="#attendance">Attendance</a><a href="#corrections">Corrections</a><a href="#reports">Reports</a>`}
         </nav>
         <div class="warehouse">
@@ -163,6 +164,8 @@ function employeeScreen() {
   const employee = employeeById(state.currentUser.employeeId);
   const records = state.attendance;
   const corrections = state.corrections;
+  const leaveRequests = state.leaveRequests || [];
+  const leaveRemaining = formatLeaveDays(state.currentUser.leaveRemainingDays || 0);
   const openRecord = currentOpenRecord(records);
   const clockAction = openRecord ? "out" : "in";
   const clockLabel = openRecord ? "Clock out" : "Clock in";
@@ -207,13 +210,26 @@ function employeeScreen() {
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
         <form class="form" id="correction-form">
-          <label>Date<input name="date" type="date" value="2026-08-03" required /></label>
+          <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
           <label>Missing<select name="missing"><option>Clock In</option><option selected>Clock Out</option><option>Both</option></select></label>
           <label>Requested time<input name="time" type="time" required /></label>
           <label>Reason<textarea name="reason" rows="3" required></textarea></label>
           <button>Submit Request</button>
         </form>
         <div class="list" style="margin-top:14px">${corrections.map(correctionCard).join("") || `<small>No correction requests.</small>`}</div>
+      </section>
+      <section class="panel" id="leave">
+        <div class="heading">
+          <div><p class="eyebrow">Apply Leave/MC</p><h3>Leave remaining: ${leaveRemaining}</h3></div>
+        </div>
+        <form class="form" id="leave-form">
+          <label>Type<select name="leaveType"><option value="leave">Leave</option><option value="mc">MC</option></select></label>
+          <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
+          <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select></label>
+          <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
+          <button>Submit Leave/MC</button>
+        </form>
+        <div class="list" style="margin-top:14px">${leaveRequests.map(leaveRequestCard).join("") || `<small>No Leave/MC requests.</small>`}</div>
       </section>
     </div>
     ${qrScannerModal()}
@@ -306,6 +322,7 @@ function bindLogin() {
       };
       state.attendance = [];
       state.corrections = [];
+      state.leaveRequests = [];
       saveState();
       await loadEmployeeLive(true);
       render();
@@ -326,9 +343,13 @@ async function loadEmployeeLive(force = false) {
       employeeId: employee.id,
       name: employee.full_name,
       label: employee.employee_code,
+      leaveEntitlementDays: Number(employee.leave_entitlement_days || 0),
+      leaveTakenDays: Number(employee.leave_taken_days || 0),
+      leaveRemainingDays: Number(employee.leave_remaining_days || 0),
     };
     state.attendance = (result.attendance || []).map(mapLiveAttendance);
     state.corrections = (result.corrections || []).map(mapLiveCorrection);
+    state.leaveRequests = (result.leaveRequests || []).map(mapLiveLeaveRequest);
     saveState();
   } catch (error) {
     if (error.status === 401 || error.status === 403 || error.status === 404) {
@@ -397,6 +418,7 @@ function clearEmployeeSession(message) {
   state.currentUser = null;
   state.attendance = [];
   state.corrections = [];
+  state.leaveRequests = [];
   saveState();
   stopQrScanner();
   stopLocationWatch();
@@ -437,6 +459,18 @@ function mapLiveCorrection(row) {
   };
 }
 
+function mapLiveLeaveRequest(row) {
+  return {
+    id: row.id,
+    employeeId: state.currentUser?.employeeId,
+    date: row.leave_date,
+    type: statusLabel(row.leave_type),
+    duration: statusLabel(row.duration),
+    reason: row.reason || "",
+    status: statusLabel(row.status),
+  };
+}
+
 function bindEmployee() {
   bindShell();
   document.querySelectorAll("[data-clock]").forEach((button) => {
@@ -472,6 +506,28 @@ function bindEmployee() {
       render();
     } catch (error) {
       toast(error.message || "Unable to submit correction request.");
+    }
+  });
+  document.querySelector("#leave-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    try {
+      await liveApi("/api/leave-requests", {
+        method: "POST",
+        body: JSON.stringify({
+          employeeId: state.currentUser.employeeId,
+          leaveType: String(data.get("leaveType")),
+          leaveDate: String(data.get("date")),
+          duration: String(data.get("duration")),
+          reason: String(data.get("reason")).trim(),
+        }),
+      });
+      toast("Leave/MC request submitted.");
+      event.currentTarget.reset();
+      await loadEmployeeLive(true);
+      render();
+    } catch (error) {
+      toast(error.message || "Unable to submit Leave/MC request.");
     }
   });
 }
@@ -710,6 +766,10 @@ function employeeCard(employee) {
 
 function correctionCard(correction) {
   return `<div class="list-item"><strong>${correction.date} - ${correction.missing}</strong><span>${escapeHtml(correction.reason)}</span><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span></div>`;
+}
+
+function leaveRequestCard(request) {
+  return `<div class="list-item"><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span><span class="badge ${request.status.toLowerCase()}">${request.status}</span></div>`;
 }
 
 function adminCorrectionCard(correction) {
@@ -1017,6 +1077,11 @@ function formatMinutes(minutes) {
 
 function formatOtMinutes(minutes) {
   return Number(minutes || 0) > 0 ? formatMinutes(Number(minutes)) : "-";
+}
+
+function formatLeaveDays(value) {
+  const number = Number(value || 0);
+  return `${Number.isInteger(number) ? number : number.toFixed(1)} day${number === 1 ? "" : "s"}`;
 }
 
 function localDateTimeToIso(date, time) {
