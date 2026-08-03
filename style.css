@@ -596,8 +596,7 @@ th {
   font-weight: 900;
 }
 
-.calendar-day,
-.calendar-spacer {
+.calendar-day {
   min-width: 0;
   aspect-ratio: 1;
 }

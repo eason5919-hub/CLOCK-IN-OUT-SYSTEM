@@ -940,9 +940,6 @@ function leaveCalendarMarkup(selectedDate, monthValue) {
   const nextMonth = addCalendarMonths(monthDate, 1);
   const cells = [];
 
-  for (let index = 0; index < firstDay; index += 1) {
-    cells.push(`<span class="calendar-spacer" aria-hidden="true"></span>`);
-  }
   for (let day = 1; day <= daysInMonth; day += 1) {
     const dateKey = `${monthKey}-${String(day).padStart(2, "0")}`;
     const dayOfWeek = leaveDateDayOfWeek(dateKey);
@@ -952,7 +949,8 @@ function leaveCalendarMarkup(selectedDate, monthValue) {
     const classes = ["calendar-day", isSunday ? "is-sunday" : "", isPast ? "is-past" : "", isDisabled ? "is-disabled" : "", dateKey === selectedDate ? "is-selected" : ""]
       .filter(Boolean)
       .join(" ");
-    cells.push(`<button class="${classes}" type="button" data-calendar-date="${dateKey}" ${isDisabled ? "disabled" : ""}>${day}</button>`);
+    const firstDayStyle = day === 1 && firstDay > 0 ? ` style="grid-column-start: ${firstDay + 1}"` : "";
+    cells.push(`<button class="${classes}" type="button" data-calendar-date="${dateKey}"${firstDayStyle} ${isDisabled ? "disabled" : ""}>${day}</button>`);
   }
 
   return `
