@@ -144,7 +144,15 @@ export async function PATCH(request: Request) {
           )
           .bind(updated.warehouse_id, localDayOfWeek(`${correction.requested_date}T12:00:00+08:00`, timeZone))
           .first();
-        const totals = calculateAttendanceTotals(String(updated.clock_in_at), String(updated.clock_out_at), schedule, timeZone);
+        const previousRegularMinutes = await getPreviousRegularMinutes(
+          db,
+          String(updated.employee_id),
+          String(updated.work_date),
+          String(updated.id),
+        );
+        const totals = calculateAttendanceTotals(String(updated.clock_in_at), String(updated.clock_out_at), schedule, timeZone, {
+          previousRegularMinutes,
+        });
         const status =
           totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
         await db
@@ -217,4 +225,25 @@ function corsHeaders(request: Request) {
     "access-control-max-age": "86400",
     vary: "Origin",
   };
+}
+
+async function getPreviousRegularMinutes(
+  db: D1Database,
+  employeeId: string,
+  workDate: string,
+  currentAttendanceId: string,
+) {
+  const rows = await db
+    .prepare(
+      `SELECT total_minutes, overtime_minutes
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND id <> ? AND clock_out_at IS NOT NULL`,
+    )
+    .bind(employeeId, workDate, currentAttendanceId)
+    .all<{ total_minutes: number; overtime_minutes: number }>();
+
+  return (rows.results ?? []).reduce(
+    (total, row) => total + Math.max(0, Number(row.total_minutes || 0) - Number(row.overtime_minutes || 0)),
+    0,
+  );
 }

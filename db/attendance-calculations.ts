@@ -7,6 +7,8 @@ export type AttendanceSchedule = {
 
 const DEFAULT_TIME_ZONE = "Asia/Kuala_Lumpur";
 const START_GRACE_MINUTES = 15;
+const BREAK_MINUTES = 60;
+const BREAK_GRACE_MINUTES = 15;
 const EARLY_OT_BEFORE_START_MINUTES = 60;
 const OPEN_ATTENDANCE_CUTOFF_TIME = "08:00";
 
@@ -15,14 +17,23 @@ export function calculateAttendanceTotals(
   clockOutAt: string,
   schedule?: AttendanceSchedule | null,
   timeZone = DEFAULT_TIME_ZONE,
+  options: { previousRegularMinutes?: number } = {},
 ) {
-  const totalMinutes = Math.max(
+  const elapsedMinutes = Math.max(
     0,
     Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000),
   );
   const lateMinutes = calculateLateMinutes(clockInAt, schedule, timeZone);
   const earlyLeaveMinutes = calculateEarlyLeaveMinutes(clockInAt, clockOutAt, schedule, timeZone);
   const overtimeMinutes = calculateOvertimeMinutes(clockInAt, clockOutAt, schedule, timeZone);
+  const totalMinutes = calculatePaidMinutes(
+    elapsedMinutes,
+    overtimeMinutes,
+    schedule,
+    clockInAt,
+    timeZone,
+    options.previousRegularMinutes ?? 0,
+  );
 
   return { totalMinutes, lateMinutes, earlyLeaveMinutes, overtimeMinutes };
 }
@@ -45,9 +56,21 @@ export function calculateOvertimeMinutes(
   const clockOutMs = Date.parse(clockOutAt);
   const earlyOvertimeMinutes = calculateEarlyOvertimeMinutes(clockInAt, schedule, timeZone);
   const lateOvertimeMinutes =
-    clockOutMs >= overtimeThresholdMs ? Math.max(0, Math.round((clockOutMs - scheduledEndMs) / 60000)) : 0;
+    clockOutMs >= overtimeThresholdMs
+      ? Math.max(0, Math.round((clockOutMs - Math.max(Date.parse(clockInAt), scheduledEndMs)) / 60000))
+      : 0;
 
   return earlyOvertimeMinutes + lateOvertimeMinutes;
+}
+
+export function calculateBreakReturnLateMinutes(
+  previousClockOutAt: string,
+  clockInAt: string,
+) {
+  const breakEndMs = Date.parse(previousClockOutAt) + BREAK_MINUTES * 60000;
+  const graceEndMs = breakEndMs + BREAK_GRACE_MINUTES * 60000;
+  const clockInMs = Date.parse(clockInAt);
+  return clockInMs > graceEndMs ? Math.max(0, Math.round((clockInMs - breakEndMs) / 60000)) : 0;
 }
 
 export function localWorkDate(value: string | Date, timeZone = DEFAULT_TIME_ZONE) {
@@ -89,6 +112,37 @@ function calculateLateMinutes(clockInAt: string, schedule?: AttendanceSchedule |
   return clockInMinutes > scheduledStartMinutes + START_GRACE_MINUTES
     ? Math.max(0, clockInMinutes - scheduledStartMinutes)
     : 0;
+}
+
+function calculatePaidMinutes(
+  elapsedMinutes: number,
+  overtimeMinutes: number,
+  schedule: AttendanceSchedule | null | undefined,
+  clockInAt: string,
+  timeZone: string,
+  previousRegularMinutes: number,
+) {
+  const dailyRegularCap = calculateDailyRegularCap(schedule, clockInAt, timeZone);
+  if (dailyRegularCap === null) return elapsedMinutes;
+
+  const regularMinutes = Math.max(0, elapsedMinutes - overtimeMinutes);
+  const remainingRegularMinutes = Math.max(0, dailyRegularCap - previousRegularMinutes);
+  return Math.min(regularMinutes, remainingRegularMinutes) + overtimeMinutes;
+}
+
+function calculateDailyRegularCap(
+  schedule: AttendanceSchedule | null | undefined,
+  clockInAt: string,
+  timeZone: string,
+) {
+  if (!schedule?.start_time || !schedule.end_time || schedule.is_off_day) return null;
+
+  const workDate = localDateTimeParts(clockInAt, timeZone);
+  const scheduledStartMs = localDateAndTimeToUtcMs(workDate, schedule.start_time, timeZone);
+  const scheduledEndMs = localDateAndTimeToUtcMs(workDate, schedule.end_time, timeZone);
+  const scheduledMinutes = Math.max(0, Math.round((scheduledEndMs - scheduledStartMs) / 60000));
+  const day = localDayOfWeek(clockInAt, timeZone);
+  return day >= 1 && day <= 5 ? Math.max(0, scheduledMinutes - BREAK_MINUTES) : scheduledMinutes;
 }
 
 function calculateEarlyLeaveMinutes(

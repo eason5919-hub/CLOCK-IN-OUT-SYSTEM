@@ -8,6 +8,7 @@ import {
   type GpsSample,
 } from "../../../../db/runtime";
 import {
+  calculateBreakReturnLateMinutes,
   calculateAttendanceTotals,
   isOpenAttendanceStillActive,
   localDayOfWeek,
@@ -38,6 +39,9 @@ type AttendanceRow = {
   work_date: string;
   clock_in_at: string | null;
   clock_out_at: string | null;
+  late_minutes: number;
+  overtime_minutes: number;
+  total_minutes: number;
 };
 
 type ScheduleRow = AttendanceSchedule;
@@ -126,7 +130,10 @@ export async function POST(request: Request) {
         return json(request, { error: "Clock out is required before the next clock in." }, 409);
       }
 
-      const lateMinutes = calculateAttendanceTotals(timestamp, timestamp, todaysSchedule, timeZone).lateMinutes;
+      const previousSession = await findLastCompletedSession(db, payload.employeeId, workDate);
+      const lateMinutes = previousSession?.clock_out_at
+        ? calculateBreakReturnLateMinutes(previousSession.clock_out_at, timestamp)
+        : calculateAttendanceTotals(timestamp, timestamp, todaysSchedule, timeZone).lateMinutes;
       const status = lateMinutes > 0 ? "late" : "present";
       const attendanceId = crypto.randomUUID();
 
@@ -170,9 +177,13 @@ export async function POST(request: Request) {
     }
 
     const schedule = await loadSchedule(db, warehouse.id, localDayOfWeek(existing.clock_in_at, timeZone));
-    const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone);
+    const previousRegularMinutes = await getPreviousRegularMinutes(db, payload.employeeId, existing.work_date, existing.id);
+    const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone, {
+      previousRegularMinutes,
+    });
+    const lateMinutes = Number(existing.late_minutes || totals.lateMinutes);
     const status =
-      totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+      lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
 
     await db
       .prepare(
@@ -185,7 +196,7 @@ export async function POST(request: Request) {
       .bind(
         timestamp,
         totals.totalMinutes,
-        totals.lateMinutes,
+        lateMinutes,
         totals.earlyLeaveMinutes,
         totals.overtimeMinutes,
         status,
@@ -290,6 +301,40 @@ async function findActiveOpenRecord(
 
   if (!existing || !isOpenAttendanceStillActive(existing.work_date, timestamp, timeZone)) return null;
   return existing;
+}
+
+async function findLastCompletedSession(db: D1Database, employeeId: string, workDate: string) {
+  return db
+    .prepare(
+      `SELECT id, work_date, clock_in_at, clock_out_at, late_minutes, overtime_minutes, total_minutes
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND clock_out_at IS NOT NULL
+       ORDER BY clock_out_at DESC
+       LIMIT 1`,
+    )
+    .bind(employeeId, workDate)
+    .first<AttendanceRow>();
+}
+
+async function getPreviousRegularMinutes(
+  db: D1Database,
+  employeeId: string,
+  workDate: string,
+  currentAttendanceId: string,
+) {
+  const rows = await db
+    .prepare(
+      `SELECT total_minutes, overtime_minutes
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND id <> ? AND clock_out_at IS NOT NULL`,
+    )
+    .bind(employeeId, workDate, currentAttendanceId)
+    .all<{ total_minutes: number; overtime_minutes: number }>();
+
+  return (rows.results ?? []).reduce(
+    (total, row) => total + Math.max(0, Number(row.total_minutes || 0) - Number(row.overtime_minutes || 0)),
+    0,
+  );
 }
 
 async function writeAudit(
