@@ -29,8 +29,8 @@ type ClockState = "idle" | "scanning" | "accepted" | "rejected";
 
 const warehouse = {
   name: "Main Warehouse",
-  latitude: 3.139,
-  longitude: 101.6869,
+  latitude: 2.9850965,
+  longitude: 101.7700882,
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
 };

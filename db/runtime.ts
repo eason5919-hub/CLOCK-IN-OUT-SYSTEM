@@ -33,6 +33,8 @@ export async function ensureDatabase(db: D1Database) {
     .first<{ count: number }>();
 
   if ((existing?.count ?? 0) > 0) {
+    await ensureWarehouseConfig(db);
+    await ensureAdminUsers(db);
     await ensureEmployeeUsers(db);
     return;
   }
@@ -52,60 +54,17 @@ export async function ensureDatabase(db: D1Database) {
       .prepare(
         "INSERT INTO warehouses (id, name, latitude, longitude, allowed_radius_meters, timezone) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .bind("wh-main", "Main Warehouse", 3.139, 101.6869, 100, "Asia/Kuala_Lumpur"),
-    db
-      .prepare(
-        "INSERT INTO employees (id, employee_code, full_name, department_id, position, phone, email, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .bind(
-        "emp-001",
-        "WH-001",
-        "Siti Rahman",
-        "dept-ops",
-        "Warehouse Supervisor",
-        "+60 12-400 1001",
-        "siti@example.com",
-        "active",
-      ),
-    db
-      .prepare(
-        "INSERT INTO employees (id, employee_code, full_name, department_id, position, phone, email, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      )
-      .bind(
-        "emp-002",
-        "WH-002",
-        "Daniel Tan",
-        "dept-pick",
-        "Picker",
-        "+60 12-400 1002",
-        "daniel@example.com",
-        "active",
-      ),
+      .bind("wh-main", "Main Warehouse", 2.9850965, 101.7700882, 100, "Asia/Kuala_Lumpur"),
     db
       .prepare(
         "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .bind("user-owner", "owner@example.com", passwordHash, "owner", null, 1),
-    db
-      .prepare(
-        "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .bind("user-hr", "hr@example.com", passwordHash, "hr", null, 1),
-    db
-      .prepare(
-        "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .bind("user-emp-001", "siti@example.com", passwordHash, "employee", "emp-001", 1),
-    db
-      .prepare(
-        "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .bind("user-emp-002", "daniel@example.com", passwordHash, "employee", "emp-002", 1),
+      .bind("user-hr-main", "d1_racing@yahoo.com", passwordHash, "hr", null, 1),
     db
       .prepare(
         "INSERT INTO qr_codes (id, warehouse_id, token_hash, version, is_active, generated_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .bind("qr-main-v1", "wh-main", qrHash, 1, 1, "user-owner"),
+      .bind("qr-main-v1", "wh-main", qrHash, 1, 1, "user-hr-main"),
     ...scheduleSeed.map((row) =>
       db
         .prepare(
@@ -119,17 +78,50 @@ export async function ensureDatabase(db: D1Database) {
           row.end,
           row.off ? 1 : 0,
           row.ot,
-          "user-owner",
+          "user-hr-main",
         ),
     ),
     db
       .prepare("INSERT INTO settings (key, value, updated_by_user_id) VALUES (?, ?, ?)")
-      .bind("gps_accuracy_target_meters", "30", "user-owner"),
+      .bind("gps_accuracy_target_meters", "30", "user-hr-main"),
     db
       .prepare("INSERT INTO settings (key, value, updated_by_user_id) VALUES (?, ?, ?)")
-      .bind("default_radius_meters", "100", "user-owner"),
+      .bind("default_radius_meters", "100", "user-hr-main"),
   ]);
+  await ensureWarehouseConfig(db);
+  await ensureAdminUsers(db);
   await ensureEmployeeUsers(db);
+}
+
+async function ensureWarehouseConfig(db: D1Database) {
+  await db
+    .prepare(
+      `UPDATE warehouses
+       SET latitude = ?, longitude = ?, allowed_radius_meters = ?, timezone = ?
+       WHERE id = ?`,
+    )
+    .bind(2.9850965, 101.7700882, 100, "Asia/Kuala_Lumpur", "wh-main")
+    .run();
+}
+
+async function ensureAdminUsers(db: D1Database) {
+  const existing = await db
+    .prepare("SELECT id FROM users WHERE email = ? AND role IN ('owner', 'hr')")
+    .bind("d1_racing@yahoo.com")
+    .first<{ id: string }>();
+
+  if (existing) {
+    await db
+      .prepare("UPDATE users SET role = 'hr', employee_id = NULL, is_active = 1 WHERE id = ?")
+      .bind(existing.id)
+      .run();
+    return;
+  }
+
+  await db
+    .prepare("INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, 'hr', NULL, 1)")
+    .bind(crypto.randomUUID(), "d1_racing@yahoo.com", "admin-password-managed-in-route")
+    .run();
 }
 
 async function ensureEmployeeUsers(db: D1Database) {

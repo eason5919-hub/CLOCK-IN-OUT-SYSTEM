@@ -1,8 +1,8 @@
 import { createSession, ensureDatabase, getD1, sessionCookie } from "../../../../db/runtime";
 
-const demoPasswords: Record<string, string> = {
-  "owner@example.com": "owner123",
-  "hr@example.com": "hr123",
+const adminAccount = {
+  email: "d1_racing@yahoo.com",
+  passwordHash: "fad4b78390b338486a88d8706127faa3fc30657b2889f960d194fe5afde98002",
 };
 
 export async function POST(request: Request) {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     .bind(email)
     .first<{ id: string; email: string; role: "owner" | "hr"; employee_id: string | null }>();
 
-  if (!user || demoPasswords[email] !== password) {
+  if (!user || email !== adminAccount.email || (await sha256Hex(password)) !== adminAccount.passwordHash) {
     return Response.json({ error: "Admin email or password is incorrect." }, { status: 401 });
   }
 
@@ -30,4 +30,10 @@ export async function POST(request: Request) {
     { user: { role: user.role, name: user.role === "owner" ? "Owner/Admin" : "HR/Admin Staff" } },
     { headers: { "set-cookie": sessionCookie(session.id, session.expiresAt) } },
   );
+}
+
+async function sha256Hex(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
