@@ -604,6 +604,13 @@ function calendar(records) {
 }
 
 function attendanceTable(records, employeeOnly) {
+  if (!records.length) {
+    return `<div class="empty-state">
+      <strong>No attendance records yet.</strong>
+      <small>${employeeOnly ? "Clock in/out first, then records will appear here." : "GitHub Pages stores attendance inside each phone/browser. Records from employee phones will not appear on this HR browser unless this app uses an online database."}</small>
+    </div>`;
+  }
+
   return `
     <div class="table-wrap">
       <table>

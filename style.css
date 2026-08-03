@@ -407,6 +407,15 @@ h3 {
   overflow-x: auto;
 }
 
+.empty-state {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+}
+
 table {
   width: 100%;
   min-width: 780px;
