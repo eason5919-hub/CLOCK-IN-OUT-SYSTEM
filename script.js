@@ -210,7 +210,7 @@ function employeeScreen() {
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
         <form class="form" id="correction-form">
-          <label>Date<select name="date" required>${leaveDateOptions()}</select></label>
+          <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
           <label>Missing<select name="missing"><option>Clock In</option><option selected>Clock Out</option><option>Both</option></select></label>
           <label>Requested time<input name="time" type="time" required /></label>
           <label>Reason<textarea name="reason" rows="3" required></textarea></label>
@@ -224,7 +224,7 @@ function employeeScreen() {
         </div>
         <form class="form" id="leave-form">
           <label>Type<select name="leaveType"><option value="leave">Annual Leave</option><option value="mc">MC</option></select></label>
-          <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
+          <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" min="${malaysiaDateKey(new Date())}" required /></label>
           <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select><small class="muted" data-leave-rule></small></label>
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
           <button>Submit Annual Leave/MC</button>
@@ -587,7 +587,7 @@ function bindEmployee() {
     }
   });
   const leaveForm = document.querySelector("#leave-form");
-  leaveForm?.querySelector('select[name="date"]')?.addEventListener("change", () => updateLeaveDurationRule(leaveForm));
+  leaveForm?.querySelector('input[name="date"]')?.addEventListener("change", () => handleLeaveDateChange(leaveForm));
   leaveForm?.querySelector('select[name="duration"]')?.addEventListener("change", () => updateLeaveDurationRule(leaveForm));
   if (leaveForm) updateLeaveDurationRule(leaveForm);
 }
@@ -834,7 +834,7 @@ function leaveRequestCard(request) {
 }
 
 function updateLeaveDurationRule(form) {
-  const dateInput = form.querySelector('select[name="date"]');
+  const dateInput = form.querySelector('input[name="date"]');
   const durationSelect = form.querySelector('select[name="duration"]');
   const rule = form.querySelector("[data-leave-rule]");
   if (!dateInput || !durationSelect || !rule) return;
@@ -850,7 +850,25 @@ function updateLeaveDurationRule(form) {
         : "";
 }
 
+function handleLeaveDateChange(form) {
+  const dateInput = form.querySelector('input[name="date"]');
+  if (!dateInput) return;
+
+  const today = malaysiaDateKey(new Date());
+  if (dateInput.value && dateInput.value < today) {
+    dateInput.value = today;
+    toast("Past dates cannot be selected for Annual Leave/MC.");
+  }
+  if (leaveDateDayOfWeek(dateInput.value) === 0) {
+    dateInput.value = nextAllowedLeaveDate(dateInput.value);
+    toast("Sunday cannot be selected for Annual Leave/MC.");
+  }
+  updateLeaveDurationRule(form);
+}
+
 function validateLeaveDateAndDuration(date, duration) {
+  if (!date) return "Select Annual Leave/MC date.";
+  if (date < malaysiaDateKey(new Date())) return "Past dates cannot be selected for Annual Leave/MC.";
   const day = leaveDateDayOfWeek(date);
   if (day === 0) return "Annual Leave/MC cannot be selected on Sunday.";
   if (day === 6 && duration !== "half_day") return "Saturday Annual Leave/MC can only be half day.";
@@ -863,31 +881,15 @@ function leaveDateDayOfWeek(value) {
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
-function leaveDateOptions() {
-  const today = new Date();
-  const options = [];
-  for (let offset = 0; options.length < 365 && offset < 430; offset += 1) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + offset);
-    const value = malaysiaDateKey(date);
-    if (leaveDateDayOfWeek(value) === 0) continue;
-    options.push(`<option value="${value}">${formatLeaveDateOption(date)}</option>`);
-  }
-  return options.join("");
-}
-
-function formatLeaveDateOption(date) {
-  const dateText = date.toLocaleDateString("en-MY", {
-    timeZone: "Asia/Kuala_Lumpur",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  const dayText = date.toLocaleDateString("en-MY", {
-    timeZone: "Asia/Kuala_Lumpur",
-    weekday: "short",
-  });
-  return `${dateText} (${dayText})`;
+function nextAllowedLeaveDate(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  do {
+    date.setUTCDate(date.getUTCDate() + 1);
+  } while (date.getUTCDay() === 0);
+  const next = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+  const today = malaysiaDateKey(new Date());
+  return next < today ? today : next;
 }
 
 function adminCorrectionCard(correction) {
