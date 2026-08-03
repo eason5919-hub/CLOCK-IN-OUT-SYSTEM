@@ -346,7 +346,7 @@ function EmployeeApp({
 }) {
   const records = useMemo(() => data?.attendance ?? [], [data?.attendance]);
   const corrections = useMemo(() => data?.corrections ?? [], [data?.corrections]);
-  const openRecord = records.find((record) => record.clock_in_at && !record.clock_out_at);
+  const openRecord = records.find((record) => record.clock_in_at && !record.clock_out_at && isOpenRecordStillActive(String(record.work_date ?? "")));
   const nextAction = openRecord ? "clock_out" : "clock_in";
   const nextLabel = openRecord ? "Clock out" : "Clock in";
   const stats = useMemo(
@@ -748,6 +748,39 @@ function formatOtMinutes(minutes: number) {
 
 function localDateTimeToIso(date: string, time: string) {
   return new Date(`${date}T${time}:00`).toISOString();
+}
+
+function isOpenRecordStillActive(workDate: string) {
+  const today = malaysiaDateKey(new Date());
+  if (workDate === today) return true;
+  if (workDate !== previousDateKey(today)) return false;
+  return malaysiaMinutesSinceMidnight(new Date()) < toMinutes("08:00");
+}
+
+function malaysiaDateKey(date: Date) {
+  return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+}
+
+function malaysiaMinutesSinceMidnight(date: Date) {
+  const time = date.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return toMinutes(time);
+}
+
+function previousDateKey(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - 1);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function toMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
 }
 
 function formatGps(record: Record<string, string | number | null>) {

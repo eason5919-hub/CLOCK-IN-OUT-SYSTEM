@@ -67,3 +67,12 @@ test("warehouse work date and weekday use Malaysia time", async () => {
   assert.equal(localWorkDate("2026-08-03T16:30:00.000Z"), "2026-08-04");
   assert.equal(localDayOfWeek("2026-08-03T16:30:00.000Z"), 2);
 });
+
+test("open attendance stays active only until next day 08:00 Malaysia time", async () => {
+  const { isOpenAttendanceStillActive } = await loadCalculations();
+
+  assert.equal(isOpenAttendanceStillActive("2026-08-01", "2026-08-01T23:30:00+08:00"), true);
+  assert.equal(isOpenAttendanceStillActive("2026-08-01", "2026-08-02T07:59:00+08:00"), true);
+  assert.equal(isOpenAttendanceStillActive("2026-08-01", "2026-08-02T08:00:00+08:00"), false);
+  assert.equal(isOpenAttendanceStillActive("2026-08-01", "2026-08-03T07:59:00+08:00"), false);
+});

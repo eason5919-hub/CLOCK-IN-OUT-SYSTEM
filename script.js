@@ -158,7 +158,7 @@ function employeeScreen() {
   const employee = employeeById(state.currentUser.employeeId);
   const records = state.attendance;
   const corrections = state.corrections;
-  const openRecord = records.find((row) => row.clockIn && !row.clockOut);
+  const openRecord = currentOpenRecord(records);
   const clockAction = openRecord ? "out" : "in";
   const clockLabel = openRecord ? "Clock out" : "Clock in";
   const clockHint = openRecord
@@ -960,6 +960,38 @@ function formatOtMinutes(minutes) {
 
 function localDateTimeToIso(date, time) {
   return new Date(`${date}T${time}:00`).toISOString();
+}
+
+function currentOpenRecord(records) {
+  return records.find((row) => row.clockIn && !row.clockOut && isOpenRecordStillActive(row.date));
+}
+
+function isOpenRecordStillActive(workDate) {
+  const today = malaysiaDateKey(new Date());
+  if (workDate === today) return true;
+  if (workDate !== previousDateKey(today)) return false;
+  return malaysiaMinutesSinceMidnight(new Date()) < toMinutes("08:00");
+}
+
+function malaysiaDateKey(date) {
+  return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+}
+
+function malaysiaMinutesSinceMidnight(date) {
+  const time = date.toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  return toMinutes(time);
+}
+
+function previousDateKey(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - 1);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function localDate(date) {

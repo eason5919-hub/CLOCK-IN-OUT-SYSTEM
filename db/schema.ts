@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const departments = sqliteTable("departments", {
   id: text("id").primaryKey(),
@@ -115,7 +115,7 @@ export const attendance = sqliteTable(
     updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [
-    uniqueIndex("idx_attendance_employee_date").on(table.employeeId, table.workDate),
+    index("idx_attendance_employee_date").on(table.employeeId, table.workDate),
     index("idx_attendance_work_date").on(table.workDate),
   ],
 );

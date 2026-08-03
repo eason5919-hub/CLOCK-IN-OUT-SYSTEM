@@ -8,6 +8,7 @@ export type AttendanceSchedule = {
 const DEFAULT_TIME_ZONE = "Asia/Kuala_Lumpur";
 const START_GRACE_MINUTES = 15;
 const EARLY_OT_BEFORE_START_MINUTES = 60;
+const OPEN_ATTENDANCE_CUTOFF_TIME = "08:00";
 
 export function calculateAttendanceTotals(
   clockInAt: string,
@@ -64,6 +65,18 @@ export function localMinutesSinceMidnight(value: string | Date, timeZone = DEFAU
   return parts.hour * 60 + parts.minute;
 }
 
+export function isOpenAttendanceStillActive(
+  workDate: string,
+  now: string | Date,
+  timeZone = DEFAULT_TIME_ZONE,
+) {
+  const today = localWorkDate(now, timeZone);
+  if (workDate === today) return true;
+  if (workDate !== previousDate(today)) return false;
+
+  return localMinutesSinceMidnight(now, timeZone) < timeToMinutes(OPEN_ATTENDANCE_CUTOFF_TIME);
+}
+
 function timeToMinutes(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
@@ -117,6 +130,13 @@ function minutesToTime(value: number) {
   const hours = Math.floor(value / 60);
   const minutes = value % 60;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function previousDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - 1);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function localDateAndTimeToUtcMs(

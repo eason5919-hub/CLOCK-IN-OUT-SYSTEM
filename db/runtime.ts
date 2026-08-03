@@ -29,6 +29,7 @@ export function getD1() {
 
 export async function ensureDatabase(db: D1Database) {
   await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
+  await ensureAttendanceIndexes(db);
 
   const existing = await db
     .prepare("SELECT COUNT(*) AS count FROM departments")
@@ -150,6 +151,20 @@ async function ensureEmployeeUsers(db: D1Database) {
   );
 
   if (statements.length) await db.batch(statements);
+}
+
+async function ensureAttendanceIndexes(db: D1Database) {
+  const index = await db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_attendance_employee_date'")
+    .first<{ sql: string | null }>();
+
+  if (index?.sql?.toUpperCase().includes("UNIQUE")) {
+    await db.prepare("DROP INDEX IF EXISTS idx_attendance_employee_date").run();
+  }
+
+  await db
+    .prepare("CREATE INDEX IF NOT EXISTS idx_attendance_employee_date ON attendance(employee_id, work_date)")
+    .run();
 }
 
 export async function createSession(
@@ -357,7 +372,7 @@ const schemaStatements = [
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_employee_date ON attendance(employee_id, work_date)`,
+  `CREATE INDEX IF NOT EXISTS idx_attendance_employee_date ON attendance(employee_id, work_date)`,
   `CREATE INDEX IF NOT EXISTS idx_attendance_work_date ON attendance(work_date)`,
   `CREATE TABLE IF NOT EXISTS attendance_corrections (
     id TEXT PRIMARY KEY,

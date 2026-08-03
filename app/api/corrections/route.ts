@@ -93,35 +93,48 @@ export async function PATCH(request: Request) {
     let newRecordJson: string | null = null;
     if (payload.status === "approved") {
       const attendanceId = correction.attendance_id ?? crypto.randomUUID();
-      await db
-        .prepare(
-          `INSERT INTO attendance
-           (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at, source, status)
-           VALUES (?, ?, 'wh-main', ?, ?, ?, 'admin_adjustment', 'pending_review')
-           ON CONFLICT(employee_id, work_date) DO UPDATE SET
-             clock_in_at = COALESCE(excluded.clock_in_at, attendance.clock_in_at),
-             clock_out_at = COALESCE(excluded.clock_out_at, attendance.clock_out_at),
-             source = 'admin_adjustment',
-             status = 'pending_review',
-             updated_at = CURRENT_TIMESTAMP`,
-        )
-        .bind(
-          attendanceId,
-          correction.employee_id,
-          correction.requested_date,
-          correction.requested_clock_in_at,
-          correction.requested_clock_out_at,
-        )
-        .run();
+      const existingRecord = correction.attendance_id
+        ? await db.prepare("SELECT id FROM attendance WHERE id = ?").bind(correction.attendance_id).first()
+        : null;
+
+      if (existingRecord) {
+        await db
+          .prepare(
+            `UPDATE attendance
+             SET clock_in_at = COALESCE(?, clock_in_at),
+                 clock_out_at = COALESCE(?, clock_out_at),
+                 source = 'admin_adjustment',
+                 status = 'pending_review',
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+          )
+          .bind(correction.requested_clock_in_at, correction.requested_clock_out_at, attendanceId)
+          .run();
+      } else {
+        await db
+          .prepare(
+            `INSERT INTO attendance
+             (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at, source, status)
+             VALUES (?, ?, 'wh-main', ?, ?, ?, 'admin_adjustment', 'pending_review')`,
+          )
+          .bind(
+            attendanceId,
+            correction.employee_id,
+            correction.requested_date,
+            correction.requested_clock_in_at,
+            correction.requested_clock_out_at,
+          )
+          .run();
+      }
 
       const updated = await db
         .prepare(
           `SELECT a.*, w.timezone
            FROM attendance a
            JOIN warehouses w ON w.id = a.warehouse_id
-           WHERE a.employee_id = ? AND a.work_date = ?`,
+           WHERE a.id = ?`,
         )
-        .bind(correction.employee_id, correction.requested_date)
+        .bind(attendanceId)
         .first<Record<string, string | number | null>>();
       if (updated?.clock_in_at && updated.clock_out_at) {
         const timeZone = String(updated.timezone || "Asia/Kuala_Lumpur");
@@ -152,8 +165,8 @@ export async function PATCH(request: Request) {
           .run();
       }
       const recalculated = await db
-        .prepare("SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?")
-        .bind(correction.employee_id, correction.requested_date)
+        .prepare("SELECT * FROM attendance WHERE id = ?")
+        .bind(attendanceId)
         .first<Record<string, unknown>>();
       newRecordJson = recalculated ? JSON.stringify(recalculated) : null;
     }

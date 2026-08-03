@@ -9,6 +9,7 @@ import {
 } from "../../../../db/runtime";
 import {
   calculateAttendanceTotals,
+  isOpenAttendanceStillActive,
   localDayOfWeek,
   localWorkDate,
   type AttendanceSchedule,
@@ -116,87 +117,50 @@ export async function POST(request: Request) {
     const timeZone = warehouse.timezone || "Asia/Kuala_Lumpur";
     const workDate = localWorkDate(timestamp, timeZone);
     const todaysSchedule = await loadSchedule(db, warehouse.id, localDayOfWeek(timestamp, timeZone));
-    const todaysRecord = await db
-      .prepare("SELECT id, clock_in_at, clock_out_at FROM attendance WHERE employee_id = ? AND work_date = ?")
-      .bind(payload.employeeId, workDate)
-      .first<AttendanceRow>();
+    const activeOpenRecord = await findActiveOpenRecord(db, payload.employeeId, timestamp, timeZone);
 
     const ip = request.headers.get("cf-connecting-ip") ?? "local";
 
     if (payload.action === "clock_in") {
-      if (todaysRecord?.clock_in_at) {
-        return json(request, { error: "Clock in already recorded for today." }, 409);
+      if (activeOpenRecord) {
+        return json(request, { error: "Clock out is required before the next clock in." }, 409);
       }
 
       const lateMinutes = calculateAttendanceTotals(timestamp, timestamp, todaysSchedule, timeZone).lateMinutes;
       const status = lateMinutes > 0 ? "late" : "present";
-      const attendanceId = todaysRecord?.id ?? crypto.randomUUID();
+      const attendanceId = crypto.randomUUID();
 
-      if (todaysRecord) {
-        await db
-          .prepare(
-            `UPDATE attendance
-             SET clock_in_at = ?, late_minutes = ?, status = ?, clock_in_latitude = ?,
-                 clock_in_longitude = ?, clock_in_accuracy = ?, clock_in_distance_meters = ?,
-                 device_id = ?, device_model = ?, ip_address = ?, updated_at = CURRENT_TIMESTAMP
-             WHERE id = ?`,
-          )
-          .bind(
-            timestamp,
-            lateMinutes,
-            status,
-            bestSample.latitude,
-            bestSample.longitude,
-            bestSample.accuracy,
-            distance,
-            device.id,
-            payload.deviceModel,
-            ip,
-            attendanceId,
-          )
-          .run();
-      } else {
-        await db
-          .prepare(
-            `INSERT INTO attendance
-             (id, employee_id, warehouse_id, work_date, clock_in_at, late_minutes, status,
-              clock_in_latitude, clock_in_longitude, clock_in_accuracy, clock_in_distance_meters,
-              device_id, device_model, ip_address)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          )
-          .bind(
-            attendanceId,
-            payload.employeeId,
-            warehouse.id,
-            workDate,
-            timestamp,
-            lateMinutes,
-            status,
-            bestSample.latitude,
-            bestSample.longitude,
-            bestSample.accuracy,
-            distance,
-            device.id,
-            payload.deviceModel,
-            ip,
-          )
-          .run();
-      }
+      await db
+        .prepare(
+          `INSERT INTO attendance
+           (id, employee_id, warehouse_id, work_date, clock_in_at, late_minutes, status,
+            clock_in_latitude, clock_in_longitude, clock_in_accuracy, clock_in_distance_meters,
+            device_id, device_model, ip_address)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          attendanceId,
+          payload.employeeId,
+          warehouse.id,
+          workDate,
+          timestamp,
+          lateMinutes,
+          status,
+          bestSample.latitude,
+          bestSample.longitude,
+          bestSample.accuracy,
+          distance,
+          device.id,
+          payload.deviceModel,
+          ip,
+        )
+        .run();
 
       await writeAudit(db, session.user_id, "clock_in", "attendance", attendanceId, null, { timestamp });
       return json(request, { ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
     }
 
-    const existing = await db
-      .prepare(
-        `SELECT id, work_date, clock_in_at, clock_out_at
-         FROM attendance
-         WHERE employee_id = ? AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
-         ORDER BY work_date DESC, updated_at DESC
-         LIMIT 1`,
-      )
-      .bind(payload.employeeId)
-      .first<AttendanceRow>();
+    const existing = activeOpenRecord;
 
     if (!existing?.clock_in_at) {
       return json(request, { error: "Clock in is required before clock out." }, 409);
@@ -305,6 +269,27 @@ async function loadSchedule(db: D1Database, warehouseId: string, dayOfWeek: numb
     )
     .bind(warehouseId, dayOfWeek)
     .first<ScheduleRow>();
+}
+
+async function findActiveOpenRecord(
+  db: D1Database,
+  employeeId: string,
+  timestamp: string,
+  timeZone: string,
+) {
+  const existing = await db
+    .prepare(
+      `SELECT id, work_date, clock_in_at, clock_out_at
+       FROM attendance
+       WHERE employee_id = ? AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
+       ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC
+       LIMIT 1`,
+    )
+    .bind(employeeId)
+    .first<AttendanceRow>();
+
+  if (!existing || !isOpenAttendanceStillActive(existing.work_date, timestamp, timeZone)) return null;
+  return existing;
 }
 
 async function writeAudit(

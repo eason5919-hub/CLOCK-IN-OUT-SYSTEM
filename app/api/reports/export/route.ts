@@ -15,7 +15,7 @@ export async function GET(request: Request) {
          FROM attendance a
          JOIN employees e ON e.id = a.employee_id
          WHERE a.work_date LIKE ?
-         ORDER BY a.work_date, e.employee_code`,
+         ORDER BY a.work_date, e.employee_code, a.clock_in_at`,
       )
       .bind(`${month}%`)
       .all<Record<string, unknown>>();

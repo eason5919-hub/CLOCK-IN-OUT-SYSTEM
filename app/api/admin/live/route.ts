@@ -55,7 +55,7 @@ export async function GET(request: Request) {
           `SELECT a.*, e.employee_code, e.full_name
            FROM attendance a
            JOIN employees e ON e.id = a.employee_id
-           ORDER BY a.work_date DESC, a.updated_at DESC, e.employee_code`,
+           ORDER BY a.work_date DESC, a.clock_in_at DESC, a.updated_at DESC, e.employee_code`,
         )
         .all(),
       db

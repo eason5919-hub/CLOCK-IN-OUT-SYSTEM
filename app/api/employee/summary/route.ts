@@ -42,7 +42,7 @@ export async function GET(request: Request) {
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters
        FROM attendance
        WHERE employee_id = ?
-       ORDER BY work_date DESC`,
+       ORDER BY work_date DESC, clock_in_at DESC, created_at DESC`,
     )
     .bind(session.employee_id)
     .all();
