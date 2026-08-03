@@ -100,6 +100,24 @@ function loginScreen() {
   `;
 }
 
+function loadingScreen() {
+  return `
+    <section class="auth">
+      <div class="auth-hero">
+        <div class="brand">
+          <div class="brand-mark">W</div>
+          <div><p class="eyebrow">Warehouse</p><h1>Attendance Management</h1></div>
+        </div>
+        <h2>Opening your attendance...</h2>
+        <div class="actions">
+          <span class="badge">Permanent login</span>
+          <span class="badge">Live HR record</span>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function shell(content, subtitle) {
   return `
     <section class="layout">
@@ -284,7 +302,7 @@ function bindLogin() {
 }
 
 async function loadEmployeeLive(force = false) {
-  if (!state.currentUser || !employeeToken() || (liveRefreshInFlight && !force)) return;
+  if (!employeeToken() || (liveRefreshInFlight && !force)) return;
   liveRefreshInFlight = true;
   try {
     const result = await liveApi(`/api/employee/summary?refresh=${Date.now()}`, { method: "GET" });
@@ -973,4 +991,16 @@ window.addEventListener("focus", () => {
   }
 });
 
-render();
+async function bootEmployeeApp() {
+  if (employeeToken()) {
+    document.querySelector("#app").innerHTML = loadingScreen();
+    await loadEmployeeLive(true);
+    if (state.currentUser) {
+      render();
+      return;
+    }
+  }
+  render();
+}
+
+bootEmployeeApp();
