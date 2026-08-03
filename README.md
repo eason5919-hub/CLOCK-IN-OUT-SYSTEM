@@ -2,6 +2,8 @@
 
 A cloud-ready attendance system for warehouse teams. Employees, HR, and owners sign in through the same app, and server-side sessions keep employees limited to their own attendance records.
 
+Live app: https://warehouse-attendance-system.d-one-3174.chatgpt.site
+
 ## Included
 
 - Employee mobile app for official-phone registration, QR/GPS clocking, history, OT, and correction requests.
