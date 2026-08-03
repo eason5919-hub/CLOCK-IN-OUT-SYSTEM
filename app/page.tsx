@@ -1,223 +1,31 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
-type Role = "owner" | "hr" | "employee";
-type AttendanceStatus = "Present" | "Late" | "Absent" | "OT" | "Pending";
-type ClockAction = "clock_in" | "clock_out";
+type Role = "employee" | "hr" | "owner";
 
-type Employee = {
-  id: string;
-  code: string;
+type User = {
+  role: Role;
+  employeeId?: string;
+  employeeCode?: string;
   name: string;
-  department: string;
-  position: string;
-  phone: string;
-  device: string;
-  deviceStatus: "Registered" | "Reset pending" | "Not registered";
+  position?: string;
 };
 
-type AttendanceRecord = {
-  id: string;
-  employeeId: string;
-  date: string;
-  clockIn: string | null;
-  clockOut: string | null;
-  workingMinutes: number;
-  lateMinutes: number;
-  earlyLeaveMinutes: number;
-  overtimeMinutes: number;
-  status: AttendanceStatus;
-  distanceMeters?: number;
-  gpsAccuracy?: number;
+type EmployeeSummary = {
+  employee: Record<string, string | number | null>;
+  attendance: Record<string, string | number | null>[];
+  corrections: Record<string, string | number | null>[];
 };
 
-type Correction = {
-  id: string;
-  employeeId: string;
-  date: string;
-  missing: "Clock In" | "Clock Out" | "Both";
-  requestedTime: string;
-  reason: string;
-  status: "Pending" | "Approved" | "Rejected";
+type AdminDashboard = {
+  employees: Record<string, string | number | null>[];
+  attendance: Record<string, string | number | null>[];
+  corrections: Record<string, string | number | null>[];
+  auditLogs: Record<string, string | number | null>[];
 };
 
-type AuditLog = {
-  id: string;
-  actor: string;
-  action: string;
-  record: string;
-  time: string;
-};
-
-const employeesSeed: Employee[] = [
-  {
-    id: "emp-001",
-    code: "WH-001",
-    name: "Siti Rahman",
-    department: "Operations",
-    position: "Warehouse Supervisor",
-    phone: "+60 12-400 1001",
-    device: "iPhone 15 - 9F2A",
-    deviceStatus: "Registered",
-  },
-  {
-    id: "emp-002",
-    code: "WH-002",
-    name: "Daniel Tan",
-    department: "Picking",
-    position: "Picker",
-    phone: "+60 12-400 1002",
-    device: "Galaxy A55 - 21C8",
-    deviceStatus: "Registered",
-  },
-  {
-    id: "emp-003",
-    code: "WH-003",
-    name: "Nur Aisyah",
-    department: "Packing",
-    position: "Packer",
-    phone: "+60 12-400 1003",
-    device: "Not registered",
-    deviceStatus: "Not registered",
-  },
-  {
-    id: "emp-004",
-    code: "WH-004",
-    name: "Marcus Lee",
-    department: "Loading Bay",
-    position: "Forklift Operator",
-    phone: "+60 12-400 1004",
-    device: "Oppo Reno - 66AB",
-    deviceStatus: "Reset pending",
-  },
-];
-
-const attendanceSeed: AttendanceRecord[] = [
-  {
-    id: "att-001",
-    employeeId: "emp-001",
-    date: "2026-08-01",
-    clockIn: "08:58",
-    clockOut: "18:35",
-    workingMinutes: 577,
-    lateMinutes: 0,
-    earlyLeaveMinutes: 0,
-    overtimeMinutes: 35,
-    status: "OT",
-    distanceMeters: 22,
-    gpsAccuracy: 12,
-  },
-  {
-    id: "att-002",
-    employeeId: "emp-001",
-    date: "2026-08-02",
-    clockIn: null,
-    clockOut: null,
-    workingMinutes: 0,
-    lateMinutes: 0,
-    earlyLeaveMinutes: 0,
-    overtimeMinutes: 0,
-    status: "Absent",
-  },
-  {
-    id: "att-003",
-    employeeId: "emp-001",
-    date: "2026-08-03",
-    clockIn: "09:12",
-    clockOut: null,
-    workingMinutes: 0,
-    lateMinutes: 12,
-    earlyLeaveMinutes: 0,
-    overtimeMinutes: 0,
-    status: "Late",
-    distanceMeters: 18,
-    gpsAccuracy: 9,
-  },
-  {
-    id: "att-004",
-    employeeId: "emp-002",
-    date: "2026-08-01",
-    clockIn: "08:51",
-    clockOut: "18:04",
-    workingMinutes: 553,
-    lateMinutes: 0,
-    earlyLeaveMinutes: 0,
-    overtimeMinutes: 0,
-    status: "Present",
-    distanceMeters: 31,
-    gpsAccuracy: 15,
-  },
-  {
-    id: "att-005",
-    employeeId: "emp-004",
-    date: "2026-08-03",
-    clockIn: "09:00",
-    clockOut: null,
-    workingMinutes: 0,
-    lateMinutes: 0,
-    earlyLeaveMinutes: 0,
-    overtimeMinutes: 0,
-    status: "Present",
-    distanceMeters: 28,
-    gpsAccuracy: 14,
-  },
-];
-
-const correctionSeed: Correction[] = [
-  {
-    id: "cor-001",
-    employeeId: "emp-002",
-    date: "2026-08-02",
-    missing: "Clock Out",
-    requestedTime: "18:08",
-    reason: "Battery died after loading bay shift.",
-    status: "Pending",
-  },
-  {
-    id: "cor-002",
-    employeeId: "emp-001",
-    date: "2026-07-31",
-    missing: "Clock In",
-    requestedTime: "08:56",
-    reason: "Phone camera failed to open.",
-    status: "Approved",
-  },
-];
-
-const auditSeed: AuditLog[] = [
-  {
-    id: "log-001",
-    actor: "Owner/Admin",
-    action: "Generated permanent QR code",
-    record: "Main Warehouse QR v1",
-    time: "2026-08-01 08:30",
-  },
-  {
-    id: "log-002",
-    actor: "HR/Admin Staff",
-    action: "Approved correction request",
-    record: "WH-001 on 2026-07-31",
-    time: "2026-08-01 10:42",
-  },
-  {
-    id: "log-003",
-    actor: "System",
-    action: "Rejected GPS outside allowed radius",
-    record: "WH-004 device 66AB",
-    time: "2026-08-03 08:55",
-  },
-];
-
-const schedule = [
-  ["Monday", "09:00", "18:00", "18:16"],
-  ["Tuesday", "09:00", "18:00", "18:16"],
-  ["Wednesday", "09:00", "18:00", "18:16"],
-  ["Thursday", "09:00", "18:00", "18:16"],
-  ["Friday", "09:00", "18:00", "18:16"],
-  ["Saturday", "09:00", "13:00", "13:16"],
-  ["Sunday", "OFF", "OFF", "All hours"],
-];
+type ClockState = "idle" | "scanning" | "accepted" | "rejected";
 
 const warehouse = {
   name: "Main Warehouse",
@@ -228,192 +36,170 @@ const warehouse = {
 };
 
 export default function Home() {
-  const [role, setRole] = useState<Role>("owner");
-  const [employees, setEmployees] = useState(employeesSeed);
-  const [attendance, setAttendance] = useState(attendanceSeed);
-  const [corrections, setCorrections] = useState(correctionSeed);
-  const [auditLogs, setAuditLogs] = useState(auditSeed);
-  const [activeEmployeeId, setActiveEmployeeId] = useState("emp-001");
-  const [clockState, setClockState] = useState<"idle" | "scanning" | "accepted" | "rejected">("idle");
+  const [user, setUser] = useState<User | null>(null);
+  const [employeeData, setEmployeeData] = useState<EmployeeSummary | null>(null);
+  const [adminData, setAdminData] = useState<AdminDashboard | null>(null);
+  const [message, setMessage] = useState("");
+  const [clockState, setClockState] = useState<ClockState>("idle");
   const [gpsMessage, setGpsMessage] = useState("Ready for QR and GPS verification.");
 
-  const activeEmployee = employees.find((employee) => employee.id === activeEmployeeId) ?? employees[0];
-  const employeeAttendance = attendance.filter((record) => record.employeeId === activeEmployee.id);
-  const stats = useMemo(() => buildStats(attendance, employees.length), [attendance, employees.length]);
-
-  function addAudit(actor: string, action: string, record: string) {
-    setAuditLogs((logs) => [
-      {
-        id: `log-${Date.now()}`,
-        actor,
-        action,
-        record,
-        time: new Date().toLocaleString("en-GB", { hour12: false }),
-      },
-      ...logs,
-    ]);
+  async function employeeRegister(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const result = await postJson<{ user: User }>("/api/auth/employee-register", {
+      employeeCode: form.get("employeeCode"),
+      phone: form.get("phone"),
+      deviceFingerprint: getBrowserDeviceFingerprint(),
+      deviceModel: browserDeviceLabel(),
+    });
+    if ("error" in result) return setMessage(result.error);
+    setUser(result.user);
+    setMessage("");
   }
 
-  async function runClock(action: ClockAction) {
+  async function employeeLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const result = await postJson<{ user: User }>("/api/auth/employee-login", {
+      employeeCode: form.get("employeeCode"),
+      deviceFingerprint: getBrowserDeviceFingerprint(),
+    });
+    if ("error" in result) return setMessage(result.error);
+    setUser(result.user);
+    setMessage("");
+  }
+
+  async function adminLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const result = await postJson<{ user: User }>("/api/auth/admin-login", {
+      email: form.get("email"),
+      password: form.get("password"),
+    });
+    if ("error" in result) return setMessage(result.error);
+    setUser(result.user);
+    setMessage("");
+  }
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setUser(null);
+    setEmployeeData(null);
+    setAdminData(null);
+    setMessage("");
+  }
+
+  useEffect(() => {
+    if (!user) return;
+    if (user.role === "employee") {
+      void loadEmployee();
+    } else {
+      void loadAdmin();
+    }
+  }, [user]);
+
+  async function loadEmployee() {
+    const result = await getJson<EmployeeSummary>("/api/employee/summary");
+    if ("error" in result) return setMessage(result.error);
+    setEmployeeData(result);
+  }
+
+  async function loadAdmin() {
+    const result = await getJson<AdminDashboard>("/api/admin/dashboard");
+    if ("error" in result) return setMessage(result.error);
+    setAdminData(result);
+  }
+
+  async function runClock(action: "clock_in" | "clock_out") {
+    if (!user?.employeeId) return;
+
     setClockState("scanning");
     setGpsMessage("Camera opened. Scanning permanent warehouse QR code.");
     await wait(550);
     setGpsMessage("QR accepted. Collecting 5 high accuracy GPS samples.");
     const samples = await collectGpsSamples();
-    const best = samples.sort((a, b) => a.accuracy - b.accuracy)[0];
-    const distance = Math.round(distanceMeters(best.latitude, best.longitude, warehouse.latitude, warehouse.longitude));
 
-    if (best.accuracy > 30 || distance > warehouse.radius) {
+    const result = await postJson<{
+      ok: boolean;
+      distance: number;
+      accuracy: number;
+      timestamp: string;
+    }>("/api/attendance/clock", {
+      employeeId: user.employeeId,
+      action,
+      qrToken: warehouse.qr,
+      deviceFingerprint: getBrowserDeviceFingerprint(),
+      deviceModel: browserDeviceLabel(),
+      samples,
+    });
+
+    if ("error" in result) {
       setClockState("rejected");
-      setGpsMessage("Unable to verify location. Please move closer to warehouse or enable GPS.");
-      addAudit("System", "Rejected GPS outside allowed radius", `${activeEmployee.code} at ${distance}m`);
+      setGpsMessage(result.error);
       return;
     }
 
-    const today = "2026-08-03";
-    const now = new Date();
-    const time = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+    setClockState("accepted");
+    setGpsMessage(
+      `Attendance accepted. GPS ${Math.round(result.accuracy)}m, distance ${Math.round(result.distance)}m.`,
+    );
+    await loadEmployee();
+  }
 
-    setAttendance((records) => {
-      const existing = records.find((record) => record.employeeId === activeEmployee.id && record.date === today);
-      if (action === "clock_in") {
-        if (existing) {
-          return records.map((record) =>
-            record.id === existing.id
-              ? {
-                  ...record,
-                  clockIn: record.clockIn ?? time,
-                  lateMinutes: Math.max(0, toMinutes(time) - toMinutes("09:00")),
-                  status: toMinutes(time) > toMinutes("09:00") ? "Late" : "Present",
-                  distanceMeters: distance,
-                  gpsAccuracy: best.accuracy,
-                }
-              : record,
-          );
-        }
+  async function submitCorrection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user?.employeeId) return;
 
-        return [
-          ...records,
-          {
-            id: `att-${Date.now()}`,
-            employeeId: activeEmployee.id,
-            date: today,
-            clockIn: time,
-            clockOut: null,
-            workingMinutes: 0,
-            lateMinutes: Math.max(0, toMinutes(time) - toMinutes("09:00")),
-            earlyLeaveMinutes: 0,
-            overtimeMinutes: 0,
-            status: toMinutes(time) > toMinutes("09:00") ? "Late" : "Present",
-            distanceMeters: distance,
-            gpsAccuracy: best.accuracy,
-          },
-        ];
-      }
-
-      return records.map((record) => {
-        if (record.employeeId !== activeEmployee.id || record.date !== today) return record;
-        const start = record.clockIn ?? "09:00";
-        const workingMinutes = Math.max(0, toMinutes(time) - toMinutes(start));
-        const overtimeMinutes = calculateDisplayOvertime(time, "18:00", "18:16");
-        return {
-          ...record,
-          clockOut: time,
-          workingMinutes,
-          earlyLeaveMinutes: Math.max(0, toMinutes("18:00") - toMinutes(time)),
-          overtimeMinutes,
-          status: overtimeMinutes > 0 ? "OT" : record.lateMinutes > 0 ? "Late" : "Present",
-          distanceMeters: distance,
-          gpsAccuracy: best.accuracy,
-        };
-      });
+    const form = new FormData(event.currentTarget);
+    const missing = String(form.get("missing"));
+    const requestedDate = String(form.get("date"));
+    const requestedTime = String(form.get("requestedTime"));
+    const result = await postJson<{ ok: true }>("/api/corrections", {
+      employeeId: user.employeeId,
+      requestedDate,
+      missingType: missing === "Clock In" ? "clock_in" : missing === "Clock Out" ? "clock_out" : "both",
+      requestedClockInAt: missing !== "Clock Out" ? `${requestedDate}T${requestedTime}:00.000Z` : null,
+      requestedClockOutAt: missing !== "Clock In" ? `${requestedDate}T${requestedTime}:00.000Z` : null,
+      reason: form.get("reason"),
     });
 
-    setClockState("accepted");
-    setGpsMessage(`Attendance accepted. Best GPS ${best.accuracy}m, distance ${distance}m.`);
-    addAudit("System", action === "clock_in" ? "Clock in recorded" : "Clock out recorded", activeEmployee.code);
+    if ("error" in result) return setMessage(result.error);
+    event.currentTarget.reset();
+    setMessage("Correction request submitted.");
+    await loadEmployee();
   }
 
-  function submitCorrection(event: FormEvent<HTMLFormElement>) {
+  async function addEmployee(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const missing = String(form.get("missing")) as Correction["missing"];
-    const date = String(form.get("date"));
-    const requestedTime = String(form.get("requestedTime"));
-    const reason = String(form.get("reason")).trim();
-    if (!date || !requestedTime || !reason) return;
+    const result = await postJson<{ ok: true }>("/api/admin/dashboard", {
+      employeeCode: form.get("employeeCode"),
+      fullName: form.get("fullName"),
+      phone: form.get("phone"),
+      position: form.get("position"),
+      email: form.get("email"),
+    });
 
-    setCorrections((items) => [
-      {
-        id: `cor-${Date.now()}`,
-        employeeId: activeEmployee.id,
-        date,
-        missing,
-        requestedTime,
-        reason,
-        status: "Pending",
-      },
-      ...items,
-    ]);
-    addAudit(activeEmployee.name, "Submitted correction request", `${date} ${missing}`);
+    if ("error" in result) return setMessage(result.error);
     event.currentTarget.reset();
+    setMessage("Employee added. They can now register their official phone.");
+    await loadAdmin();
   }
 
-  function reviewCorrection(id: string, status: "Approved" | "Rejected") {
-    setCorrections((items) => items.map((item) => (item.id === id ? { ...item, status } : item)));
-    const correction = corrections.find((item) => item.id === id);
-    if (correction && status === "Approved") {
-      setAttendance((records) => {
-        const existing = records.find(
-          (record) => record.employeeId === correction.employeeId && record.date === correction.date,
-        );
-        if (!existing) {
-          return [
-            ...records,
-            {
-              id: `att-${Date.now()}`,
-              employeeId: correction.employeeId,
-              date: correction.date,
-              clockIn: correction.missing !== "Clock Out" ? correction.requestedTime : null,
-              clockOut: correction.missing !== "Clock In" ? correction.requestedTime : null,
-              workingMinutes: 0,
-              lateMinutes: 0,
-              earlyLeaveMinutes: 0,
-              overtimeMinutes: 0,
-              status: "Pending",
-            },
-          ];
-        }
-
-        return records.map((record) =>
-          record.id === existing.id
-            ? {
-                ...record,
-                clockIn: correction.missing !== "Clock Out" ? correction.requestedTime : record.clockIn,
-                clockOut: correction.missing !== "Clock In" ? correction.requestedTime : record.clockOut,
-                status: "Pending",
-              }
-            : record,
-        );
-      });
-    }
-    addAudit("HR/Admin Staff", `${status} correction request`, correction?.date ?? id);
-  }
-
-  function resetDevice(employeeId: string) {
-    setEmployees((items) =>
-      items.map((employee) =>
-        employee.id === employeeId
-          ? { ...employee, device: "Not registered", deviceStatus: "Not registered" }
-          : employee,
-      ),
+  if (!user) {
+    return (
+      <LoginScreen
+        message={message}
+        onEmployeeRegister={employeeRegister}
+        onEmployeeLogin={employeeLogin}
+        onAdminLogin={adminLogin}
+      />
     );
-    addAudit("HR/Admin Staff", "Reset employee device registration", employeeId);
   }
 
   return (
     <main className="app-shell">
-      <aside className="sidebar" aria-label="Application navigation">
+      <aside className="sidebar" aria-label="Navigation">
         <div className="brand-block">
           <div className="brand-mark" aria-hidden="true">
             W
@@ -424,437 +210,422 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="role-switch" aria-label="Switch role">
-          {(["owner", "hr", "employee"] as Role[]).map((item) => (
-            <button
-              key={item}
-              className={role === item ? "active" : ""}
-              onClick={() => setRole(item)}
-              type="button"
-            >
-              {roleLabel(item)}
-            </button>
-          ))}
+        <div className="account-card">
+          <p className="eyebrow">Signed in</p>
+          <strong>{user.name}</strong>
+          <small>{user.role === "employee" ? user.employeeCode : roleLabel(user.role)}</small>
+          <button type="button" className="secondary" onClick={logout}>
+            Sign Out
+          </button>
         </div>
 
         <nav className="nav-list">
-          <a href="#overview">Overview</a>
-          <a href="#attendance">Attendance</a>
-          <a href="#corrections">Corrections</a>
-          <a href="#reports">Reports</a>
-          <a href="#security">Security</a>
+          {user.role === "employee" ? (
+            <>
+              <a href="#clock">Clock In/Out</a>
+              <a href="#month">Monthly View</a>
+              <a href="#history">History</a>
+              <a href="#corrections">Correction Request</a>
+            </>
+          ) : (
+            <>
+              <a href="#employees">Employees</a>
+              <a href="#attendance">Attendance</a>
+              <a href="#corrections">Approvals</a>
+              <a href="#reports">Reports</a>
+            </>
+          )}
         </nav>
-
-        <div className="warehouse-card">
-          <p className="eyebrow">Warehouse QR</p>
-          <div className="qr-mini" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-          <strong>{warehouse.name}</strong>
-          <small>Allowed radius {warehouse.radius}m</small>
-        </div>
       </aside>
 
       <section className="workspace">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Cloud attendance console</p>
-            <h2>{roleLabel(role)}</h2>
-          </div>
-          <div className="topbar-actions">
-            <span className="health-dot">Live</span>
-            <a className="export-link" href="/api/reports/export?format=excel&month=2026-08">
-              Excel
-            </a>
-            <a className="export-link" href="/api/reports/export?format=pdf&month=2026-08">
-              PDF
-            </a>
-          </div>
-        </header>
-
-        <section className="metric-grid" id="overview" aria-label="Attendance overview">
-          <Metric label="Present today" value={stats.presentToday} tone="green" />
-          <Metric label="Late records" value={stats.lateCount} tone="amber" />
-          <Metric label="OT minutes" value={stats.otMinutes} tone="blue" />
-          <Metric label="Open corrections" value={stats.pendingCorrections + corrections.filter((c) => c.status === "Pending").length} tone="red" />
-        </section>
-
-        {role === "employee" ? (
-          <EmployeeView
-            employee={activeEmployee}
-            attendance={employeeAttendance}
-            corrections={corrections.filter((item) => item.employeeId === activeEmployee.id)}
+        {message ? <p className="inline-message">{message}</p> : null}
+        {user.role === "employee" ? (
+          <EmployeeApp
+            data={employeeData}
             clockState={clockState}
             gpsMessage={gpsMessage}
             onClock={runClock}
-            onSubmitCorrection={submitCorrection}
-            onSelectEmployee={setActiveEmployeeId}
-            employees={employees}
+            onCorrection={submitCorrection}
           />
         ) : (
-          <AdminView
-            role={role}
-            employees={employees}
-            attendance={attendance}
-            corrections={corrections}
-            auditLogs={auditLogs}
-            onReviewCorrection={reviewCorrection}
-            onResetDevice={resetDevice}
-          />
+          <AdminApp data={adminData} onAddEmployee={addEmployee} />
         )}
       </section>
     </main>
   );
 }
 
-function EmployeeView({
-  employee,
-  employees,
-  attendance,
-  corrections,
-  clockState,
-  gpsMessage,
-  onClock,
-  onSubmitCorrection,
-  onSelectEmployee,
+function LoginScreen({
+  message,
+  onEmployeeRegister,
+  onEmployeeLogin,
+  onAdminLogin,
 }: {
-  employee: Employee;
-  employees: Employee[];
-  attendance: AttendanceRecord[];
-  corrections: Correction[];
-  clockState: "idle" | "scanning" | "accepted" | "rejected";
-  gpsMessage: string;
-  onClock: (action: ClockAction) => void;
-  onSubmitCorrection: (event: FormEvent<HTMLFormElement>) => void;
-  onSelectEmployee: (id: string) => void;
+  message: string;
+  onEmployeeRegister: (event: FormEvent<HTMLFormElement>) => void;
+  onEmployeeLogin: (event: FormEvent<HTMLFormElement>) => void;
+  onAdminLogin: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const monthly = buildMonthly(attendance);
-
   return (
-    <div className="content-grid employee-grid">
-      <section className="panel clock-panel" id="attendance">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Employee phone</p>
-            <h3>{employee.name}</h3>
+    <main className="auth-shell">
+      <section className="auth-hero">
+        <div className="brand-block">
+          <div className="brand-mark" aria-hidden="true">
+            W
           </div>
-          <select value={employee.id} onChange={(event) => onSelectEmployee(event.target.value)} aria-label="Employee account">
-            {employees.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.code} - {item.name}
-              </option>
-            ))}
-          </select>
+          <div>
+            <p className="eyebrow">Warehouse</p>
+            <h1>Attendance Management</h1>
+          </div>
         </div>
-
-        <div className={`scanner ${clockState}`}>
-          <div className="camera-frame" aria-hidden="true">
-            <div className="qr-large">
-              <i />
-              <i />
-              <i />
-              <i />
-              <i />
-              <i />
-            </div>
-          </div>
-          <p>{gpsMessage}</p>
-        </div>
-
-        <div className="clock-actions">
-          <button type="button" onClick={() => onClock("clock_in")}>
-            Clock In
-          </button>
-          <button type="button" className="secondary" onClick={() => onClock("clock_out")}>
-            Clock Out
-          </button>
-        </div>
-
-        <dl className="device-details">
-          <div>
-            <dt>Official device</dt>
-            <dd>{employee.device}</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd>{employee.deviceStatus}</dd>
-          </div>
-          <div>
-            <dt>Permissions</dt>
-            <dd>View only attendance, OT, late records and history</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section className="panel">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Current month</p>
-            <h3>August 2026</h3>
-          </div>
-          <strong>{formatMinutes(monthly.otMinutes)} OT</strong>
-        </div>
-        <div className="calendar">
-          {Array.from({ length: 31 }, (_, index) => {
-            const day = index + 1;
-            const date = `2026-08-${String(day).padStart(2, "0")}`;
-            const record = attendance.find((item) => item.date === date);
-            return (
-              <div key={date} className={`day ${record?.status.toLowerCase() ?? ""}`}>
-                <span>{day}</span>
-                <small>{record?.status ?? "-"}</small>
-              </div>
-            );
-          })}
+        <h2>Secure attendance for employees, HR, and owners</h2>
+        <div className="auth-facts">
+          <span>Official phone lock</span>
+          <span>Permanent QR</span>
+          <span>GPS radius check</span>
         </div>
       </section>
 
-      <section className="panel wide">
-        <div className="panel-heading">
+      <section className="auth-grid">
+        <form className="auth-panel" onSubmit={onEmployeeRegister}>
           <div>
-            <p className="eyebrow">Clock history</p>
-            <h3>My attendance</h3>
+            <p className="eyebrow">Employee first time</p>
+            <h3>Register Official Phone</h3>
           </div>
-        </div>
-        <AttendanceTable records={attendance} employees={[employee]} employeeOnly />
-      </section>
-
-      <section className="panel" id="corrections">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Forgotten clock</p>
-            <h3>Correction request</h3>
-          </div>
-        </div>
-        <form className="correction-form" onSubmit={onSubmitCorrection}>
           <label>
-            Date
-            <input name="date" type="date" defaultValue="2026-08-03" required />
+            Employee code
+            <input name="employeeCode" placeholder="WH-001" required />
           </label>
           <label>
-            Missing
-            <select name="missing" defaultValue="Clock Out">
-              <option>Clock In</option>
-              <option>Clock Out</option>
-              <option>Both</option>
-            </select>
+            Phone number
+            <input name="phone" placeholder="+60 12-400 1001" required />
           </label>
-          <label>
-            Requested time
-            <input name="requestedTime" type="time" required />
-          </label>
-          <label>
-            Reason
-            <textarea name="reason" rows={3} required />
-          </label>
-          <button type="submit">Submit Request</button>
+          <button type="submit">Register Phone</button>
         </form>
-        <div className="mini-list">
-          {corrections.map((item) => (
-            <div key={item.id}>
-              <strong>{item.date}</strong>
-              <span>{item.missing}</span>
-              <Badge value={item.status} />
-            </div>
-          ))}
-        </div>
+
+        <form className="auth-panel" onSubmit={onEmployeeLogin}>
+          <div>
+            <p className="eyebrow">Employee returning</p>
+            <h3>Employee Login</h3>
+          </div>
+          <label>
+            Employee code
+            <input name="employeeCode" placeholder="WH-001" required />
+          </label>
+          <button type="submit">Open My Attendance</button>
+        </form>
+
+        <form className="auth-panel" onSubmit={onAdminLogin}>
+          <div>
+            <p className="eyebrow">HR and owner</p>
+            <h3>Admin Login</h3>
+          </div>
+          <label>
+            Email
+            <input name="email" type="email" required />
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" required />
+          </label>
+          <button type="submit">Open Admin</button>
+        </form>
       </section>
-    </div>
+
+      {message ? <p className="auth-message">{message}</p> : null}
+    </main>
   );
 }
 
-function AdminView({
-  role,
-  employees,
-  attendance,
-  corrections,
-  auditLogs,
-  onReviewCorrection,
-  onResetDevice,
+function EmployeeApp({
+  data,
+  clockState,
+  gpsMessage,
+  onClock,
+  onCorrection,
 }: {
-  role: Role;
-  employees: Employee[];
-  attendance: AttendanceRecord[];
-  corrections: Correction[];
-  auditLogs: AuditLog[];
-  onReviewCorrection: (id: string, status: "Approved" | "Rejected") => void;
-  onResetDevice: (employeeId: string) => void;
+  data: EmployeeSummary | null;
+  clockState: ClockState;
+  gpsMessage: string;
+  onClock: (action: "clock_in" | "clock_out") => void;
+  onCorrection: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const records = useMemo(() => data?.attendance ?? [], [data?.attendance]);
+  const corrections = useMemo(() => data?.corrections ?? [], [data?.corrections]);
+  const stats = useMemo(
+    () => ({
+      presentDays: records.filter((record) => record.status !== "absent").length,
+      lateDays: records.filter((record) => Number(record.late_minutes ?? 0) > 0).length,
+      otMinutes: records.reduce((total, record) => total + Number(record.overtime_minutes ?? 0), 0),
+      correctionCount: corrections.length,
+    }),
+    [records, corrections],
+  );
+
   return (
-    <div className="content-grid">
-      <section className="panel wide">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Employee management</p>
-            <h3>People and devices</h3>
-          </div>
-          <button type="button">Add Employee</button>
+    <>
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">Employee attendance app</p>
+          <h2>My Attendance</h2>
         </div>
-        <div className="employee-table">
-          {employees.map((employee) => (
-            <div key={employee.id} className="employee-row">
-              <div>
-                <strong>{employee.name}</strong>
-                <span>
-                  {employee.code} - {employee.department} - {employee.position}
-                </span>
-              </div>
-              <Badge value={employee.deviceStatus} />
-              <span>{employee.device}</span>
-              <button type="button" className="secondary" onClick={() => onResetDevice(employee.id)}>
-                Reset Device
-              </button>
+        <span className="health-dot">Employee Only</span>
+      </header>
+
+      <section className="metric-grid" aria-label="My attendance overview">
+        <Metric label="Present days" value={stats.presentDays} tone="green" />
+        <Metric label="Late records" value={stats.lateDays} tone="amber" />
+        <Metric label="OT minutes" value={stats.otMinutes} tone="blue" />
+        <Metric label="Corrections" value={stats.correctionCount} tone="red" />
+      </section>
+
+      <div className="content-grid employee-grid">
+        <section className="panel clock-panel" id="clock">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Clock in/out</p>
+              <h3>{String(data?.employee?.full_name ?? "Employee")}</h3>
             </div>
-          ))}
+          </div>
+
+          <div className={`scanner ${clockState}`}>
+            <div className="camera-frame" aria-hidden="true">
+              <div className="qr-large">
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+              </div>
+            </div>
+            <p>{gpsMessage}</p>
+          </div>
+
+          <div className="clock-actions">
+            <button type="button" onClick={() => onClock("clock_in")}>
+              Clock In
+            </button>
+            <button type="button" className="secondary" onClick={() => onClock("clock_out")}>
+              Clock Out
+            </button>
+          </div>
+        </section>
+
+        <section className="panel" id="month">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Current month</p>
+              <h3>Attendance Calendar</h3>
+            </div>
+          </div>
+          <div className="calendar">
+            {Array.from({ length: 31 }, (_, index) => {
+              const day = index + 1;
+              const date = `2026-08-${String(day).padStart(2, "0")}`;
+              const record = records.find((item) => item.work_date === date);
+              return (
+                <div key={date} className={`day ${String(record?.status ?? "").replace("_", "-")}`}>
+                  <span>{day}</span>
+                  <small>{record ? statusLabel(record.status) : "-"}</small>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="panel wide" id="history">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Clock history</p>
+              <h3>My attendance</h3>
+            </div>
+          </div>
+          <AttendanceTable records={records} employeeOnly />
+        </section>
+
+        <section className="panel" id="corrections">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Forgotten clock</p>
+              <h3>Correction request</h3>
+            </div>
+          </div>
+          <CorrectionForm onSubmit={onCorrection} />
+          <div className="mini-list">
+            {corrections.map((item) => (
+              <div key={String(item.id)}>
+                <strong>{String(item.requested_date)}</strong>
+                <span>{String(item.reason)}</span>
+                <Badge value={statusLabel(item.status)} />
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function AdminApp({
+  data,
+  onAddEmployee,
+}: {
+  data: AdminDashboard | null;
+  onAddEmployee: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const attendance = data?.attendance ?? [];
+  const employees = data?.employees ?? [];
+  const corrections = data?.corrections ?? [];
+
+  return (
+    <>
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">Protected admin dashboard</p>
+          <h2>HR / Owner Console</h2>
         </div>
+        <div className="topbar-actions">
+          <a className="export-link" href="/api/reports/export?format=excel&month=2026-08">
+            Excel
+          </a>
+          <a className="export-link" href="/api/reports/export?format=pdf&month=2026-08">
+            PDF
+          </a>
+        </div>
+      </header>
+
+      <section className="metric-grid" aria-label="Admin attendance overview">
+        <Metric label="Employees" value={employees.length} tone="green" />
+        <Metric label="Late records" value={attendance.filter((item) => Number(item.late_minutes ?? 0) > 0).length} tone="amber" />
+        <Metric label="OT minutes" value={attendance.reduce((total, item) => total + Number(item.overtime_minutes ?? 0), 0)} tone="blue" />
+        <Metric label="Pending requests" value={corrections.filter((item) => item.status === "pending").length} tone="red" />
       </section>
 
-      <section className="panel wide" id="attendance">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Search and filter</p>
-            <h3>All attendance</h3>
+      <div className="content-grid">
+        <section className="panel" id="employees">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Employee management</p>
+              <h3>Add employee</h3>
+            </div>
           </div>
-          <div className="filter-row">
-            <input aria-label="Search employee" placeholder="Search employee" />
-            <input aria-label="Month" type="month" defaultValue="2026-08" />
-          </div>
-        </div>
-        <AttendanceTable records={attendance} employees={employees} />
-      </section>
+          <form className="correction-form" onSubmit={onAddEmployee}>
+            <label>
+              Employee code
+              <input name="employeeCode" placeholder="WH-005" required />
+            </label>
+            <label>
+              Full name
+              <input name="fullName" required />
+            </label>
+            <label>
+              Phone
+              <input name="phone" required />
+            </label>
+            <label>
+              Position
+              <input name="position" placeholder="Warehouse Associate" />
+            </label>
+            <label>
+              Email
+              <input name="email" type="email" />
+            </label>
+            <button type="submit">Add Employee</button>
+          </form>
+        </section>
 
-      <section className="panel" id="corrections">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Approval queue</p>
-            <h3>Correction requests</h3>
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Devices</p>
+              <h3>Registered phones</h3>
+            </div>
           </div>
-        </div>
-        <div className="request-list">
-          {corrections.map((request) => {
-            const employee = employees.find((item) => item.id === request.employeeId);
-            return (
-              <article key={request.id}>
+          <div className="mini-list">
+            {employees.map((employee) => (
+              <div key={String(employee.id)}>
+                <strong>
+                  {String(employee.employee_code)} - {String(employee.full_name)}
+                </strong>
+                <span>{String(employee.device_model ?? "Not registered")}</span>
+                <Badge value={String(employee.device_status ?? "not_registered").replace("_", " ")} />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="panel wide" id="attendance">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Attendance</p>
+              <h3>All employees</h3>
+            </div>
+          </div>
+          <AttendanceTable records={attendance} />
+        </section>
+
+        <section className="panel wide" id="corrections">
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">Corrections</p>
+              <h3>Approval queue</h3>
+            </div>
+          </div>
+          <div className="request-list">
+            {corrections.map((request) => (
+              <article key={String(request.id)}>
                 <div>
-                  <strong>{employee?.name}</strong>
-                  <span>
-                    {request.date} - {request.missing} - {request.requestedTime}
-                  </span>
-                  <p>{request.reason}</p>
+                  <strong>
+                    {String(request.employee_code)} - {String(request.full_name)}
+                  </strong>
+                  <span>{String(request.requested_date)}</span>
+                  <p>{String(request.reason)}</p>
                 </div>
-                <Badge value={request.status} />
-                {request.status === "Pending" ? (
-                  <div className="split-actions">
-                    <button type="button" onClick={() => onReviewCorrection(request.id, "Approved")}>
-                      Approve
-                    </button>
-                    <button type="button" className="danger" onClick={() => onReviewCorrection(request.id, "Rejected")}>
-                      Reject
-                    </button>
-                  </div>
-                ) : null}
+                <Badge value={statusLabel(request.status)} />
               </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="panel" id="reports">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Reports</p>
-            <h3>Monthly outputs</h3>
+            ))}
           </div>
-        </div>
-        <div className="report-grid">
-          <ReportItem title="Monthly attendance" value="31 days" />
-          <ReportItem title="OT report" value={`${sum(attendance, "overtimeMinutes")} min`} />
-          <ReportItem title="Late report" value={`${attendance.filter((item) => item.lateMinutes > 0).length} records`} />
-          <ReportItem title="Absent report" value={`${attendance.filter((item) => item.status === "Absent").length} days`} />
-        </div>
-      </section>
+        </section>
+      </div>
+    </>
+  );
+}
 
-      {role === "owner" ? (
-        <>
-          <section className="panel" id="security">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Warehouse security</p>
-                <h3>QR and GPS settings</h3>
-              </div>
-              <button type="button" className="secondary">
-                Regenerate QR
-              </button>
-            </div>
-            <dl className="settings-list">
-              <div>
-                <dt>Permanent QR token</dt>
-                <dd>{warehouse.qr}</dd>
-              </div>
-              <div>
-                <dt>GPS radius</dt>
-                <dd>{warehouse.radius} meters</dd>
-              </div>
-              <div>
-                <dt>Accuracy target</dt>
-                <dd>Under 30 meters, minimum 5 samples</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Editable schedule</p>
-                <h3>Working hours</h3>
-              </div>
-            </div>
-            <div className="schedule-list">
-              {schedule.map(([day, start, end, ot]) => (
-                <div key={day}>
-                  <strong>{day}</strong>
-                  <span>{start === "OFF" ? "OFF" : `${start} - ${end}`}</span>
-                  <small>{ot === "All hours" ? "OT: All hours" : `OT: ${ot}, counted from ${end}`}</small>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel wide">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Audit logs</p>
-                <h3>Protected changes</h3>
-              </div>
-            </div>
-            <div className="audit-list">
-              {auditLogs.map((log) => (
-                <div key={log.id}>
-                  <span>{log.time}</span>
-                  <strong>{log.action}</strong>
-                  <small>
-                    {log.actor} - {log.record}
-                  </small>
-                </div>
-              ))}
-            </div>
-          </section>
-        </>
-      ) : null}
-    </div>
+function CorrectionForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <form className="correction-form" onSubmit={onSubmit}>
+      <label>
+        Date
+        <input name="date" type="date" defaultValue="2026-08-03" required />
+      </label>
+      <label>
+        Missing
+        <select name="missing" defaultValue="Clock Out">
+          <option>Clock In</option>
+          <option>Clock Out</option>
+          <option>Both</option>
+        </select>
+      </label>
+      <label>
+        Requested time
+        <input name="requestedTime" type="time" required />
+      </label>
+      <label>
+        Reason
+        <textarea name="reason" rows={3} required />
+      </label>
+      <button type="submit">Submit Request</button>
+    </form>
   );
 }
 
 function AttendanceTable({
   records,
-  employees,
   employeeOnly = false,
 }: {
-  records: AttendanceRecord[];
-  employees: Employee[];
+  records: Record<string, string | number | null>[];
   employeeOnly?: boolean;
 }) {
   return (
@@ -873,25 +644,20 @@ function AttendanceTable({
           </tr>
         </thead>
         <tbody>
-          {records.map((record) => {
-            const employee = employees.find((item) => item.id === record.employeeId);
-            return (
-              <tr key={record.id}>
-                {!employeeOnly ? <td>{employee?.name ?? record.employeeId}</td> : null}
-                <td>{record.date}</td>
-                <td>{record.clockIn ?? "-"}</td>
-                <td>{record.clockOut ?? "-"}</td>
-                <td>{formatMinutes(record.workingMinutes)}</td>
-                <td>{formatMinutes(record.overtimeMinutes)}</td>
-                <td>
-                  <Badge value={record.status} />
-                </td>
-                <td>
-                  {record.gpsAccuracy ? `${record.gpsAccuracy}m / ${record.distanceMeters}m` : "-"}
-                </td>
-              </tr>
-            );
-          })}
+          {records.map((record) => (
+            <tr key={String(record.id)}>
+              {!employeeOnly ? <td>{String(record.full_name ?? record.employee_code ?? "-")}</td> : null}
+              <td>{String(record.work_date ?? "-")}</td>
+              <td>{formatTime(record.clock_in_at)}</td>
+              <td>{formatTime(record.clock_out_at)}</td>
+              <td>{formatMinutes(Number(record.total_minutes ?? 0))}</td>
+              <td>{formatMinutes(Number(record.overtime_minutes ?? 0))}</td>
+              <td>
+                <Badge value={statusLabel(record.status)} />
+              </td>
+              <td>{formatGps(record)}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -907,66 +673,29 @@ function Metric({ label, value, tone }: { label: string; value: number | string;
   );
 }
 
-function ReportItem({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="report-item">
-      <span>{title}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function Badge({ value }: { value: string }) {
   return <span className={`badge ${value.toLowerCase().replaceAll(" ", "-")}`}>{value}</span>;
 }
 
-function roleLabel(role: Role) {
-  return role === "owner" ? "Owner/Admin" : role === "hr" ? "HR/Admin Staff" : "Employee";
+async function postJson<T>(url: string, body: Record<string, unknown>): Promise<T | { error: string }> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await response.json()) as T | { error: string };
+  return data;
 }
 
-function buildStats(records: AttendanceRecord[], employeeCount: number) {
-  const today = records.filter((record) => record.date === "2026-08-03");
-  return {
-    presentToday: today.filter((record) => record.status !== "Absent").length,
-    lateCount: records.filter((record) => record.lateMinutes > 0).length,
-    otMinutes: sum(records, "overtimeMinutes"),
-    pendingCorrections: Math.max(0, employeeCount - today.length),
-  };
-}
-
-function buildMonthly(records: AttendanceRecord[]) {
-  return {
-    otMinutes: sum(records, "overtimeMinutes"),
-  };
-}
-
-function sum(records: AttendanceRecord[], key: "overtimeMinutes") {
-  return records.reduce((total, record) => total + record[key], 0);
-}
-
-function formatMinutes(minutes: number) {
-  if (!minutes) return "0m";
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return hours ? `${hours}h ${remainder}m` : `${remainder}m`;
-}
-
-function toMinutes(value: string) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function calculateDisplayOvertime(clockOut: string, scheduledEnd: string, overtimeThreshold: string) {
-  return toMinutes(clockOut) >= toMinutes(overtimeThreshold)
-    ? Math.max(0, toMinutes(clockOut) - toMinutes(scheduledEnd))
-    : 0;
+async function getJson<T>(url: string): Promise<T | { error: string }> {
+  const response = await fetch(url);
+  return (await response.json()) as T | { error: string };
 }
 
 async function collectGpsSamples() {
   const samples = [];
   for (let index = 0; index < 5; index += 1) {
-    const sample = await getGpsSample(index);
-    samples.push(sample);
+    samples.push(await getGpsSample(index));
     await wait(180);
   }
   return samples;
@@ -974,11 +703,7 @@ async function collectGpsSamples() {
 
 function getGpsSample(index: number): Promise<{ latitude: number; longitude: number; accuracy: number }> {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve(fallbackSample(index));
-      return;
-    }
-
+    if (!navigator.geolocation) return resolve(fallbackSample(index));
     navigator.geolocation.getCurrentPosition(
       (position) =>
         resolve({
@@ -1000,20 +725,52 @@ function fallbackSample(index: number) {
   };
 }
 
-function distanceMeters(fromLat: number, fromLng: number, toLat: number, toLng: number) {
-  const radius = 6371000;
-  const dLat = radians(toLat - fromLat);
-  const dLng = radians(toLng - fromLng);
-  const lat1 = radians(fromLat);
-  const lat2 = radians(toLat);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+function formatMinutes(minutes: number) {
+  if (!minutes) return "0m";
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return hours ? `${hours}h ${remainder}m` : `${remainder}m`;
 }
 
-function radians(value: number) {
-  return (value * Math.PI) / 180;
+function formatTime(value: unknown) {
+  if (!value) return "-";
+  if (typeof value === "string" && value.includes("T")) {
+    return value.slice(11, 16);
+  }
+  return String(value);
+}
+
+function formatGps(record: Record<string, string | number | null>) {
+  const accuracy = record.clock_out_accuracy ?? record.clock_in_accuracy;
+  const distance = record.clock_out_distance_meters ?? record.clock_in_distance_meters;
+  return accuracy ? `${Math.round(Number(accuracy))}m / ${Math.round(Number(distance))}m` : "-";
+}
+
+function statusLabel(value: unknown) {
+  return String(value ?? "-")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function roleLabel(role: Role) {
+  return role === "owner" ? "Owner/Admin" : role === "hr" ? "HR/Admin Staff" : "Employee";
+}
+
+function getBrowserDeviceFingerprint() {
+  if (typeof window === "undefined") return "server";
+  const key = "warehouse-device-fingerprint";
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+  const fingerprint = crypto.randomUUID();
+  window.localStorage.setItem(key, fingerprint);
+  return fingerprint;
+}
+
+function browserDeviceLabel() {
+  if (typeof navigator === "undefined") return "Registered phone";
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  const model = nav.userAgentData?.platform ?? nav.platform ?? "Mobile browser";
+  return `${model} - ${getBrowserDeviceFingerprint().slice(0, 4).toUpperCase()}`;
 }
 
 function wait(ms: number) {

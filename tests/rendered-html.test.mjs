@@ -13,11 +13,14 @@ test("builds the warehouse attendance console assets", async () => {
 
   assert.match(layout, /Warehouse Attendance Management/);
   assert.match(server, /Warehouse Attendance Management/);
-  assert.match(pageChunk, /Owner\/Admin/);
-  assert.match(pageChunk, /HR\/Admin Staff/);
+  assert.match(pageChunk, /Register Official Phone/);
+  assert.match(pageChunk, /Employee Login/);
+  assert.match(pageChunk, /Admin Login/);
+  assert.match(pageChunk, /HR \/ Owner Console/);
+  assert.match(pageChunk, /Employee code/);
   assert.match(pageChunk, /Clock In/);
-  assert.match(pageChunk, /QR and GPS settings/);
-  assert.match(pageChunk, /Correction requests/);
+  assert.match(pageChunk, /Correction request/);
+  assert.doesNotMatch(pageChunk, /Switch role/);
   assert.doesNotMatch(server + pageChunk, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 

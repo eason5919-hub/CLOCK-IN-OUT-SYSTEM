@@ -164,3 +164,16 @@ export const auditLogs = sqliteTable(
   },
   (table) => [index("idx_audit_entity").on(table.entityType, table.entityId)],
 );
+
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id),
+    role: text("role", { enum: ["owner", "hr", "employee"] }).notNull(),
+    employeeId: text("employee_id").references(() => employees.id),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index("idx_sessions_user_id").on(table.userId)],
+);
