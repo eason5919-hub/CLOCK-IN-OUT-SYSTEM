@@ -476,6 +476,26 @@ function bindEmployee() {
   document.querySelectorAll("[data-clock]").forEach((button) => {
     button.addEventListener("click", () => openQrScanner(button.dataset.clock));
   });
+  document.querySelectorAll("[data-cancel-leave]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const ok = confirm("Cancel this Leave/MC request?");
+      if (!ok) return;
+      try {
+        await liveApi("/api/leave-requests", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "cancel",
+            requestId: button.dataset.cancelLeave,
+          }),
+        });
+        toast("Leave/MC request cancelled.");
+        await loadEmployeeLive(true);
+        render();
+      } catch (error) {
+        toast(error.message || "Unable to cancel Leave/MC request.");
+      }
+    });
+  });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
     const qr = prompt("Enter the warehouse QR code shown by HR");
@@ -769,7 +789,8 @@ function correctionCard(correction) {
 }
 
 function leaveRequestCard(request) {
-  return `<div class="list-item"><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span><span class="badge ${request.status.toLowerCase()}">${request.status}</span></div>`;
+  const canCancel = !["Rejected", "Cancelled"].includes(request.status) && request.date >= malaysiaDateKey(new Date());
+  return `<div class="list-item leave-card"><div><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div><div class="actions"><span class="badge ${request.status.toLowerCase()}">${request.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div></div>`;
 }
 
 function adminCorrectionCard(correction) {

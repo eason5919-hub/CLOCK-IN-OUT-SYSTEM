@@ -494,7 +494,8 @@ th {
 }
 
 .badge.absent,
-.badge.rejected {
+.badge.rejected,
+.badge.cancelled {
   color: var(--red);
   background: rgba(180, 54, 54, 0.12);
 }
@@ -516,6 +517,12 @@ th {
   padding: 12px;
   display: grid;
   gap: 5px;
+}
+
+.leave-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
 }
 
 .employee-row {
@@ -644,6 +651,10 @@ small,
     padding-top: 10px;
   }
 
+  .employee-layout .topbar {
+    display: none;
+  }
+
   .employee-layout .sidebar {
     padding-top: 0;
     border-bottom: 0;
@@ -677,6 +688,35 @@ small,
 
   .employee-content {
     gap: 10px;
+    grid-template-columns: 1fr;
+  }
+
+  .employee-content > section {
+    min-width: 0;
+  }
+
+  #clock {
+    order: 1;
+  }
+
+  .employee-metrics {
+    order: 2;
+  }
+
+  #month {
+    order: 3;
+  }
+
+  #history {
+    order: 4;
+  }
+
+  #corrections {
+    order: 5;
+  }
+
+  #leave {
+    order: 6;
   }
 
   .metrics,
@@ -712,6 +752,22 @@ small,
   .clock-primary {
     min-height: 52px;
     font-size: 15px;
+  }
+
+  .form {
+    gap: 10px;
+  }
+
+  .leave-card {
+    grid-template-columns: 1fr;
+  }
+
+  .leave-card .actions {
+    justify-content: space-between;
+  }
+
+  .leave-card button {
+    min-width: 96px;
   }
 
   .calendar {

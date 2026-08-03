@@ -132,7 +132,7 @@ export const attendanceCorrections = sqliteTable(
     requestedClockInAt: text("requested_clock_in_at"),
     requestedClockOutAt: text("requested_clock_out_at"),
     reason: text("reason").notNull(),
-    status: text("status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
+    status: text("status", { enum: ["pending", "approved", "rejected", "cancelled"] }).notNull().default("pending"),
     reviewedByUserId: text("reviewed_by_user_id").references(() => users.id),
     reviewedAt: text("reviewed_at"),
     adminNote: text("admin_note"),

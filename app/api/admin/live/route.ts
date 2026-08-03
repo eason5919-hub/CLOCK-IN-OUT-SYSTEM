@@ -350,6 +350,10 @@ async function reviewLeaveRequest(
 
   const before = await db.prepare("SELECT * FROM leave_requests WHERE id = ?").bind(payload.requestId).first();
   if (!before) return json(request, { error: "Leave/MC request was not found." }, 404);
+  const currentStatus = String((before as { status?: string }).status || "");
+  if (currentStatus === "cancelled") {
+    return json(request, { error: "Cancelled Leave/MC cannot be approved or rejected." }, 409);
+  }
 
   await db.batch([
     db

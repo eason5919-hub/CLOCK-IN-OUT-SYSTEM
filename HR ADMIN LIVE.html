@@ -291,11 +291,19 @@
     [hidden] { display: none !important; }
 
     @media (max-width: 840px) {
+      main {
+        width: calc(100% - 12px);
+        margin: 8px auto 24px;
+      }
+
       header { align-items: flex-start; flex-direction: column; }
       .toolbar { grid-template-columns: 1fr; }
       .cards { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
       .formGrid { grid-template-columns: 1fr; }
       .qrGrid { grid-template-columns: 1fr; }
+      .panelHead { align-items: flex-start; flex-direction: column; }
+      table { min-width: 760px; }
+      th, td { padding: 8px; }
     }
   </style>
 </head>
@@ -398,7 +406,7 @@
 
     <section class="panel">
       <div class="panelHead">
-        <h2>Leave / MC Requests</h2>
+        <h2>Active Leave / MC Notice</h2>
         <span id="leaveCountText" class="status"></span>
       </div>
       <div class="tableWrap">
@@ -418,7 +426,7 @@
           <tbody id="leaveBody"></tbody>
         </table>
       </div>
-      <div id="leaveEmpty" class="empty" hidden>No Leave/MC requests yet.</div>
+      <div id="leaveEmpty" class="empty" hidden>No current Leave/MC notices.</div>
     </section>
 
     <section class="panel">
@@ -608,6 +616,16 @@
       return q ? attendance.filter(item => searchable(item).includes(q)) : attendance;
     }
 
+    function activeLeaveNotices() {
+      const today = todayKey();
+      const active = leaveRequests.filter(item => {
+        const status = String(item.status || "").toLowerCase();
+        return item.leave_date >= today && status !== "rejected" && status !== "cancelled";
+      });
+      const q = searchInput.value.trim().toLowerCase();
+      return q ? active.filter(item => searchable(item).includes(q)) : active;
+    }
+
     function renderMetrics() {
       const today = todayKey();
       const todayRows = attendance.filter(row => row.work_date === today);
@@ -668,8 +686,7 @@
     }
 
     function renderLeaveRequests() {
-      const q = searchInput.value.trim().toLowerCase();
-      const rows = q ? leaveRequests.filter(item => searchable(item).includes(q)) : leaveRequests;
+      const rows = activeLeaveNotices();
       leaveBody.innerHTML = rows.map((request, index) => `
         <tr>
           <td>${index + 1}</td>
@@ -693,7 +710,7 @@
         </tr>
       `).join("");
       leaveEmpty.hidden = rows.length > 0;
-      leaveCountText.textContent = `${rows.length} shown / ${leaveRequests.length} requests`;
+      leaveCountText.textContent = `${rows.length} active notice${rows.length === 1 ? "" : "s"}`;
     }
 
     function renderAttendance() {
