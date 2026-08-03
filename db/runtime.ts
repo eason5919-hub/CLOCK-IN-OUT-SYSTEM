@@ -16,6 +16,8 @@ export type AppSession = {
 };
 
 export const SESSION_COOKIE = "warehouse_session";
+const ADMIN_SESSION_DAYS = 30;
+const EMPLOYEE_SESSION_DAYS = 3650;
 
 export function getD1() {
   if (!env.DB) {
@@ -155,7 +157,8 @@ export async function createSession(
   user: { id: string; role: "owner" | "hr" | "employee"; employee_id: string | null },
 ) {
   const id = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
+  const days = user.role === "employee" ? EMPLOYEE_SESSION_DAYS : ADMIN_SESSION_DAYS;
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * days).toISOString();
   await db
     .prepare(
       "INSERT INTO sessions (id, user_id, role, employee_id, expires_at) VALUES (?, ?, ?, ?, ?)",
@@ -177,6 +180,14 @@ export async function getSessionFromRequest(db: D1Database, request: Request) {
     )
     .bind(sessionId, new Date().toISOString())
     .first<AppSession>();
+
+  if (session?.role === "employee") {
+    const permanentExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * EMPLOYEE_SESSION_DAYS).toISOString();
+    if (session.expires_at < permanentExpiresAt) {
+      await db.prepare("UPDATE sessions SET expires_at = ? WHERE id = ?").bind(permanentExpiresAt, session.id).run();
+      session.expires_at = permanentExpiresAt;
+    }
+  }
 
   return session ?? null;
 }

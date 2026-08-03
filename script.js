@@ -323,7 +323,11 @@ async function loadEmployeeLive(force = false) {
     state.corrections = (result.corrections || []).map(mapLiveCorrection);
     saveState();
   } catch (error) {
-    clearEmployeeSession(error.message || "Employee account was deleted by HR.");
+    if (error.status === 401 || error.status === 403 || error.status === 404) {
+      clearEmployeeSession(error.message || "Employee account was deleted by HR.");
+    } else {
+      toast(error.message || "Unable to refresh attendance. Login is kept on this phone.");
+    }
   } finally {
     liveRefreshInFlight = false;
   }
@@ -343,7 +347,11 @@ async function liveApi(path, options = {}, requireToken = true) {
   });
   const text = await response.text();
   const data = text ? JSON.parse(text) : {};
-  if (!response.ok) throw new Error(data.error || "Unable to connect to attendance server.");
+  if (!response.ok) {
+    const error = new Error(data.error || "Unable to connect to attendance server.");
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
