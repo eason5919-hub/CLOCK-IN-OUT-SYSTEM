@@ -1,0 +1,15 @@
+{
+  "name": "Warehouse Attendance Management",
+  "short_name": "Attendance",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#17211f",
+  "icons": [
+    {
+      "src": "public/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
