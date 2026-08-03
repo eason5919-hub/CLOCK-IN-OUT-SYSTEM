@@ -355,7 +355,7 @@ function bindLogin() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const email = String(data.get("email")).trim().toLowerCase();
-    const password = String(data.get("password"));
+    const password = String(data.get("password")).trim();
     if (email === ADMIN_ACCOUNT.email && await sha256Hex(password) === ADMIN_ACCOUNT.passwordHash) {
       state.currentUser = { role: "hr", name: "HR/Admin Staff", label: "HR/Admin" };
     } else {
