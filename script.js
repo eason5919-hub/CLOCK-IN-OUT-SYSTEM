@@ -22,6 +22,7 @@ const defaultState = {
 };
 
 let state = loadState();
+let pendingDeleteEmployeeId = null;
 
 window.addEventListener("hashchange", () => {
   if (!state.currentUser) render();
@@ -49,6 +50,14 @@ function render() {
   }
 
   if (state.currentUser.role === "employee") {
+    if (!findEmployeeById(state.currentUser.employeeId)) {
+      state.currentUser = null;
+      saveState();
+      app.innerHTML = loginScreen();
+      bindLogin();
+      toast("This employee account was deleted by HR.");
+      return;
+    }
     app.innerHTML = shell(employeeScreen(), "Employee attendance app");
     bindEmployee();
   } else {
@@ -251,6 +260,7 @@ function adminScreen() {
         <p>Saturday: normal end 13:00, no OT until 13:16, counted from 13:00. Sunday approved work is all OT.</p>
       </section>
     </div>
+    ${deleteEmployeeModal()}
   `;
 }
 
@@ -266,7 +276,7 @@ function bindLogin() {
 
     const device = getDeviceFingerprint();
     if (employee.deviceFingerprint && employee.deviceFingerprint !== device) {
-      return toast("This account is already linked to another phone. Ask HR to reset the device.");
+      return toast("This account is already linked to another phone. Ask HR to delete and add the employee again.");
     }
     employee.deviceFingerprint = device;
     employee.deviceModel = browserDeviceLabel();
@@ -317,6 +327,8 @@ function bindEmployee() {
     state.corrections.unshift({
       id: `cor-${Date.now()}`,
       employeeId: employee.id,
+      employeeCode: employee.code,
+      employeeName: employee.name,
       date: String(data.get("date")),
       missing: String(data.get("missing")),
       requestedTime: String(data.get("time")),
@@ -350,16 +362,26 @@ function bindAdmin() {
     render();
   });
 
-  document.querySelectorAll("[data-reset-device]").forEach((button) => {
+  document.querySelectorAll("[data-delete-employee]").forEach((button) => {
     button.addEventListener("click", () => {
-      const employee = employeeById(button.dataset.resetDevice);
-      employee.deviceFingerprint = null;
-      employee.deviceModel = "Not registered";
-      employee.deviceStatus = "Not registered";
-      saveState();
-      toast("Device registration reset.");
+      pendingDeleteEmployeeId = button.dataset.deleteEmployee;
       render();
     });
+  });
+
+  document.querySelector("[data-cancel-delete]")?.addEventListener("click", () => {
+    pendingDeleteEmployeeId = null;
+    render();
+  });
+
+  document.querySelector("[data-confirm-delete]")?.addEventListener("click", () => {
+    const employee = employeeById(pendingDeleteEmployeeId);
+    preserveEmployeeHistory(employee);
+    state.employees = state.employees.filter((row) => row.id !== employee.id);
+    pendingDeleteEmployeeId = null;
+    saveState();
+    toast("Employee deleted. Attendance history was kept.");
+    render();
   });
 
   document.querySelectorAll("[data-review]").forEach((button) => {
@@ -416,6 +438,8 @@ async function clock(action) {
     record = {
       id: `att-${Date.now()}`,
       employeeId: employee.id,
+      employeeCode: employee.code,
+      employeeName: employee.name,
       date,
       clockIn: null,
       clockOut: null,
@@ -473,8 +497,7 @@ function attendanceTable(records, employeeOnly) {
         <thead><tr>${employeeOnly ? "" : "<th>Employee</th>"}<th>Date</th><th>Clock In</th><th>Clock Out</th><th>Working Hours</th><th>OT</th><th>Status</th><th>GPS</th></tr></thead>
         <tbody>${records
           .map((row) => {
-            const employee = employeeById(row.employeeId);
-            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employee.name)}</td>`}<td>${row.date}</td><td>${row.clockIn || "-"}</td><td>${row.clockOut || "-"}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
+            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employeeLabel(row))}</td>`}<td>${row.date}</td><td>${row.clockIn || "-"}</td><td>${row.clockOut || "-"}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
           })
           .join("")}</tbody>
       </table>
@@ -482,7 +505,7 @@ function attendanceTable(records, employeeOnly) {
 }
 
 function employeeCard(employee) {
-  return `<div class="list-item employee-row"><strong>${employee.code} - ${escapeHtml(employee.name)}</strong><span class="badge ${employee.deviceStatus.toLowerCase().replaceAll(" ", "-")}">${employee.deviceStatus}</span><button class="secondary" data-reset-device="${employee.id}">Reset Device</button><small>${escapeHtml(employee.deviceModel)}</small></div>`;
+  return `<div class="list-item employee-row"><strong>${employee.code} - ${escapeHtml(employee.name)}</strong><span class="badge ${employee.deviceStatus.toLowerCase().replaceAll(" ", "-")}">${employee.deviceStatus}</span><button class="danger" data-delete-employee="${employee.id}">Delete</button><small>${escapeHtml(employee.deviceModel)}</small></div>`;
 }
 
 function correctionCard(correction) {
@@ -490,8 +513,7 @@ function correctionCard(correction) {
 }
 
 function adminCorrectionCard(correction) {
-  const employee = employeeById(correction.employeeId);
-  return `<article class="list-item"><strong>${employee.code} - ${escapeHtml(employee.name)}</strong><span>${correction.date} ${correction.missing} ${correction.requestedTime}</span><p>${escapeHtml(correction.reason)}</p><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span>${correction.status === "Pending" ? `<div class="actions"><button data-review="Approved" data-id="${correction.id}">Approve</button><button class="danger" data-review="Rejected" data-id="${correction.id}">Reject</button></div>` : ""}</article>`;
+  return `<article class="list-item"><strong>${escapeHtml(correctionEmployeeLabel(correction))}</strong><span>${correction.date} ${correction.missing} ${correction.requestedTime}</span><p>${escapeHtml(correction.reason)}</p><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span>${correction.status === "Pending" ? `<div class="actions"><button data-review="Approved" data-id="${correction.id}">Approve</button><button class="danger" data-review="Rejected" data-id="${correction.id}">Reject</button></div>` : ""}</article>`;
 }
 
 function applyCorrection(correction) {
@@ -500,6 +522,8 @@ function applyCorrection(correction) {
     record = {
       id: `att-${Date.now()}`,
       employeeId: correction.employeeId,
+      employeeCode: correction.employeeCode || employeeById(correction.employeeId).code,
+      employeeName: correction.employeeName || employeeById(correction.employeeId).name,
       date: correction.date,
       clockIn: null,
       clockOut: null,
@@ -557,8 +581,7 @@ function exportCsv() {
   const rows = [
     ["Employee", "Date", "Clock In", "Clock Out", "Working Minutes", "OT Minutes", "Status"],
     ...state.attendance.map((row) => {
-      const employee = employeeById(row.employeeId);
-      return [employee.name, row.date, row.clockIn || "", row.clockOut || "", row.workingMinutes, row.overtimeMinutes, row.status];
+      return [employeeLabel(row), row.date, row.clockIn || "", row.clockOut || "", row.workingMinutes, row.overtimeMinutes, row.status];
     }),
   ];
   const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
@@ -572,7 +595,58 @@ function exportCsv() {
 }
 
 function employeeById(id) {
-  return state.employees.find((employee) => employee.id === id) || state.employees[0];
+  return findEmployeeById(id) || { id, code: "Deleted", name: "Deleted employee" };
+}
+
+function findEmployeeById(id) {
+  return state.employees.find((employee) => employee.id === id);
+}
+
+function employeeLabel(record) {
+  const employee = findEmployeeById(record.employeeId);
+  const code = employee?.code || record.employeeCode || "Deleted";
+  const name = employee?.name || record.employeeName || "Deleted employee";
+  return `${code} - ${name}`;
+}
+
+function correctionEmployeeLabel(correction) {
+  const employee = findEmployeeById(correction.employeeId);
+  const code = employee?.code || correction.employeeCode || "Deleted";
+  const name = employee?.name || correction.employeeName || "Deleted employee";
+  return `${code} - ${name}`;
+}
+
+function preserveEmployeeHistory(employee) {
+  state.attendance.forEach((record) => {
+    if (record.employeeId === employee.id) {
+      record.employeeCode = record.employeeCode || employee.code;
+      record.employeeName = record.employeeName || employee.name;
+    }
+  });
+  state.corrections.forEach((correction) => {
+    if (correction.employeeId === employee.id) {
+      correction.employeeCode = correction.employeeCode || employee.code;
+      correction.employeeName = correction.employeeName || employee.name;
+    }
+  });
+}
+
+function deleteEmployeeModal() {
+  if (!pendingDeleteEmployeeId) return "";
+  const employee = employeeById(pendingDeleteEmployeeId);
+  return `
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+      <section class="confirm-modal">
+        <p class="eyebrow">Confirm delete</p>
+        <h3>Delete ${escapeHtml(employee.code)} - ${escapeHtml(employee.name)}?</h3>
+        <p>Employee access will be removed. Attendance history and reports will stay.</p>
+        <div class="actions">
+          <button class="secondary" data-cancel-delete>Cancel</button>
+          <button class="danger" data-confirm-delete>Delete</button>
+        </div>
+      </section>
+    </div>
+  `;
 }
 
 function normalizePhone(value) {
