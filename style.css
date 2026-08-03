@@ -630,6 +630,11 @@ th {
   color: #98a39f;
 }
 
+.calendar-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .list {
   display: grid;
   gap: 10px;
