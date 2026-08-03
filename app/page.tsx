@@ -6,6 +6,12 @@ type Role = "owner" | "hr" | "employee";
 type AttendanceStatus = "Present" | "Late" | "Absent" | "OT" | "Pending";
 type ClockAction = "clock_in" | "clock_out";
 
+type AuthUser = {
+  role: Role;
+  name: string;
+  employeeId?: string;
+};
+
 type Employee = {
   id: string;
   code: string;
@@ -228,7 +234,7 @@ const warehouse = {
 };
 
 export default function Home() {
-  const [role, setRole] = useState<Role>("owner");
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [employees, setEmployees] = useState(employeesSeed);
   const [attendance, setAttendance] = useState(attendanceSeed);
   const [corrections, setCorrections] = useState(correctionSeed);
@@ -236,7 +242,9 @@ export default function Home() {
   const [activeEmployeeId, setActiveEmployeeId] = useState("emp-001");
   const [clockState, setClockState] = useState<"idle" | "scanning" | "accepted" | "rejected">("idle");
   const [gpsMessage, setGpsMessage] = useState("Ready for QR and GPS verification.");
+  const [authMessage, setAuthMessage] = useState("");
 
+  const role = authUser?.role ?? "employee";
   const activeEmployee = employees.find((employee) => employee.id === activeEmployeeId) ?? employees[0];
   const employeeAttendance = attendance.filter((record) => record.employeeId === activeEmployee.id);
   const stats = useMemo(() => buildStats(attendance, employees.length), [attendance, employees.length]);
@@ -252,6 +260,96 @@ export default function Home() {
       },
       ...logs,
     ]);
+  }
+
+  function handleEmployeeRegister(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const code = String(form.get("employeeCode")).trim().toUpperCase();
+    const phone = normalizePhone(String(form.get("phone")));
+    const employee = employees.find(
+      (item) => item.code.toUpperCase() === code && normalizePhone(item.phone) === phone,
+    );
+
+    if (!employee) {
+      setAuthMessage("Employee code and phone number do not match HR records.");
+      return;
+    }
+
+    const deviceMap = readDeviceMap();
+    const currentDevice = getBrowserDeviceFingerprint();
+    if (deviceMap[employee.id] && deviceMap[employee.id] !== currentDevice) {
+      setAuthMessage("This account is already linked to another phone. Ask HR/Admin to reset the device.");
+      return;
+    }
+
+    deviceMap[employee.id] = currentDevice;
+    writeDeviceMap(deviceMap);
+    setEmployees((items) =>
+      items.map((item) =>
+        item.id === employee.id
+          ? { ...item, device: browserDeviceLabel(), deviceStatus: "Registered" }
+          : item,
+      ),
+    );
+    setActiveEmployeeId(employee.id);
+    setAuthUser({ role: "employee", name: employee.name, employeeId: employee.id });
+    setAuthMessage("");
+    addAudit(employee.name, "Registered official phone", employee.code);
+  }
+
+  function handleEmployeeLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const code = String(form.get("employeeCode")).trim().toUpperCase();
+    const employee = employees.find((item) => item.code.toUpperCase() === code);
+
+    if (!employee) {
+      setAuthMessage("Employee code was not found.");
+      return;
+    }
+
+    const deviceMap = readDeviceMap();
+    const linkedDevice = deviceMap[employee.id];
+    if (!linkedDevice) {
+      setAuthMessage("This employee has not registered this phone yet. Use Register Official Phone first.");
+      return;
+    }
+    if (linkedDevice !== getBrowserDeviceFingerprint()) {
+      setAuthMessage("This employee account is linked to another phone. Ask HR/Admin to reset the device.");
+      return;
+    }
+
+    setActiveEmployeeId(employee.id);
+    setAuthUser({ role: "employee", name: employee.name, employeeId: employee.id });
+    setAuthMessage("");
+  }
+
+  function handleAdminLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get("email")).trim().toLowerCase();
+    const password = String(form.get("password"));
+
+    if (email === "owner@example.com" && password === "owner123") {
+      setAuthUser({ role: "owner", name: "Owner/Admin" });
+      setAuthMessage("");
+      return;
+    }
+    if (email === "hr@example.com" && password === "hr123") {
+      setAuthUser({ role: "hr", name: "HR/Admin Staff" });
+      setAuthMessage("");
+      return;
+    }
+
+    setAuthMessage("Admin email or password is incorrect.");
+  }
+
+  function logout() {
+    setAuthUser(null);
+    setAuthMessage("");
+    setClockState("idle");
+    setGpsMessage("Ready for QR and GPS verification.");
   }
 
   async function runClock(action: ClockAction) {
@@ -401,6 +499,9 @@ export default function Home() {
   }
 
   function resetDevice(employeeId: string) {
+    const deviceMap = readDeviceMap();
+    delete deviceMap[employeeId];
+    writeDeviceMap(deviceMap);
     setEmployees((items) =>
       items.map((employee) =>
         employee.id === employeeId
@@ -409,6 +510,18 @@ export default function Home() {
       ),
     );
     addAudit("HR/Admin Staff", "Reset employee device registration", employeeId);
+  }
+
+  if (!authUser) {
+    return (
+      <LoginScreen
+        authMessage={authMessage}
+        employees={employees}
+        onEmployeeLogin={handleEmployeeLogin}
+        onEmployeeRegister={handleEmployeeRegister}
+        onAdminLogin={handleAdminLogin}
+      />
+    );
   }
 
   return (
@@ -424,25 +537,22 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="role-switch" aria-label="Switch role">
-          {(["owner", "hr", "employee"] as Role[]).map((item) => (
-            <button
-              key={item}
-              className={role === item ? "active" : ""}
-              onClick={() => setRole(item)}
-              type="button"
-            >
-              {roleLabel(item)}
-            </button>
-          ))}
+        <div className="account-card">
+          <p className="eyebrow">Signed in</p>
+          <strong>{authUser.name}</strong>
+          <small>{roleLabel(authUser.role)}</small>
+          <button type="button" className="secondary" onClick={logout}>
+            Sign Out
+          </button>
         </div>
 
         <nav className="nav-list">
           <a href="#overview">Overview</a>
           <a href="#attendance">Attendance</a>
-          <a href="#corrections">Corrections</a>
-          <a href="#reports">Reports</a>
-          <a href="#security">Security</a>
+          {role === "employee" ? <a href="#corrections">Corrections</a> : null}
+          {role !== "employee" ? <a href="#corrections">Approvals</a> : null}
+          {role !== "employee" ? <a href="#reports">Reports</a> : null}
+          {role === "owner" ? <a href="#security">Security</a> : null}
         </nav>
 
         <div className="warehouse-card">
@@ -491,8 +601,6 @@ export default function Home() {
             gpsMessage={gpsMessage}
             onClock={runClock}
             onSubmitCorrection={submitCorrection}
-            onSelectEmployee={setActiveEmployeeId}
-            employees={employees}
           />
         ) : (
           <AdminView
@@ -510,26 +618,117 @@ export default function Home() {
   );
 }
 
+function LoginScreen({
+  authMessage,
+  employees,
+  onEmployeeLogin,
+  onEmployeeRegister,
+  onAdminLogin,
+}: {
+  authMessage: string;
+  employees: Employee[];
+  onEmployeeLogin: (event: FormEvent<HTMLFormElement>) => void;
+  onEmployeeRegister: (event: FormEvent<HTMLFormElement>) => void;
+  onAdminLogin: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <main className="auth-shell">
+      <section className="auth-hero">
+        <div className="brand-block">
+          <div className="brand-mark" aria-hidden="true">
+            W
+          </div>
+          <div>
+            <p className="eyebrow">Warehouse</p>
+            <h1>Attendance Management</h1>
+          </div>
+        </div>
+        <h2>Secure clock in for warehouse staff</h2>
+        <div className="auth-facts">
+          <span>Permanent QR</span>
+          <span>GPS radius check</span>
+          <span>One phone per employee</span>
+        </div>
+      </section>
+
+      <section className="auth-grid">
+        <form className="auth-panel" onSubmit={onEmployeeRegister}>
+          <div>
+            <p className="eyebrow">Employee first time</p>
+            <h3>Register Official Phone</h3>
+          </div>
+          <label>
+            Employee code
+            <input name="employeeCode" placeholder="WH-001" required />
+          </label>
+          <label>
+            Phone number
+            <input name="phone" placeholder="+60 12-400 1001" required />
+          </label>
+          <button type="submit">Register Phone</button>
+        </form>
+
+        <form className="auth-panel" onSubmit={onEmployeeLogin}>
+          <div>
+            <p className="eyebrow">Employee returning</p>
+            <h3>Employee Login</h3>
+          </div>
+          <label>
+            Employee code
+            <input name="employeeCode" placeholder="WH-001" required />
+          </label>
+          <button type="submit">Open My Attendance</button>
+          <small>Employee can only view and clock their own attendance.</small>
+        </form>
+
+        <form className="auth-panel" onSubmit={onAdminLogin}>
+          <div>
+            <p className="eyebrow">Admin only</p>
+            <h3>HR / Owner Login</h3>
+          </div>
+          <label>
+            Email
+            <input name="email" type="email" placeholder="hr@example.com" required />
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" required />
+          </label>
+          <button type="submit">Open Admin Dashboard</button>
+        </form>
+
+        <div className="auth-panel seed-panel">
+          <p className="eyebrow">Demo HR records</p>
+          {employees.map((employee) => (
+            <div key={employee.id}>
+              <strong>{employee.code}</strong>
+              <span>{employee.name}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {authMessage ? <p className="auth-message">{authMessage}</p> : null}
+    </main>
+  );
+}
+
 function EmployeeView({
   employee,
-  employees,
   attendance,
   corrections,
   clockState,
   gpsMessage,
   onClock,
   onSubmitCorrection,
-  onSelectEmployee,
 }: {
   employee: Employee;
-  employees: Employee[];
   attendance: AttendanceRecord[];
   corrections: Correction[];
   clockState: "idle" | "scanning" | "accepted" | "rejected";
   gpsMessage: string;
   onClock: (action: ClockAction) => void;
   onSubmitCorrection: (event: FormEvent<HTMLFormElement>) => void;
-  onSelectEmployee: (id: string) => void;
 }) {
   const monthly = buildMonthly(attendance);
 
@@ -541,13 +740,7 @@ function EmployeeView({
             <p className="eyebrow">Employee phone</p>
             <h3>{employee.name}</h3>
           </div>
-          <select value={employee.id} onChange={(event) => onSelectEmployee(event.target.value)} aria-label="Employee account">
-            {employees.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.code} - {item.name}
-              </option>
-            ))}
-          </select>
+          <Badge value={employee.code} />
         </div>
 
         <div className={`scanner ${clockState}`}>
@@ -1014,6 +1207,42 @@ function distanceMeters(fromLat: number, fromLng: number, toLat: number, toLng: 
 
 function radians(value: number) {
   return (value * Math.PI) / 180;
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function readDeviceMap() {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(window.localStorage.getItem("warehouse-device-map") ?? "{}") as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+function writeDeviceMap(deviceMap: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("warehouse-device-map", JSON.stringify(deviceMap));
+}
+
+function getBrowserDeviceFingerprint() {
+  if (typeof window === "undefined") return "server";
+  const key = "warehouse-device-fingerprint";
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+
+  const fingerprint = crypto.randomUUID();
+  window.localStorage.setItem(key, fingerprint);
+  return fingerprint;
+}
+
+function browserDeviceLabel() {
+  if (typeof navigator === "undefined") return "Registered phone";
+  const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+  const model = nav.userAgentData?.platform ?? nav.platform ?? "Mobile browser";
+  return `${model} - ${getBrowserDeviceFingerprint().slice(0, 4).toUpperCase()}`;
 }
 
 function wait(ms: number) {
