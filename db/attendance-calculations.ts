@@ -9,8 +9,6 @@ const DEFAULT_TIME_ZONE = "Asia/Kuala_Lumpur";
 const START_GRACE_MINUTES = 15;
 const EARLY_OT_BEFORE_START_MINUTES = 60;
 const OPEN_ATTENDANCE_CUTOFF_TIME = "08:00";
-const WEEKDAY_BREAK_START_TIME = "13:00";
-const WEEKDAY_BREAK_END_TIME = "14:00";
 
 export function calculateAttendanceTotals(
   clockInAt: string,
@@ -18,7 +16,10 @@ export function calculateAttendanceTotals(
   schedule?: AttendanceSchedule | null,
   timeZone = DEFAULT_TIME_ZONE,
 ) {
-  const totalMinutes = calculateWorkingMinutes(clockInAt, clockOutAt, schedule, timeZone);
+  const totalMinutes = Math.max(
+    0,
+    Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000),
+  );
   const lateMinutes = calculateLateMinutes(clockInAt, schedule, timeZone);
   const earlyLeaveMinutes = calculateEarlyLeaveMinutes(clockInAt, clockOutAt, schedule, timeZone);
   const overtimeMinutes = calculateOvertimeMinutes(clockInAt, clockOutAt, schedule, timeZone);
@@ -88,39 +89,6 @@ function calculateLateMinutes(clockInAt: string, schedule?: AttendanceSchedule |
   return clockInMinutes > scheduledStartMinutes + START_GRACE_MINUTES
     ? Math.max(0, clockInMinutes - scheduledStartMinutes)
     : 0;
-}
-
-function calculateWorkingMinutes(
-  clockInAt: string,
-  clockOutAt: string,
-  schedule?: AttendanceSchedule | null,
-  timeZone = DEFAULT_TIME_ZONE,
-) {
-  const elapsedMinutes = Math.max(
-    0,
-    Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000),
-  );
-  if (!shouldDeductWeekdayBreak(clockInAt, schedule, timeZone)) return elapsedMinutes;
-
-  const workDate = localDateTimeParts(clockInAt, timeZone);
-  const breakStartMs = localDateAndTimeToUtcMs(workDate, WEEKDAY_BREAK_START_TIME, timeZone);
-  const breakEndMs = localDateAndTimeToUtcMs(workDate, WEEKDAY_BREAK_END_TIME, timeZone);
-  const overlapMs = Math.max(
-    0,
-    Math.min(Date.parse(clockOutAt), breakEndMs) - Math.max(Date.parse(clockInAt), breakStartMs),
-  );
-  return Math.max(0, elapsedMinutes - Math.round(overlapMs / 60000));
-}
-
-function shouldDeductWeekdayBreak(
-  clockInAt: string,
-  schedule?: AttendanceSchedule | null,
-  timeZone = DEFAULT_TIME_ZONE,
-) {
-  if (!schedule || schedule.is_off_day) return false;
-  if (schedule.start_time !== "09:00" || schedule.end_time !== "18:00") return false;
-  const day = localDayOfWeek(clockInAt, timeZone);
-  return day >= 1 && day <= 5;
 }
 
 function calculateEarlyLeaveMinutes(
