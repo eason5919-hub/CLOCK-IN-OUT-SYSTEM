@@ -51,10 +51,11 @@ function json(request: Request, data: unknown, status = 200) {
 
 function corsHeaders(request: Request) {
   const origin = request.headers.get("origin") || "*";
+  const requestHeaders = request.headers.get("access-control-request-headers");
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "POST, OPTIONS",
-    "access-control-allow-headers": "Content-Type, Authorization",
+    "access-control-allow-headers": requestHeaders || "Content-Type, Authorization",
     "access-control-max-age": "86400",
     vary: "Origin",
   };

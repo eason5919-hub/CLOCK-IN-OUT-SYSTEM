@@ -10,7 +10,17 @@ type AdminAction =
       position?: string;
       email?: string;
     }
+  | {
+      action: "edit_employee";
+      employeeId?: string;
+      employeeCode?: string;
+      fullName?: string;
+      phone?: string;
+      department?: string;
+      position?: string;
+    }
   | { action: "deactivate_employee"; employeeId?: string }
+  | { action: "delete_employee"; employeeId?: string }
   | { action: "unlink_device"; deviceId?: string };
 
 export async function OPTIONS(request: Request) {
@@ -85,7 +95,13 @@ export async function POST(request: Request) {
     if (payload.action === "add_employee") {
       return addEmployee(db, request, payload);
     }
+    if (payload.action === "edit_employee") {
+      return editEmployee(db, request, payload, auth.userId);
+    }
     if (payload.action === "deactivate_employee") {
+      return deactivateEmployee(db, request, payload.employeeId, auth.userId);
+    }
+    if (payload.action === "delete_employee") {
       return deactivateEmployee(db, request, payload.employeeId, auth.userId);
     }
     if (payload.action === "unlink_device") {
@@ -109,6 +125,13 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
 
   const employeeId = crypto.randomUUID();
   const email = payload.email?.trim() || `${code.toLowerCase()}@warehouse.local`;
+  const existing = await db
+    .prepare("SELECT id FROM employees WHERE UPPER(employee_code) = ?")
+    .bind(code)
+    .first<{ id: string }>();
+  if (existing) {
+    return json(request, { error: "This employee code already exists. Use Edit instead." }, 409);
+  }
 
   await db.batch([
     db
@@ -124,6 +147,53 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
   ]);
 
   return json(request, { ok: true, employeeId }, 201);
+}
+
+async function editEmployee(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "edit_employee" }>,
+  adminUserId: string,
+) {
+  const employeeId = payload.employeeId;
+  const code = payload.employeeCode?.trim().toUpperCase();
+  const name = payload.fullName?.trim();
+  const phone = payload.phone?.trim();
+  if (!employeeId || !code || !name || !phone) {
+    return json(request, { error: "Employee ID, code, name and phone are required." }, 400);
+  }
+
+  const before = await db.prepare("SELECT * FROM employees WHERE id = ?").bind(employeeId).first();
+  if (!before) return json(request, { error: "Employee was not found." }, 404);
+
+  const duplicate = await db
+    .prepare("SELECT id FROM employees WHERE UPPER(employee_code) = ? AND id <> ?")
+    .bind(code, employeeId)
+    .first<{ id: string }>();
+  if (duplicate) return json(request, { error: "This employee code already exists." }, 409);
+
+  await db.batch([
+    db
+      .prepare(
+        "UPDATE employees SET employee_code = ?, full_name = ?, phone = ?, department_id = ?, position = ? WHERE id = ?",
+      )
+      .bind(code, name, phone, payload.department?.trim() || null, payload.position?.trim() || "Warehouse Associate", employeeId),
+    db
+      .prepare(
+        "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        crypto.randomUUID(),
+        adminUserId,
+        "edit_employee",
+        "employee",
+        employeeId,
+        JSON.stringify(before),
+        JSON.stringify({ employee_code: code, full_name: name, phone, department_id: payload.department, position: payload.position }),
+      ),
+  ]);
+
+  return json(request, { ok: true });
 }
 
 async function deactivateEmployee(db: D1Database, request: Request, employeeId: string | undefined, adminUserId: string) {
@@ -188,10 +258,11 @@ function json(request: Request, data: unknown, status = 200) {
 
 function corsHeaders(request: Request) {
   const origin = request.headers.get("origin") || "*";
+  const requestHeaders = request.headers.get("access-control-request-headers");
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "Content-Type, Authorization",
+    "access-control-allow-headers": requestHeaders || "Content-Type, Authorization",
     "access-control-max-age": "86400",
     vary: "Origin",
   };

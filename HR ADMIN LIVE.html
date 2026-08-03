@@ -355,7 +355,10 @@
         <label>Phone<input id="phoneInput" type="tel" required placeholder="0123456789"></label>
         <label>Department<input id="departmentInput" type="text" placeholder="Warehouse"></label>
         <label>Position<input id="positionInput" type="text" placeholder="Staff"></label>
-        <button type="submit">Add</button>
+        <div class="actions">
+          <button id="saveEmployeeButton" type="submit">Add</button>
+          <button id="cancelEditButton" class="secondary" type="button" hidden>Cancel</button>
+        </div>
       </form>
       <div class="tableWrap">
         <table>
@@ -423,6 +426,8 @@
     const statusText = document.getElementById("statusText");
     const employeeForm = document.getElementById("employeeForm");
     const employeesBody = document.getElementById("employeesBody");
+    const saveEmployeeButton = document.getElementById("saveEmployeeButton");
+    const cancelEditButton = document.getElementById("cancelEditButton");
     const attendanceBody = document.getElementById("attendanceBody");
     const employeeEmpty = document.getElementById("employeeEmpty");
     const attendanceEmpty = document.getElementById("attendanceEmpty");
@@ -435,6 +440,7 @@
     let employees = [];
     let attendance = [];
     let loading = false;
+    let editingEmployeeId = "";
 
     emailInput.value = "d1_racing@yahoo.com";
     qrImage.src = `${API_BASE}/warehouse-qr.png`;
@@ -475,9 +481,11 @@
     }
 
     async function api(path, options = {}) {
-      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
       const savedToken = token();
-      if (savedToken) headers.Authorization = `Bearer ${savedToken}`;
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      if (savedToken) {
+        headers.Authorization = `Bearer ${savedToken}`;
+      }
 
       const response = await fetch(`${API_BASE}${path}`, {
         ...options,
@@ -551,7 +559,7 @@
       const clockedIn = todayRows.filter(row => row.clock_in_at && !row.clock_out_at);
       const ot = todayRows.reduce((sum, row) => sum + Number(row.overtime_minutes || 0), 0);
 
-      document.getElementById("employeeCount").textContent = employees.filter(row => row.status === "active").length;
+      document.getElementById("employeeCount").textContent = employees.length;
       document.getElementById("clockedInCount").textContent = clockedIn.length;
       document.getElementById("missingOutCount").textContent = clockedIn.length;
       document.getElementById("todayCount").textContent = todayRows.length;
@@ -578,8 +586,16 @@
             </td>
             <td>
               <div class="actions">
+                <button class="blue" type="button"
+                  data-edit-employee="${escapeHtml(employee.id)}"
+                  data-code="${escapeHtml(employee.employee_code || "")}"
+                  data-name="${escapeHtml(employee.full_name || "")}"
+                  data-phone="${escapeHtml(employee.phone || "")}"
+                  data-department="${escapeHtml(employee.department_id || "")}"
+                  data-position="${escapeHtml(employee.position || "")}"
+                >Edit</button>
                 ${hasDevice ? `<button class="secondary" type="button" data-unlink-device="${escapeHtml(employee.device_id)}" data-name="${escapeHtml(employee.full_name)}">Delete Device</button>` : ""}
-                ${active ? `<button class="danger" type="button" data-deactivate-employee="${escapeHtml(employee.id)}" data-name="${escapeHtml(employee.full_name)}">Deactivate</button>` : ""}
+                <button class="danger" type="button" data-delete-employee="${escapeHtml(employee.id)}" data-name="${escapeHtml(employee.full_name)}">Delete</button>
               </div>
             </td>
           </tr>
@@ -614,6 +630,18 @@
       renderMetrics();
       renderEmployees();
       renderAttendance();
+    }
+
+    function setEditMode(employee) {
+      editingEmployeeId = employee ? employee.id : "";
+      document.getElementById("codeInput").value = employee ? employee.employee_code || "" : "";
+      document.getElementById("nameInput").value = employee ? employee.full_name || "" : "";
+      document.getElementById("phoneInput").value = employee ? employee.phone || "" : "";
+      document.getElementById("departmentInput").value = employee ? employee.department_id || "" : "";
+      document.getElementById("positionInput").value = employee ? employee.position || "" : "";
+      saveEmployeeButton.textContent = employee ? "Save Changes" : "Add";
+      cancelEditButton.hidden = !employee;
+      if (employee) document.getElementById("codeInput").focus();
     }
 
     async function loadLiveData(force = false) {
@@ -674,21 +702,46 @@
     employeeForm.addEventListener("submit", async event => {
       event.preventDefault();
       try {
-        await adminAction({
-          action: "add_employee",
+        const payload = {
+          action: editingEmployeeId ? "edit_employee" : "add_employee",
+          employeeId: editingEmployeeId || undefined,
           employeeCode: document.getElementById("codeInput").value,
           fullName: document.getElementById("nameInput").value,
           phone: document.getElementById("phoneInput").value,
           department: document.getElementById("departmentInput").value,
           position: document.getElementById("positionInput").value
-        }, "Adding employee...");
+        };
+        await adminAction({
+          ...payload
+        }, editingEmployeeId ? "Saving employee..." : "Adding employee...");
         employeeForm.reset();
+        setEditMode(null);
       } catch (error) {
-        setStatus(employeeStatus, error.message || "Unable to add employee", "error");
+        setStatus(employeeStatus, error.message || "Unable to save employee", "error");
       }
     });
 
+    cancelEditButton.addEventListener("click", () => {
+      employeeForm.reset();
+      setEditMode(null);
+      setStatus(employeeStatus, "", "");
+    });
+
     employeesBody.addEventListener("click", async event => {
+      const edit = event.target.closest("[data-edit-employee]");
+      if (edit) {
+        setEditMode({
+          id: edit.dataset.editEmployee,
+          employee_code: edit.dataset.code,
+          full_name: edit.dataset.name,
+          phone: edit.dataset.phone,
+          department_id: edit.dataset.department,
+          position: edit.dataset.position
+        });
+        window.scrollTo({ top: employeeForm.getBoundingClientRect().top + window.scrollY - 120, behavior: "smooth" });
+        return;
+      }
+
       const unlink = event.target.closest("[data-unlink-device]");
       if (unlink) {
         const ok = confirm(`Delete device for ${unlink.dataset.name}?\n\nAttendance history will NOT be deleted.`);
@@ -701,14 +754,14 @@
         return;
       }
 
-      const deactivate = event.target.closest("[data-deactivate-employee]");
-      if (deactivate) {
-        const ok = confirm(`Deactivate ${deactivate.dataset.name}?\n\nAttendance history will NOT be deleted.`);
+      const deleteButton = event.target.closest("[data-delete-employee]");
+      if (deleteButton) {
+        const ok = confirm(`Delete ${deleteButton.dataset.name}?\n\nAttendance history will NOT be deleted.`);
         if (!ok) return;
         try {
-          await adminAction({ action: "deactivate_employee", employeeId: deactivate.dataset.deactivateEmployee }, "Deactivating employee...");
+          await adminAction({ action: "delete_employee", employeeId: deleteButton.dataset.deleteEmployee }, "Deleting employee...");
         } catch (error) {
-          setStatus(employeeStatus, error.message || "Unable to deactivate employee", "error");
+          setStatus(employeeStatus, error.message || "Unable to delete employee", "error");
         }
       }
     });
