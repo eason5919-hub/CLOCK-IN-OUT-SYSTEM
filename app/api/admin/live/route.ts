@@ -56,7 +56,7 @@ export async function GET(request: Request) {
              SELECT employee_id,
                     SUM(CASE duration WHEN 'half_day' THEN 0.5 ELSE 1 END) AS taken_days
              FROM leave_requests
-             WHERE status = 'approved'
+             WHERE status = 'approved' AND leave_type = 'leave'
              GROUP BY employee_id
            ) leave_totals ON leave_totals.employee_id = e.id
            WHERE e.status <> 'deleted'

@@ -139,7 +139,7 @@ function shell(content, subtitle) {
         </div>
         <nav class="nav">
           ${state.currentUser.role === "employee"
-            ? `<a href="#clock">Clock In/Out</a><a href="#month">Monthly View</a><a href="#history">History</a><a href="#corrections">Correction Request</a><a href="#leave">Apply Leave/MC</a>`
+            ? `<a href="#clock">Clock In/Out</a><a href="#month">Monthly View</a><a href="#history">History</a><a href="#corrections">Correction Request</a><a href="#leave">Annual Leave/MC</a>`
             : `<a href="#warehouse-qr">QR Code</a><a href="#employees">Employees</a><a href="#attendance">Attendance</a><a href="#corrections">Corrections</a><a href="#reports">Reports</a>`}
         </nav>
         <div class="warehouse">
@@ -220,16 +220,16 @@ function employeeScreen() {
       </section>
       <section class="panel" id="leave">
         <div class="heading">
-          <div><p class="eyebrow">Apply Leave/MC</p><h3>Leave remaining: ${leaveRemaining}</h3></div>
+          <div><p class="eyebrow">Apply Annual Leave/MC</p><h3>Annual leave remaining: ${leaveRemaining}</h3></div>
         </div>
         <form class="form" id="leave-form">
-          <label>Type<select name="leaveType"><option value="leave">Leave</option><option value="mc">MC</option></select></label>
+          <label>Type<select name="leaveType"><option value="leave">Annual Leave</option><option value="mc">MC</option></select></label>
           <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
           <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select></label>
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
-          <button>Submit Leave/MC</button>
+          <button>Submit Annual Leave/MC</button>
         </form>
-        <div class="list" style="margin-top:14px">${leaveRequests.map(leaveRequestCard).join("") || `<small>No Leave/MC requests.</small>`}</div>
+        <div class="list" style="margin-top:14px">${leaveRequests.map(leaveRequestCard).join("") || `<small>No Annual Leave/MC requests.</small>`}</div>
       </section>
     </div>
     ${qrScannerModal()}
@@ -464,7 +464,7 @@ function mapLiveLeaveRequest(row) {
     id: row.id,
     employeeId: state.currentUser?.employeeId,
     date: row.leave_date,
-    type: statusLabel(row.leave_type),
+    type: leaveTypeLabel(row.leave_type),
     duration: statusLabel(row.duration),
     reason: row.reason || "",
     status: statusLabel(row.status),
@@ -478,7 +478,7 @@ function bindEmployee() {
   });
   document.querySelectorAll("[data-cancel-leave]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const ok = confirm("Cancel this Leave/MC request?");
+      const ok = confirm("Cancel this Annual Leave/MC request?");
       if (!ok) return;
       try {
         await liveApi("/api/leave-requests", {
@@ -488,11 +488,11 @@ function bindEmployee() {
             requestId: button.dataset.cancelLeave,
           }),
         });
-        toast("Leave/MC request cancelled.");
+        toast("Annual Leave/MC request cancelled.");
         await loadEmployeeLive(true);
         render();
       } catch (error) {
-        toast(error.message || "Unable to cancel Leave/MC request.");
+        toast(error.message || "Unable to cancel Annual Leave/MC request.");
       }
     });
   });
@@ -544,7 +544,7 @@ function bindEmployee() {
         id: tempId,
         employeeId: state.currentUser.employeeId,
         date: leaveDate,
-        type: statusLabel(leaveType),
+        type: leaveTypeLabel(leaveType),
         duration: statusLabel(duration),
         reason,
         status: "Pending",
@@ -554,7 +554,7 @@ function bindEmployee() {
     saveState();
     form.reset();
     render();
-    toast("Leave/MC submitted");
+    toast("Annual Leave/MC submitted");
 
     try {
       const result = await liveApi("/api/leave-requests", {
@@ -577,7 +577,7 @@ function bindEmployee() {
       state.leaveRequests = (state.leaveRequests || []).filter((request) => request.id !== tempId);
       saveState();
       render();
-      toast(error.message || "Unable to submit Leave/MC request.");
+      toast(error.message || "Unable to submit Annual Leave/MC request.");
     }
   });
 }
@@ -1056,6 +1056,10 @@ function statusLabel(value) {
   return String(value || "-")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function leaveTypeLabel(value) {
+  return value === "leave" || value === "Annual Leave" ? "Annual Leave" : statusLabel(value);
 }
 
 function getDeviceFingerprint() {

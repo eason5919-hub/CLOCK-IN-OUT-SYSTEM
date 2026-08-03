@@ -409,7 +409,7 @@
 
     <section class="panel">
       <div class="panelHead">
-        <h2>Active Leave / MC Notice</h2>
+        <h2>Active Annual Leave / MC Notice</h2>
         <span id="leaveCountText" class="status"></span>
       </div>
       <div class="tableWrap">
@@ -429,7 +429,7 @@
           <tbody id="leaveBody"></tbody>
         </table>
       </div>
-      <div id="leaveEmpty" class="empty" hidden>No current Leave/MC notices.</div>
+      <div id="leaveEmpty" class="empty" hidden>No current Annual Leave/MC notices.</div>
     </section>
 
     <section class="panel">
@@ -600,6 +600,10 @@
       return String(value || "-").replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
     }
 
+    function leaveTypeText(value) {
+      return value === "leave" ? "Annual Leave" : labelText(value);
+    }
+
     function todayKey() {
       return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
     }
@@ -663,7 +667,7 @@
             <td>
               <div class="leaveControl">
                 ${editing ? `<input type="number" min="0" step="0.5" value="${Number(employee.leave_entitlement_days || 0)}" data-field="leaveEntitlementDays" aria-label="Leave days for ${escapeHtml(employee.full_name)}">` : `<strong>${escapeHtml(formatLeaveDays(employee.leave_entitlement_days))}</strong>`}
-                <small>Taken ${escapeHtml(formatLeaveDays(employee.leave_taken_days))}</small>
+                <small>Annual taken ${escapeHtml(formatLeaveDays(employee.leave_taken_days))}</small>
               </div>
             </td>
             <td><strong>${escapeHtml(formatLeaveDays(employee.leave_remaining_days))}</strong></td>
@@ -693,7 +697,7 @@
             <strong>${escapeHtml(request.full_name || "-")}</strong>
             <small>${escapeHtml(request.employee_code || "-")}</small>
           </td>
-          <td>${escapeHtml(labelText(request.leave_type))}</td>
+          <td>${escapeHtml(leaveTypeText(request.leave_type))}</td>
           <td>${escapeHtml(labelText(request.duration))}</td>
           <td>${escapeHtml(request.reason || "-")}</td>
           <td><span class="pill ${request.status === "pending" ? "warn" : request.status === "rejected" ? "bad" : ""}">${escapeHtml(labelText(request.status))}</span></td>
@@ -891,9 +895,9 @@
           action: "review_leave_request",
           requestId: review.dataset.reviewLeave,
           status: review.dataset.status
-        }, review.dataset.status === "approved" ? "Approving Leave/MC..." : "Rejecting Leave/MC...");
+        }, review.dataset.status === "approved" ? "Approving Annual Leave/MC..." : "Rejecting Annual Leave/MC...");
       } catch (error) {
-        setStatus(employeeStatus, error.message || "Unable to review Leave/MC", "error");
+        setStatus(employeeStatus, error.message || "Unable to review Annual Leave/MC", "error");
       }
     });
 
