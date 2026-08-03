@@ -23,6 +23,8 @@ const defaultState = {
 
 let state = loadState();
 let pendingDeleteEmployeeId = null;
+let pendingScanAction = null;
+let qrScanController = null;
 
 window.addEventListener("hashchange", () => {
   if (!state.currentUser) render();
@@ -216,6 +218,7 @@ function employeeScreen() {
         <div class="list" style="margin-top:14px">${corrections.map(correctionCard).join("") || `<small>No correction requests.</small>`}</div>
       </section>
     </div>
+    ${qrScannerModal()}
   `;
 }
 
@@ -259,6 +262,14 @@ function adminScreen() {
         <div class="heading"><div><p class="eyebrow">Working hours</p><h3>OT rules</h3></div></div>
         <p>Monday-Friday: normal end 18:00, no OT until 18:16, counted from 18:00.</p>
         <p>Saturday: normal end 13:00, no OT until 13:16, counted from 13:00. Sunday approved work is all OT.</p>
+      </section>
+      <section class="panel" id="warehouse-qr">
+        <div class="heading"><div><p class="eyebrow">Clock in QR</p><h3>Warehouse QR Code</h3></div></div>
+        <div class="qr-print">
+          <img src="${warehouseQrImageUrl()}" alt="Warehouse clock in QR code" />
+          <strong>${WAREHOUSE.qr}</strong>
+          <small>Employees scan this QR when clocking in or out.</small>
+        </div>
       </section>
     </div>
     ${deleteEmployeeModal()}
@@ -336,8 +347,14 @@ function bindLogin() {
 function bindEmployee() {
   bindShell();
   document.querySelectorAll("[data-clock]").forEach((button) => {
-    button.addEventListener("click", () => clock(button.dataset.clock));
+    button.addEventListener("click", () => openQrScanner(button.dataset.clock));
   });
+  document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
+  document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
+    const qr = prompt("Enter the warehouse QR code shown by HR");
+    if (qr) completeQrScan(qr.trim());
+  });
+  if (pendingScanAction) startQrScanner();
   document.querySelector("#correction-form").addEventListener("submit", (event) => {
     event.preventDefault();
     const employee = employeeById(state.currentUser.employeeId);
@@ -417,6 +434,8 @@ function bindAdmin() {
 
 function bindShell() {
   document.querySelector("#logout").addEventListener("click", () => {
+    stopQrScanner();
+    pendingScanAction = null;
     state.currentUser = null;
     saveState();
     render();
@@ -426,14 +445,89 @@ function bindShell() {
   });
 }
 
-async function clock(action) {
+function openQrScanner(action) {
+  pendingScanAction = action;
+  render();
+}
+
+function closeQrScanner() {
+  stopQrScanner();
+  pendingScanAction = null;
+  render();
+}
+
+async function completeQrScan(qr) {
+  const action = pendingScanAction;
+  stopQrScanner();
+  pendingScanAction = null;
+  render();
+  await clock(action, qr);
+}
+
+async function startQrScanner() {
+  const video = document.querySelector("#qr-video");
+  const message = document.querySelector("#qr-scan-message");
+  if (!video || !message || qrScanController?.active) return;
+
+  if (!navigator.mediaDevices?.getUserMedia || (!("BarcodeDetector" in window) && !window.jsQR)) {
+    message.textContent = "This browser cannot scan QR by camera. Use Manual QR.";
+    return;
+  }
+
+  try {
+    const detector = "BarcodeDetector" in window ? new BarcodeDetector({ formats: ["qr_code"] }) : null;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    qrScanController = { active: true, stream };
+    video.srcObject = stream;
+    await video.play();
+    message.textContent = "Point the camera at the warehouse QR code.";
+
+    const scan = async () => {
+      if (!qrScanController?.active) return;
+      try {
+        const qr = await detectQrCode(video, detector, canvas, context);
+        if (qr) {
+          await completeQrScan(qr);
+          return;
+        }
+      } catch {
+        message.textContent = "Scanning... keep the QR inside the frame.";
+      }
+      requestAnimationFrame(scan);
+    };
+    requestAnimationFrame(scan);
+  } catch {
+    message.textContent = "Camera permission is needed. Allow camera or use Manual QR.";
+  }
+}
+
+async function detectQrCode(video, detector, canvas, context) {
+  if (detector) {
+    const codes = await detector.detect(video);
+    return codes[0]?.rawValue || "";
+  }
+  if (!window.jsQR || !context || video.readyState < 2) return "";
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  return window.jsQR(image.data, image.width, image.height)?.data || "";
+}
+
+function stopQrScanner() {
+  if (qrScanController?.stream) {
+    qrScanController.stream.getTracks().forEach((track) => track.stop());
+  }
+  qrScanController = null;
+}
+
+async function clock(action, qr) {
   const employee = employeeById(state.currentUser.employeeId);
   const scanner = document.querySelector("#scanner");
   const message = document.querySelector("#gps-message");
   scanner.className = "scanner";
-  message.textContent = "Scanning permanent warehouse QR code...";
-  await wait(500);
-  const qr = prompt("Scan/enter warehouse QR token", WAREHOUSE.qr);
   if (qr !== WAREHOUSE.qr) {
     scanner.className = "scanner rejected";
     message.textContent = "Invalid warehouse QR code.";
@@ -616,6 +710,10 @@ function employeeById(id) {
   return findEmployeeById(id) || { id, code: "Deleted", name: "Deleted employee" };
 }
 
+function warehouseQrImageUrl() {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data=${encodeURIComponent(WAREHOUSE.qr)}`;
+}
+
 function findEmployeeById(id) {
   return state.employees.find((employee) => employee.id === id);
 }
@@ -661,6 +759,27 @@ function deleteEmployeeModal() {
         <div class="actions">
           <button class="secondary" data-cancel-delete>Cancel</button>
           <button class="danger" data-confirm-delete>Delete</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function qrScannerModal() {
+  if (!pendingScanAction) return "";
+  return `
+    <div class="modal-backdrop" role="dialog" aria-modal="true">
+      <section class="confirm-modal scan-modal">
+        <p class="eyebrow">${pendingScanAction === "in" ? "Clock in" : "Clock out"}</p>
+        <h3>Scan Warehouse QR</h3>
+        <div class="camera-box">
+          <video id="qr-video" playsinline muted></video>
+          <div class="scan-frame" aria-hidden="true"></div>
+        </div>
+        <p id="qr-scan-message">Starting camera...</p>
+        <div class="actions">
+          <button class="secondary" data-cancel-scan>Cancel</button>
+          <button class="secondary" data-manual-qr>Manual QR</button>
         </div>
       </section>
     </div>
