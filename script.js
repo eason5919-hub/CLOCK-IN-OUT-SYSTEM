@@ -10,6 +10,7 @@ const WAREHOUSE = {
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
 };
+const MAX_GPS_ACCURACY_METERS = 30;
 
 const defaultState = {
   currentUser: null,
@@ -573,9 +574,11 @@ async function clock(action, qr) {
   const samples = await collectGpsSamples();
   const sample = samples.sort((a, b) => a.accuracy - b.accuracy)[0];
   const distance = Math.round(distanceMeters(sample.latitude, sample.longitude, WAREHOUSE.lat, WAREHOUSE.lng));
-  if (sample.source !== "browser" || sample.accuracy > 30 || distance > WAREHOUSE.radius) {
+  const allowedDistance = WAREHOUSE.radius;
+  if (sample.source !== "browser" || sample.accuracy > MAX_GPS_ACCURACY_METERS || distance > allowedDistance) {
     scanner.className = "scanner rejected";
-    message.textContent = "Unable to verify location. Please enable phone GPS and stand near the warehouse QR.";
+    message.textContent =
+      `Unable to verify location. GPS accuracy ${Math.round(sample.accuracy)}m, distance ${distance}m, allowed ${Math.round(allowedDistance)}m.`;
     return;
   }
 

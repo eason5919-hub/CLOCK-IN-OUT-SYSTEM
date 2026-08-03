@@ -37,6 +37,8 @@ type AttendanceRow = {
 
 type ScheduleRow = AttendanceSchedule;
 
+const MAX_GPS_ACCURACY_METERS = 30;
+
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as ClockPayload;
@@ -77,14 +79,17 @@ export async function POST(request: Request) {
       warehouse.longitude,
     );
 
-    if (bestSample.accuracy > 30 || distance > warehouse.allowed_radius_meters) {
+    const allowedDistance = warehouse.allowed_radius_meters;
+
+    if (bestSample.accuracy > MAX_GPS_ACCURACY_METERS || distance > allowedDistance) {
       return json(
         request,
         {
           error:
-            "Unable to verify location. Please move closer to warehouse or enable GPS.",
+            `Unable to verify location. GPS accuracy ${Math.round(bestSample.accuracy)}m, distance ${Math.round(distance)}m, allowed ${Math.round(allowedDistance)}m.`,
           accuracy: bestSample.accuracy,
           distance,
+          allowedDistance,
         },
         403,
       );
