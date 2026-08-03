@@ -37,12 +37,16 @@ export async function GET(request: Request) {
     const [employees, attendance, corrections, auditLogs] = await Promise.all([
       db
         .prepare(
-          `SELECT e.id, e.employee_code, e.full_name, e.department_id, e.position, e.phone,
+          `SELECT e.id, e.employee_code, e.full_name, e.department_id,
+                  COALESCE(dep.name, e.department_id) AS department_name,
+                  e.position, e.phone,
                   e.email, e.status, e.created_at,
                   d.id AS device_id, d.device_model, d.status AS device_status,
                   d.registered_at, d.last_seen_at
            FROM employees e
+           LEFT JOIN departments dep ON dep.id = e.department_id
            LEFT JOIN devices d ON d.employee_id = e.id AND d.status = 'registered'
+           WHERE e.status <> 'deleted'
            ORDER BY e.employee_code`,
         )
         .all(),
@@ -125,10 +129,22 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
 
   const employeeId = crypto.randomUUID();
   const email = payload.email?.trim() || `${code.toLowerCase()}@warehouse.local`;
+  const departmentId = await ensureDepartment(db, payload.department);
   const existing = await db
-    .prepare("SELECT id FROM employees WHERE UPPER(employee_code) = ?")
+    .prepare("SELECT id, status FROM employees WHERE UPPER(employee_code) = ?")
     .bind(code)
-    .first<{ id: string }>();
+    .first<{ id: string; status: string }>();
+  if (existing && existing.status === "deleted") {
+    await db.batch([
+      db
+        .prepare(
+        "UPDATE employees SET full_name = ?, phone = ?, department_id = ?, position = ?, email = ?, status = 'active' WHERE id = ?",
+      )
+        .bind(name, phone, departmentId, payload.position?.trim() || "Warehouse Associate", email, existing.id),
+      db.prepare("UPDATE users SET is_active = 1 WHERE employee_id = ? AND role = 'employee'").bind(existing.id),
+    ]);
+    return json(request, { ok: true, employeeId: existing.id }, 200);
+  }
   if (existing) {
     return json(request, { error: "This employee code already exists. Use Edit instead." }, 409);
   }
@@ -138,7 +154,7 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
       .prepare(
         "INSERT INTO employees (id, employee_code, full_name, department_id, position, phone, email, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'active')",
       )
-      .bind(employeeId, code, name, payload.department?.trim() || null, payload.position?.trim() || "Warehouse Associate", phone, email),
+      .bind(employeeId, code, name, departmentId, payload.position?.trim() || "Warehouse Associate", phone, email),
     db
       .prepare(
         "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, 'employee', ?, 1)",
@@ -172,12 +188,14 @@ async function editEmployee(
     .first<{ id: string }>();
   if (duplicate) return json(request, { error: "This employee code already exists." }, 409);
 
+  const departmentId = await ensureDepartment(db, payload.department);
+
   await db.batch([
     db
       .prepare(
         "UPDATE employees SET employee_code = ?, full_name = ?, phone = ?, department_id = ?, position = ? WHERE id = ?",
       )
-      .bind(code, name, phone, payload.department?.trim() || null, payload.position?.trim() || "Warehouse Associate", employeeId),
+      .bind(code, name, phone, departmentId, payload.position?.trim() || "Warehouse Associate", employeeId),
     db
       .prepare(
         "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -189,28 +207,46 @@ async function editEmployee(
         "employee",
         employeeId,
         JSON.stringify(before),
-        JSON.stringify({ employee_code: code, full_name: name, phone, department_id: payload.department, position: payload.position }),
+        JSON.stringify({ employee_code: code, full_name: name, phone, department_id: departmentId, position: payload.position }),
       ),
   ]);
 
   return json(request, { ok: true });
 }
 
+async function ensureDepartment(db: D1Database, value: string | undefined) {
+  const name = value?.trim();
+  if (!name) return null;
+
+  const id = name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "DEPARTMENT";
+
+  await db
+    .prepare("INSERT OR IGNORE INTO departments (id, name) VALUES (?, ?)")
+    .bind(id, name)
+    .run();
+
+  return id;
+}
+
 async function deactivateEmployee(db: D1Database, request: Request, employeeId: string | undefined, adminUserId: string) {
-  if (!employeeId) return json(request, { error: "Employee ID is required." }, 400);
+    if (!employeeId) return json(request, { error: "Employee ID is required." }, 400);
 
   const before = await db.prepare("SELECT * FROM employees WHERE id = ?").bind(employeeId).first();
   if (!before) return json(request, { error: "Employee was not found." }, 404);
 
   await db.batch([
-    db.prepare("UPDATE employees SET status = 'inactive' WHERE id = ?").bind(employeeId),
+    db.prepare("UPDATE employees SET status = 'deleted' WHERE id = ?").bind(employeeId),
     db.prepare("UPDATE users SET is_active = 0 WHERE employee_id = ? AND role = 'employee'").bind(employeeId),
     db.prepare("UPDATE devices SET status = 'reset', reset_by_user_id = ?, reset_at = CURRENT_TIMESTAMP WHERE employee_id = ? AND status = 'registered'").bind(adminUserId, employeeId),
     db
       .prepare(
         "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
       )
-      .bind(crypto.randomUUID(), adminUserId, "deactivate_employee", "employee", employeeId, JSON.stringify(before), JSON.stringify({ status: "inactive" })),
+      .bind(crypto.randomUUID(), adminUserId, "delete_employee", "employee", employeeId, JSON.stringify(before), JSON.stringify({ status: "deleted" })),
   ]);
 
   return json(request, { ok: true });

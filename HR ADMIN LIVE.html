@@ -577,7 +577,7 @@
             <td><strong>${escapeHtml(employee.employee_code)}</strong></td>
             <td>${escapeHtml(employee.full_name)}</td>
             <td>${escapeHtml(employee.phone || "-")}</td>
-            <td>${escapeHtml(employee.department_id || "-")}</td>
+            <td>${escapeHtml(employee.department_name || employee.department_id || "-")}</td>
             <td>${escapeHtml(employee.position || "-")}</td>
             <td><span class="pill ${active ? "" : "bad"}">${escapeHtml(employee.status || "-")}</span></td>
             <td>
@@ -591,7 +591,7 @@
                   data-code="${escapeHtml(employee.employee_code || "")}"
                   data-name="${escapeHtml(employee.full_name || "")}"
                   data-phone="${escapeHtml(employee.phone || "")}"
-                  data-department="${escapeHtml(employee.department_id || "")}"
+                  data-department="${escapeHtml(employee.department_name || employee.department_id || "")}"
                   data-position="${escapeHtml(employee.position || "")}"
                 >Edit</button>
                 ${hasDevice ? `<button class="secondary" type="button" data-unlink-device="${escapeHtml(employee.device_id)}" data-name="${escapeHtml(employee.full_name)}">Delete Device</button>` : ""}
@@ -641,6 +641,7 @@
       document.getElementById("positionInput").value = employee ? employee.position || "" : "";
       saveEmployeeButton.textContent = employee ? "Save Changes" : "Add";
       cancelEditButton.hidden = !employee;
+      setStatus(employeeStatus, employee ? `Editing ${employee.employee_code || ""}` : "", employee ? "ok" : "");
       if (employee) document.getElementById("codeInput").focus();
     }
 
@@ -666,7 +667,7 @@
         method: "POST",
         body: JSON.stringify(payload)
       });
-      setStatus(employeeStatus, "Saved", "ok");
+      setStatus(employeeStatus, payload.action === "delete_employee" ? "Deleted" : "Saved", "ok");
       await loadLiveData(true);
     }
 
