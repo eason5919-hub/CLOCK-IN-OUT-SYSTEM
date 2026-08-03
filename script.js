@@ -173,7 +173,7 @@ function employeeScreen() {
     ? `Clocked in at ${escapeHtml(openRecord.clockIn)}. Scan the QR again to clock out.`
     : "Scan the warehouse QR to clock in.";
   const stats = {
-    present: records.filter((row) => row.status !== "Absent").length,
+    present: formatDayCount(calculatePresentDays(records, leaveRequests)),
     late: records.filter((row) => row.lateMinutes > 0).length,
     ot: records.reduce((total, row) => total + row.overtimeMinutes, 0),
     corrections: corrections.length,
@@ -1133,6 +1133,30 @@ function formatOtMinutes(minutes) {
 function formatLeaveDays(value) {
   const number = Number(value || 0);
   return `${Number.isInteger(number) ? number : number.toFixed(1)} day${number === 1 ? "" : "s"}`;
+}
+
+function formatDayCount(value) {
+  const number = Number(value || 0);
+  return Number.isInteger(number) ? String(number) : number.toFixed(1);
+}
+
+function calculatePresentDays(records, leaveRequests) {
+  const dayValues = new Map();
+
+  records
+    .filter((row) => row.date && row.status !== "Absent")
+    .forEach((row) => {
+      dayValues.set(row.date, Math.max(dayValues.get(row.date) || 0, 1));
+    });
+
+  (leaveRequests || [])
+    .filter((request) => ["Pending", "Approved"].includes(request.status))
+    .forEach((request) => {
+      const value = request.duration === "Half Day" ? 0.5 : 1;
+      dayValues.set(request.date, Math.max(dayValues.get(request.date) || 0, value));
+    });
+
+  return [...dayValues.values()].reduce((total, value) => total + value, 0);
 }
 
 function localDateTimeToIso(date, time) {
