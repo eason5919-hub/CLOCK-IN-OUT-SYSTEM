@@ -6,15 +6,17 @@ export async function POST(request: Request) {
 
   const payload = (await request.json()) as {
     employeeCode?: string;
+    fullName?: string;
     phone?: string;
     deviceFingerprint?: string;
     deviceModel?: string;
   };
   const code = payload.employeeCode?.trim().toUpperCase();
+  const fullName = normalizeName(payload.fullName ?? "");
   const phone = normalizePhone(payload.phone ?? "");
 
-  if (!code || !phone || !payload.deviceFingerprint || !payload.deviceModel) {
-    return Response.json({ error: "Employee code, phone and device are required." }, { status: 400 });
+  if (!code || !fullName || !phone || !payload.deviceFingerprint || !payload.deviceModel) {
+    return json(request, { error: "Employee code, full name, phone and device are required." }, 400);
   }
 
   const employee = await db
@@ -37,8 +39,12 @@ export async function POST(request: Request) {
       role: "employee";
     }>();
 
-  if (!employee || normalizePhone(employee.phone ?? "") !== phone) {
-    return Response.json({ error: "Employee code and phone number do not match HR records." }, { status: 401 });
+  if (
+    !employee ||
+    normalizeName(employee.full_name ?? "") !== fullName ||
+    normalizePhone(employee.phone ?? "") !== phone
+  ) {
+    return json(request, { error: "Employee code, full name and phone number do not match HR records." }, 401);
   }
 
   const linked = await db
@@ -47,9 +53,10 @@ export async function POST(request: Request) {
     .first<{ id: string; device_fingerprint: string }>();
 
   if (linked && linked.device_fingerprint !== payload.deviceFingerprint) {
-    return Response.json(
+    return json(
+      request,
       { error: "This employee account is already linked to another phone. Ask HR/Admin to reset the device." },
-      { status: 403 },
+      403,
     );
   }
 
@@ -68,10 +75,13 @@ export async function POST(request: Request) {
     employee_id: employee.id,
   });
 
-  return Response.json(
-    { user: toEmployeeUser(employee) },
-    { headers: { "set-cookie": sessionCookie(session.id, session.expiresAt) } },
-  );
+  return json(request, { user: toEmployeeUser(employee), token: session.id, expiresAt: session.expiresAt }, 200, {
+    "set-cookie": sessionCookie(session.id, session.expiresAt),
+  });
+}
+
+export async function OPTIONS(request: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
 
 function toEmployeeUser(employee: {
@@ -93,4 +103,24 @@ function toEmployeeUser(employee: {
 
 function normalizePhone(value: string) {
   return value.replace(/\D/g, "");
+}
+
+function normalizeName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+function json(request: Request, data: unknown, status = 200, headers: Record<string, string> = {}) {
+  return Response.json(data, { status, headers: { ...corsHeaders(request), ...headers } });
+}
+
+function corsHeaders(request: Request) {
+  const origin = request.headers.get("origin") || "*";
+  const requestHeaders = request.headers.get("access-control-request-headers");
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": requestHeaders || "Content-Type, Authorization",
+    "access-control-max-age": "86400",
+    vary: "Origin",
+  };
 }

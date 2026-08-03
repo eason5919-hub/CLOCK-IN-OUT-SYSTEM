@@ -166,7 +166,9 @@ export async function createSession(
 }
 
 export async function getSessionFromRequest(db: D1Database, request: Request) {
-  const sessionId = parseCookie(request.headers.get("cookie") ?? "")[SESSION_COOKIE];
+  const authorization = request.headers.get("authorization") ?? "";
+  const bearerToken = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  const sessionId = bearerToken || parseCookie(request.headers.get("cookie") ?? "")[SESSION_COOKIE];
   if (!sessionId) return null;
 
   const session = await db

@@ -5,7 +5,7 @@ export async function GET(request: Request) {
   await ensureDatabase(db);
   const session = await getSessionFromRequest(db, request);
   if (session?.role !== "employee" || !session.employee_id) {
-    return Response.json({ error: "Employee login is required." }, { status: 401 });
+    return json(request, { error: "Employee login is required." }, 401);
   }
 
   const employee = await db
@@ -14,10 +14,26 @@ export async function GET(request: Request) {
               d.device_model, d.status AS device_status
        FROM employees e
        LEFT JOIN devices d ON d.employee_id = e.id AND d.status = 'registered'
-       WHERE e.id = ?`,
+       WHERE e.id = ? AND e.status = 'active'`,
     )
     .bind(session.employee_id)
     .first<Record<string, string | null>>();
+
+  if (!employee) {
+    return json(request, { error: "Employee account was deleted by HR." }, 401);
+  }
+
+  const deviceFingerprint = request.headers.get("x-device-fingerprint")?.trim();
+  if (deviceFingerprint) {
+    const device = await db
+      .prepare("SELECT id FROM devices WHERE employee_id = ? AND device_fingerprint = ? AND status = 'registered'")
+      .bind(session.employee_id, deviceFingerprint)
+      .first<{ id: string }>();
+
+    if (!device) {
+      return json(request, { error: "Employee phone access was deleted by HR." }, 401);
+    }
+  }
 
   const attendance = await db
     .prepare(
@@ -41,5 +57,25 @@ export async function GET(request: Request) {
     .bind(session.employee_id)
     .all();
 
-  return Response.json({ employee, attendance: attendance.results, corrections: corrections.results });
+  return json(request, { employee, attendance: attendance.results, corrections: corrections.results });
+}
+
+export async function OPTIONS(request: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
+}
+
+function json(request: Request, data: unknown, status = 200) {
+  return Response.json(data, { status, headers: corsHeaders(request) });
+}
+
+function corsHeaders(request: Request) {
+  const origin = request.headers.get("origin") || "*";
+  const requestHeaders = request.headers.get("access-control-request-headers");
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET, OPTIONS",
+    "access-control-allow-headers": requestHeaders || "Content-Type, Authorization",
+    "access-control-max-age": "86400",
+    vary: "Origin",
+  };
 }

@@ -12,17 +12,17 @@ export async function POST(request: Request) {
     };
 
     if (!payload.employeeId || !payload.requestedDate || !payload.missingType || !payload.reason) {
-      return Response.json({ error: "employeeId, requestedDate, missingType and reason are required." }, { status: 400 });
+      return json(request, { error: "employeeId, requestedDate, missingType and reason are required." }, 400);
     }
 
     const db = getD1();
     await ensureDatabase(db);
     const session = await getSessionFromRequest(db, request);
     if (session?.role !== "employee" || !session.employee_id) {
-      return Response.json({ error: "Employee login is required." }, { status: 401 });
+      return json(request, { error: "Employee login is required." }, 401);
     }
     if (payload.employeeId !== session.employee_id) {
-      return Response.json({ error: "Employees can only submit their own corrections." }, { status: 403 });
+      return json(request, { error: "Employees can only submit their own corrections." }, 403);
     }
     const existing = await db
       .prepare("SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?")
@@ -50,11 +50,15 @@ export async function POST(request: Request) {
       )
       .run();
 
-    return Response.json({ ok: true, correctionId: id }, { status: 201 });
+    return json(request, { ok: true, correctionId: id }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return Response.json({ error: message }, { status: 500 });
+    return json(request, { error: message }, 500);
   }
+}
+
+export async function OPTIONS(request: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
 
 export async function PATCH(request: Request) {
@@ -67,14 +71,14 @@ export async function PATCH(request: Request) {
     };
 
     if (!payload.correctionId || !payload.status || !payload.adminUserId) {
-      return Response.json({ error: "correctionId, status and adminUserId are required." }, { status: 400 });
+      return json(request, { error: "correctionId, status and adminUserId are required." }, 400);
     }
 
     const db = getD1();
     await ensureDatabase(db);
     const session = await getSessionFromRequest(db, request);
     if (!isAdminSession(session)) {
-      return Response.json({ error: "Admin login is required." }, { status: 401 });
+      return json(request, { error: "Admin login is required." }, 401);
     }
     const correction = await db
       .prepare("SELECT * FROM attendance_corrections WHERE id = ? AND status = 'pending'")
@@ -82,7 +86,7 @@ export async function PATCH(request: Request) {
       .first<Record<string, string | null>>();
 
     if (!correction) {
-      return Response.json({ error: "Pending correction was not found." }, { status: 404 });
+      return json(request, { error: "Pending correction was not found." }, 404);
     }
 
     let newRecordJson: string | null = null;
@@ -141,9 +145,25 @@ export async function PATCH(request: Request) {
       )
       .run();
 
-    return Response.json({ ok: true });
+    return json(request, { ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return Response.json({ error: message }, { status: 500 });
+    return json(request, { error: message }, 500);
   }
+}
+
+function json(request: Request, data: unknown, status = 200) {
+  return Response.json(data, { status, headers: corsHeaders(request) });
+}
+
+function corsHeaders(request: Request) {
+  const origin = request.headers.get("origin") || "*";
+  const requestHeaders = request.headers.get("access-control-request-headers");
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, PATCH, OPTIONS",
+    "access-control-allow-headers": requestHeaders || "Content-Type, Authorization",
+    "access-control-max-age": "86400",
+    vary: "Origin",
+  };
 }

@@ -1,16 +1,14 @@
 const STORAGE_KEY = "warehouse-attendance-static-v2";
 const DEVICE_KEY = "warehouse-device-fingerprint";
+const EMPLOYEE_TOKEN_KEY = "warehouse-live-employee-token";
+const EMPLOYEE_TOKEN_EXPIRY_KEY = "warehouse-live-employee-token-expiry";
+const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
   name: "Main Warehouse",
   lat: 2.9850965,
   lng: 101.7700882,
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
-};
-
-const ADMIN_ACCOUNT = {
-  email: "d1_racing@yahoo.com",
-  passwordHash: "fad4b78390b338486a88d8706127faa3fc30657b2889f960d194fe5afde98002",
 };
 
 const defaultState = {
@@ -25,6 +23,7 @@ let state = loadState();
 let pendingDeleteEmployeeId = null;
 let pendingScanAction = null;
 let qrScanController = null;
+let liveRefreshInFlight = false;
 
 window.addEventListener("hashchange", () => {
   if (window.location.hash.toLowerCase() === "#admin") {
@@ -52,6 +51,10 @@ function render() {
     state.currentUser = null;
     saveState();
   }
+  if (state.currentUser && !employeeToken()) {
+    state.currentUser = null;
+    saveState();
+  }
 
   if (!state.currentUser) {
     app.innerHTML = loginScreen();
@@ -59,17 +62,9 @@ function render() {
     return;
   }
 
-  if (!findEmployeeById(state.currentUser.employeeId)) {
-    state.currentUser = null;
-    saveState();
-    app.innerHTML = loginScreen();
-    bindLogin();
-    toast("This employee account was deleted by HR.");
-    return;
-  }
-
   app.innerHTML = shell(employeeScreen(), "Employee attendance app");
   bindEmployee();
+  loadEmployeeLive();
 }
 
 function loginScreen() {
@@ -87,19 +82,14 @@ function loginScreen() {
           <span class="badge">One phone only</span>
         </div>
       </div>
-      <div class="auth-grid">
+      <div class="auth-grid single">
         <form class="auth-panel" id="employee-register">
-          <div><p class="eyebrow">Employee first time</p><h3>Register Official Phone</h3></div>
+          <div><p class="eyebrow">Employee login</p><h3>Open Attendance</h3></div>
           <label>Employee code<input name="code" placeholder="WH-001" required /></label>
           <label>Full name<input name="name" placeholder="Employee name" required /></label>
           <label>Phone number<input name="phone" placeholder="+60 12-400 1001" required /></label>
-          <button>Register Phone</button>
-        </form>
-        <form class="auth-panel" id="employee-login">
-          <div><p class="eyebrow">Employee returning</p><h3>Employee Login</h3></div>
-          <label>Employee code<input name="code" placeholder="WH-001" required /></label>
           <button>Open My Attendance</button>
-          <small>Employees can only view and submit their own records.</small>
+          <small>Code, full name, and phone must match HR records.</small>
         </form>
       </div>
     </section>
@@ -118,7 +108,6 @@ function shell(content, subtitle) {
           <p class="eyebrow">Signed in</p>
           <strong>${escapeHtml(state.currentUser.name)}</strong>
           <small>${escapeHtml(state.currentUser.label)}</small>
-          <button class="secondary" id="logout">Sign Out</button>
         </div>
         <nav class="nav">
           ${state.currentUser.role === "employee"
@@ -145,8 +134,8 @@ function shell(content, subtitle) {
 
 function employeeScreen() {
   const employee = employeeById(state.currentUser.employeeId);
-  const records = state.attendance.filter((row) => row.employeeId === employee.id);
-  const corrections = state.corrections.filter((row) => row.employeeId === employee.id);
+  const records = state.attendance;
+  const corrections = state.corrections;
   const stats = {
     present: records.filter((row) => row.status !== "Absent").length,
     late: records.filter((row) => row.lateMinutes > 0).length,
@@ -255,56 +244,133 @@ function adminScreen() {
 
 function bindLogin() {
   const registerForm = document.querySelector("#employee-register");
-  if (registerForm) registerForm.addEventListener("submit", (event) => {
+  if (registerForm) registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const code = String(data.get("code")).trim().toUpperCase();
     const name = String(data.get("name")).trim();
-    const phone = normalizePhone(String(data.get("phone")));
-    let employee = state.employees.find((row) => row.code.toUpperCase() === code);
-    if (employee && normalizePhone(employee.phone) !== phone) {
-      return toast("Employee code exists with a different phone number.");
-    }
-    if (!employee) {
-      employee = {
-        id: `emp-${Date.now()}`,
-        code,
-        name,
-        phone: String(data.get("phone")).trim(),
-        department: "Warehouse",
-        position: "Warehouse Associate",
-        deviceFingerprint: null,
-        deviceModel: "Not registered",
-        deviceStatus: "Not registered",
+    const phone = String(data.get("phone")).trim();
+    try {
+      const result = await liveApi("/api/auth/employee-register", {
+        method: "POST",
+        body: JSON.stringify({
+          employeeCode: code,
+          fullName: name,
+          phone,
+          deviceFingerprint: getDeviceFingerprint(),
+          deviceModel: browserDeviceLabel(),
+        }),
+      }, false);
+      saveEmployeeToken(result.token, result.expiresAt);
+      state.currentUser = {
+        role: "employee",
+        employeeId: result.user.employeeId,
+        name: result.user.name,
+        label: result.user.employeeCode,
       };
-      state.employees.push(employee);
+      state.attendance = [];
+      state.corrections = [];
+      saveState();
+      await loadEmployeeLive(true);
+      render();
+    } catch (error) {
+      toast(error.message || "Employee code, full name and phone do not match HR records.");
     }
-
-    const device = getDeviceFingerprint();
-    if (employee.deviceFingerprint && employee.deviceFingerprint !== device) {
-      return toast("This account is already linked to another phone. Ask HR to delete and add the employee again.");
-    }
-    employee.deviceFingerprint = device;
-    employee.deviceModel = browserDeviceLabel();
-    employee.deviceStatus = "Registered";
-    state.currentUser = { role: "employee", employeeId: employee.id, name: employee.name, label: employee.code };
-    saveState();
-    render();
   });
+}
 
-  const employeeLoginForm = document.querySelector("#employee-login");
-  if (employeeLoginForm) employeeLoginForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const code = String(new FormData(event.currentTarget).get("code")).trim().toUpperCase();
-    const employee = state.employees.find((row) => row.code.toUpperCase() === code);
-    if (!employee) return toast("Employee code was not found.");
-    if (!employee.deviceFingerprint) return toast("Register this phone first.");
-    if (employee.deviceFingerprint !== getDeviceFingerprint()) return toast("This account is linked to another phone.");
-    state.currentUser = { role: "employee", employeeId: employee.id, name: employee.name, label: employee.code };
+async function loadEmployeeLive(force = false) {
+  if (!state.currentUser || !employeeToken() || (liveRefreshInFlight && !force)) return;
+  liveRefreshInFlight = true;
+  try {
+    const result = await liveApi(`/api/employee/summary?refresh=${Date.now()}`, { method: "GET" });
+    const employee = result.employee;
+    state.currentUser = {
+      role: "employee",
+      employeeId: employee.id,
+      name: employee.full_name,
+      label: employee.employee_code,
+    };
+    state.attendance = (result.attendance || []).map(mapLiveAttendance);
+    state.corrections = (result.corrections || []).map(mapLiveCorrection);
     saveState();
-    render();
-  });
+  } catch (error) {
+    clearEmployeeSession(error.message || "Employee account was deleted by HR.");
+  } finally {
+    liveRefreshInFlight = false;
+  }
+}
 
+async function liveApi(path, options = {}, requireToken = true) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  const token = employeeToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  headers["X-Device-Fingerprint"] = getDeviceFingerprint();
+  if (requireToken && !token) throw new Error("Employee login is required.");
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+    cache: "no-store",
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.error || "Unable to connect to attendance server.");
+  return data;
+}
+
+function saveEmployeeToken(token, expiresAt) {
+  localStorage.setItem(EMPLOYEE_TOKEN_KEY, token);
+  localStorage.setItem(EMPLOYEE_TOKEN_EXPIRY_KEY, expiresAt || "");
+}
+
+function employeeToken() {
+  return localStorage.getItem(EMPLOYEE_TOKEN_KEY) || "";
+}
+
+function clearEmployeeSession(message) {
+  localStorage.removeItem(EMPLOYEE_TOKEN_KEY);
+  localStorage.removeItem(EMPLOYEE_TOKEN_EXPIRY_KEY);
+  state.currentUser = null;
+  state.attendance = [];
+  state.corrections = [];
+  saveState();
+  stopQrScanner();
+  pendingScanAction = null;
+  render();
+  toast(message || "Employee account was deleted by HR.");
+}
+
+function mapLiveAttendance(row) {
+  return {
+    id: row.id,
+    employeeId: state.currentUser?.employeeId,
+    employeeCode: state.currentUser?.label,
+    employeeName: state.currentUser?.name,
+    date: row.work_date,
+    clockIn: formatLiveTime(row.clock_in_at),
+    clockOut: formatLiveTime(row.clock_out_at),
+    workingMinutes: Number(row.total_minutes || 0),
+    lateMinutes: Number(row.late_minutes || 0),
+    earlyLeaveMinutes: Number(row.early_leave_minutes || 0),
+    overtimeMinutes: Number(row.overtime_minutes || 0),
+    status: statusLabel(row.status),
+    gps: liveGpsLabel(row),
+  };
+}
+
+function mapLiveCorrection(row) {
+  return {
+    id: row.id,
+    employeeId: state.currentUser?.employeeId,
+    employeeCode: state.currentUser?.label,
+    employeeName: state.currentUser?.name,
+    date: row.requested_date,
+    missing: statusLabel(row.missing_type),
+    requestedTime: formatLiveTime(row.requested_clock_out_at || row.requested_clock_in_at),
+    reason: row.reason,
+    status: statusLabel(row.status),
+  };
 }
 
 function bindEmployee() {
@@ -318,24 +384,31 @@ function bindEmployee() {
     if (qr) completeQrScan(qr.trim());
   });
   if (pendingScanAction) startQrScanner();
-  document.querySelector("#correction-form").addEventListener("submit", (event) => {
+  document.querySelector("#correction-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const employee = employeeById(state.currentUser.employeeId);
     const data = new FormData(event.currentTarget);
-    state.corrections.unshift({
-      id: `cor-${Date.now()}`,
-      employeeId: employee.id,
-      employeeCode: employee.code,
-      employeeName: employee.name,
-      date: String(data.get("date")),
-      missing: String(data.get("missing")),
-      requestedTime: String(data.get("time")),
-      reason: String(data.get("reason")).trim(),
-      status: "Pending",
-    });
-    saveState();
-    toast("Correction request submitted.");
-    render();
+    const requestedDate = String(data.get("date"));
+    const requestedTime = String(data.get("time"));
+    const missing = String(data.get("missing"));
+    try {
+      await liveApi("/api/corrections", {
+        method: "POST",
+        body: JSON.stringify({
+          employeeId: state.currentUser.employeeId,
+          requestedDate,
+          missingType: missing === "Clock In" ? "clock_in" : missing === "Clock Out" ? "clock_out" : "both",
+          requestedClockInAt: missing !== "Clock Out" ? `${requestedDate}T${requestedTime}:00.000Z` : null,
+          requestedClockOutAt: missing !== "Clock In" ? `${requestedDate}T${requestedTime}:00.000Z` : null,
+          reason: String(data.get("reason")).trim(),
+        }),
+      });
+      toast("Correction request submitted.");
+      event.currentTarget.reset();
+      await loadEmployeeLive(true);
+      render();
+    } catch (error) {
+      toast(error.message || "Unable to submit correction request.");
+    }
   });
 }
 
@@ -404,14 +477,7 @@ function bindAdmin() {
 }
 
 function bindShell() {
-  document.querySelector("#logout").addEventListener("click", () => {
-    stopQrScanner();
-    pendingScanAction = null;
-    state.currentUser = null;
-    saveState();
-    render();
-  });
-  document.querySelector("#install-app").addEventListener("click", () => {
+  document.querySelector("#install-app")?.addEventListener("click", () => {
     toast("Use browser menu > Add to Home Screen.");
   });
 }
@@ -495,7 +561,6 @@ function stopQrScanner() {
 }
 
 async function clock(action, qr) {
-  const employee = employeeById(state.currentUser.employeeId);
   const scanner = document.querySelector("#scanner");
   const message = document.querySelector("#gps-message");
   scanner.className = "scanner";
@@ -505,7 +570,8 @@ async function clock(action, qr) {
     return;
   }
   message.textContent = "Verifying warehouse GPS location...";
-  const sample = await bestGpsSample();
+  const samples = await collectGpsSamples();
+  const sample = samples.sort((a, b) => a.accuracy - b.accuracy)[0];
   const distance = Math.round(distanceMeters(sample.latitude, sample.longitude, WAREHOUSE.lat, WAREHOUSE.lng));
   if (sample.source !== "browser" || sample.accuracy > 30 || distance > WAREHOUSE.radius) {
     scanner.className = "scanner rejected";
@@ -513,49 +579,27 @@ async function clock(action, qr) {
     return;
   }
 
-  const now = new Date();
-  const date = localDate(now);
-  const time = localTime(now);
-  let record = state.attendance.find((row) => row.employeeId === employee.id && row.date === date);
-  if (!record) {
-    record = {
-      id: `att-${Date.now()}`,
-      employeeId: employee.id,
-      employeeCode: employee.code,
-      employeeName: employee.name,
-      date,
-      clockIn: null,
-      clockOut: null,
-      workingMinutes: 0,
-      lateMinutes: 0,
-      earlyLeaveMinutes: 0,
-      overtimeMinutes: 0,
-      status: "Present",
-      gps: "-",
-    };
-    state.attendance.push(record);
+  try {
+    const result = await liveApi("/api/attendance/clock", {
+      method: "POST",
+      body: JSON.stringify({
+        employeeId: state.currentUser.employeeId,
+        action: action === "in" ? "clock_in" : "clock_out",
+        qrToken: WAREHOUSE.qr,
+        deviceFingerprint: getDeviceFingerprint(),
+        deviceModel: browserDeviceLabel(),
+        samples,
+      }),
+    });
+    scanner.className = "scanner accepted";
+    message.textContent = `Attendance accepted. GPS ${Math.round(result.accuracy)}m accuracy, ${Math.round(result.distance)}m from warehouse.`;
+    await loadEmployeeLive(true);
+    await wait(900);
+    render();
+  } catch (error) {
+    scanner.className = "scanner rejected";
+    message.textContent = error.message || "Unable to save attendance.";
   }
-
-  if (action === "in") {
-    if (record.clockIn) return toast("Clock in already recorded today.");
-    record.clockIn = time;
-    record.lateMinutes = Math.max(0, toMinutes(time) - toMinutes("09:00"));
-    record.status = record.lateMinutes > 0 ? "Late" : "Present";
-  } else {
-    if (!record.clockIn) return toast("Clock in is required before clock out.");
-    if (record.clockOut) return toast("Clock out already recorded today.");
-    record.clockOut = time;
-    record.workingMinutes = Math.max(0, toMinutes(time) - toMinutes(record.clockIn));
-    record.earlyLeaveMinutes = Math.max(0, toMinutes("18:00") - toMinutes(time));
-    record.overtimeMinutes = calculateOvertime(time, "18:00", "18:16");
-    record.status = record.overtimeMinutes > 0 ? "OT" : record.lateMinutes > 0 ? "Late" : "Present";
-  }
-  record.gps = `${sample.accuracy}m accuracy / ${distance}m from warehouse`;
-  saveState();
-  scanner.className = "scanner accepted";
-  message.textContent = `Attendance accepted. GPS ${sample.accuracy}m accuracy, ${distance}m from warehouse.`;
-  await wait(900);
-  render();
 }
 
 function metrics(items) {
@@ -636,11 +680,15 @@ function applyCorrection(correction) {
 }
 
 async function bestGpsSample() {
+  return (await collectGpsSamples()).sort((a, b) => a.accuracy - b.accuracy)[0];
+}
+
+async function collectGpsSamples() {
   const samples = [];
   for (let i = 0; i < 5; i += 1) {
     samples.push(await getGpsSample(i));
   }
-  return samples.sort((a, b) => a.accuracy - b.accuracy)[0];
+  return samples;
 }
 
 function getGpsSample(index) {
@@ -687,6 +735,13 @@ function exportCsv() {
 }
 
 function employeeById(id) {
+  if (state.currentUser?.employeeId === id) {
+    return {
+      id,
+      code: state.currentUser.label,
+      name: state.currentUser.name,
+    };
+  }
   return findEmployeeById(id) || { id, code: "Deleted", name: "Deleted employee" };
 }
 
@@ -770,6 +825,25 @@ function normalizePhone(value) {
   return value.replace(/\D/g, "");
 }
 
+function formatLiveTime(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(11, 16);
+  return date.toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function liveGpsLabel(row) {
+  const accuracy = row.clock_out_accuracy || row.clock_in_accuracy;
+  const distance = row.clock_out_distance_meters || row.clock_in_distance_meters;
+  return accuracy ? `${Math.round(Number(accuracy))}m accuracy / ${Math.round(Number(distance))}m from warehouse` : "-";
+}
+
+function statusLabel(value) {
+  return String(value || "-")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function getDeviceFingerprint() {
   const existing = localStorage.getItem(DEVICE_KEY);
   if (existing) return existing;
@@ -842,5 +916,17 @@ function toast(text) {
   document.body.append(message);
   setTimeout(() => message.remove(), 3600);
 }
+
+setInterval(() => {
+  if (state.currentUser && employeeToken() && !document.hidden) {
+    loadEmployeeLive(true);
+  }
+}, 3000);
+
+window.addEventListener("focus", () => {
+  if (state.currentUser && employeeToken()) {
+    loadEmployeeLive(true);
+  }
+});
 
 render();

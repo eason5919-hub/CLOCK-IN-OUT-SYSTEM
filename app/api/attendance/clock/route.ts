@@ -41,16 +41,16 @@ export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as ClockPayload;
     const validation = validatePayload(payload);
-    if (validation) return Response.json({ error: validation }, { status: 400 });
+    if (validation) return json(request, { error: validation }, 400);
 
     const db = getD1();
     await ensureDatabase(db);
     const session = await getSessionFromRequest(db, request);
     if (session?.role !== "employee" || !session.employee_id) {
-      return Response.json({ error: "Employee login is required." }, { status: 401 });
+      return json(request, { error: "Employee login is required." }, 401);
     }
     if (payload.employeeId && payload.employeeId !== session.employee_id) {
-      return Response.json({ error: "Employees can only clock their own attendance." }, { status: 403 });
+      return json(request, { error: "Employees can only clock their own attendance." }, 403);
     }
     payload.employeeId = session.employee_id;
 
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       .first<WarehouseRow>();
 
     if (!warehouse) {
-      return Response.json({ error: "Invalid warehouse QR code." }, { status: 403 });
+      return json(request, { error: "Invalid warehouse QR code." }, 403);
     }
 
     const bestSample = pickBestSample(payload.samples!);
@@ -78,14 +78,15 @@ export async function POST(request: Request) {
     );
 
     if (bestSample.accuracy > 30 || distance > warehouse.allowed_radius_meters) {
-      return Response.json(
+      return json(
+        request,
         {
           error:
             "Unable to verify location. Please move closer to warehouse or enable GPS.",
           accuracy: bestSample.accuracy,
           distance,
         },
-        { status: 403 },
+        403,
       );
     }
 
@@ -95,11 +96,11 @@ export async function POST(request: Request) {
       .first<{ id: string }>();
 
     if (!employee) {
-      return Response.json({ error: "Employee account is inactive or missing." }, { status: 404 });
+      return json(request, { error: "Employee account is inactive or missing." }, 404);
     }
 
     const device = await resolveDevice(db, payload);
-    if ("error" in device) return Response.json({ error: device.error }, { status: 403 });
+    if ("error" in device) return json(request, { error: device.error }, 403);
 
     const now = new Date();
     const timestamp = now.toISOString();
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
 
     if (payload.action === "clock_in") {
       if (existing?.clock_in_at) {
-        return Response.json({ error: "Clock in already recorded for today." }, { status: 409 });
+        return json(request, { error: "Clock in already recorded for today." }, 409);
       }
 
       const lateMinutes = schedule?.start_time
@@ -180,14 +181,14 @@ export async function POST(request: Request) {
       }
 
       await writeAudit(db, "system", "clock_in", "attendance", attendanceId, null, { timestamp });
-      return Response.json({ ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
+      return json(request, { ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
     }
 
     if (!existing?.clock_in_at) {
-      return Response.json({ error: "Clock in is required before clock out." }, { status: 409 });
+      return json(request, { error: "Clock in is required before clock out." }, 409);
     }
     if (existing.clock_out_at) {
-      return Response.json({ error: "Clock out already recorded for today." }, { status: 409 });
+      return json(request, { error: "Clock out already recorded for today." }, 409);
     }
 
     const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule);
@@ -218,11 +219,15 @@ export async function POST(request: Request) {
       .run();
 
     await writeAudit(db, "system", "clock_out", "attendance", existing.id, null, { timestamp });
-    return Response.json({ ok: true, action: "clock_out", timestamp, distance, accuracy: bestSample.accuracy, totals });
+    return json(request, { ok: true, action: "clock_out", timestamp, distance, accuracy: bestSample.accuracy, totals });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
-    return Response.json({ error: message }, { status: 500 });
+    return json(request, { error: message }, 500);
   }
+}
+
+export async function OPTIONS(request: Request) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
 
 function validatePayload(payload: ClockPayload) {
@@ -311,4 +316,20 @@ async function writeAudit(
       JSON.stringify(afterJson),
     )
     .run();
+}
+
+function json(request: Request, data: unknown, status = 200) {
+  return Response.json(data, { status, headers: corsHeaders(request) });
+}
+
+function corsHeaders(request: Request) {
+  const origin = request.headers.get("origin") || "*";
+  const requestHeaders = request.headers.get("access-control-request-headers");
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": requestHeaders || "Content-Type, Authorization",
+    "access-control-max-age": "86400",
+    vary: "Origin",
+  };
 }

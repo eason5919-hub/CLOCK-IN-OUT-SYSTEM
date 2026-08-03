@@ -48,21 +48,10 @@ export default function Home() {
     const form = new FormData(event.currentTarget);
     const result = await postJson<{ user: User }>("/api/auth/employee-register", {
       employeeCode: form.get("employeeCode"),
+      fullName: form.get("fullName"),
       phone: form.get("phone"),
       deviceFingerprint: getBrowserDeviceFingerprint(),
       deviceModel: browserDeviceLabel(),
-    });
-    if ("error" in result) return setMessage(result.error);
-    setUser(result.user);
-    setMessage("");
-  }
-
-  async function employeeLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const result = await postJson<{ user: User }>("/api/auth/employee-login", {
-      employeeCode: form.get("employeeCode"),
-      deviceFingerprint: getBrowserDeviceFingerprint(),
     });
     if ("error" in result) return setMessage(result.error);
     setUser(result.user);
@@ -98,9 +87,21 @@ export default function Home() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (user?.role !== "employee") return;
+    const timer = window.setInterval(() => {
+      void loadEmployee();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [user]);
+
   async function loadEmployee() {
     const result = await getJson<EmployeeSummary>("/api/employee/summary");
-    if ("error" in result) return setMessage(result.error);
+    if ("error" in result) {
+      setUser(null);
+      setEmployeeData(null);
+      return setMessage(result.error);
+    }
     setEmployeeData(result);
   }
 
@@ -191,7 +192,6 @@ export default function Home() {
       <LoginScreen
         message={message}
         onEmployeeRegister={employeeRegister}
-        onEmployeeLogin={employeeLogin}
         onAdminLogin={adminLogin}
       />
     );
@@ -214,9 +214,11 @@ export default function Home() {
           <p className="eyebrow">Signed in</p>
           <strong>{user.name}</strong>
           <small>{user.role === "employee" ? user.employeeCode : roleLabel(user.role)}</small>
-          <button type="button" className="secondary" onClick={logout}>
-            Sign Out
-          </button>
+          {user.role === "employee" ? null : (
+            <button type="button" className="secondary" onClick={logout}>
+              Sign Out
+            </button>
+          )}
         </div>
 
         <nav className="nav-list">
@@ -259,12 +261,10 @@ export default function Home() {
 function LoginScreen({
   message,
   onEmployeeRegister,
-  onEmployeeLogin,
   onAdminLogin,
 }: {
   message: string;
   onEmployeeRegister: (event: FormEvent<HTMLFormElement>) => void;
-  onEmployeeLogin: (event: FormEvent<HTMLFormElement>) => void;
   onAdminLogin: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
@@ -290,30 +290,23 @@ function LoginScreen({
       <section className="auth-grid">
         <form className="auth-panel" onSubmit={onEmployeeRegister}>
           <div>
-            <p className="eyebrow">Employee first time</p>
-            <h3>Register Official Phone</h3>
+            <p className="eyebrow">Employee login</p>
+            <h3>Open Attendance</h3>
           </div>
           <label>
             Employee code
             <input name="employeeCode" placeholder="WH-001" required />
+          </label>
+          <label>
+            Full name
+            <input name="fullName" placeholder="Employee name" required />
           </label>
           <label>
             Phone number
             <input name="phone" placeholder="+60 12-400 1001" required />
           </label>
-          <button type="submit">Register Phone</button>
-        </form>
-
-        <form className="auth-panel" onSubmit={onEmployeeLogin}>
-          <div>
-            <p className="eyebrow">Employee returning</p>
-            <h3>Employee Login</h3>
-          </div>
-          <label>
-            Employee code
-            <input name="employeeCode" placeholder="WH-001" required />
-          </label>
           <button type="submit">Open My Attendance</button>
+          <small>Code, full name, and phone must match HR records.</small>
         </form>
 
         <form className="auth-panel" onSubmit={onAdminLogin}>
