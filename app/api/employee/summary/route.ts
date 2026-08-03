@@ -26,9 +26,9 @@ export async function GET(request: Request) {
   const deviceFingerprint = request.headers.get("x-device-fingerprint")?.trim();
   if (deviceFingerprint) {
     const device = await db
-      .prepare("SELECT id FROM devices WHERE employee_id = ? AND device_fingerprint = ? AND status = 'registered'")
-      .bind(session.employee_id, deviceFingerprint)
-      .first<{ id: string }>();
+      .prepare("SELECT id, device_fingerprint FROM devices WHERE employee_id = ? AND status = 'registered'")
+      .bind(session.employee_id)
+      .first<{ id: string; device_fingerprint: string }>();
 
     if (!device) {
       return json(request, { error: "Employee phone access was deleted by HR." }, 401);
