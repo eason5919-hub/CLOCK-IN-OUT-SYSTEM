@@ -158,6 +158,12 @@ function employeeScreen() {
   const employee = employeeById(state.currentUser.employeeId);
   const records = state.attendance;
   const corrections = state.corrections;
+  const openRecord = records.find((row) => row.clockIn && !row.clockOut);
+  const clockAction = openRecord ? "out" : "in";
+  const clockLabel = openRecord ? "Clock out" : "Clock in";
+  const clockHint = openRecord
+    ? `Clocked in at ${escapeHtml(openRecord.clockIn)}. Scan the QR again to clock out.`
+    : "Scan the warehouse QR to clock in.";
   const stats = {
     present: records.filter((row) => row.status !== "Absent").length,
     late: records.filter((row) => row.lateMinutes > 0).length,
@@ -177,11 +183,10 @@ function employeeScreen() {
         <div class="heading"><div><p class="eyebrow">Official phone</p><h3>${escapeHtml(employee.name)}</h3></div><span class="badge">${employee.code}</span></div>
         <div class="scanner idle" id="scanner">
           <div class="qr-large">${"<i></i>".repeat(9)}</div>
-          <p id="gps-message">Ready for QR and GPS verification.</p>
+          <p id="gps-message">${clockHint}</p>
         </div>
-        <div class="actions" style="margin-top:12px">
-          <button data-clock="in">Clock In</button>
-          <button class="secondary" data-clock="out">Clock Out</button>
+        <div class="clock-actions single">
+          <button class="clock-primary ${openRecord ? "out" : "in"}" data-clock="${clockAction}">${clockLabel}</button>
         </div>
       </section>
       <section class="panel" id="month">

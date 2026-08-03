@@ -377,6 +377,24 @@ textarea {
   flex-wrap: wrap;
 }
 
+.clock-actions.single {
+  width: 100%;
+}
+
+.clock-primary {
+  width: 100%;
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.clock-primary.in {
+  background: #18a67a;
+}
+
+.clock-primary.out {
+  background: #ef2f32;
+}
+
 .health-dot {
   min-height: 36px;
   display: inline-flex;

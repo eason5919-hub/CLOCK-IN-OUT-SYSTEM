@@ -346,6 +346,9 @@ function EmployeeApp({
 }) {
   const records = useMemo(() => data?.attendance ?? [], [data?.attendance]);
   const corrections = useMemo(() => data?.corrections ?? [], [data?.corrections]);
+  const openRecord = records.find((record) => record.clock_in_at && !record.clock_out_at);
+  const nextAction = openRecord ? "clock_out" : "clock_in";
+  const nextLabel = openRecord ? "Clock out" : "Clock in";
   const stats = useMemo(
     () => ({
       presentDays: records.filter((record) => record.status !== "absent").length,
@@ -393,15 +396,12 @@ function EmployeeApp({
                 <i />
               </div>
             </div>
-            <p>{gpsMessage}</p>
+            <p>{clockState === "idle" && openRecord ? `Clocked in at ${formatTime(openRecord.clock_in_at)}. Scan QR to clock out.` : gpsMessage}</p>
           </div>
 
-          <div className="clock-actions">
-            <button type="button" onClick={() => onClock("clock_in")}>
-              Clock In
-            </button>
-            <button type="button" className="secondary" onClick={() => onClock("clock_out")}>
-              Clock Out
+          <div className="clock-actions single">
+            <button type="button" className={`clock-primary ${openRecord ? "out" : "in"}`} onClick={() => onClock(nextAction)}>
+              {nextLabel}
             </button>
           </div>
         </section>

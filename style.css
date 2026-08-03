@@ -239,6 +239,29 @@ h3 {
   flex-wrap: wrap;
 }
 
+.clock-actions {
+  display: flex;
+  margin-top: 12px;
+}
+
+.clock-actions.single {
+  width: 100%;
+}
+
+.clock-primary {
+  width: 100%;
+  min-height: 48px;
+  font-size: 16px;
+}
+
+.clock-primary.in {
+  background: #18a67a;
+}
+
+.clock-primary.out {
+  background: #ef2f32;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
