@@ -2,7 +2,9 @@
 
 A cloud-ready attendance system for warehouse teams. Employees, HR, and owners sign in through the same app, and server-side sessions keep employees limited to their own attendance records.
 
-GitHub Pages app: https://eason5919-hub.github.io/CLOCK-IN-OUT-SYSTEM/
+Live app: https://warehouse-attendance-management.eason5919-hub.workers.dev
+
+GitHub Pages app: https://eason5919-hub.github.io/CLOCK-IN-OUT-SYSTEM/ redirects to the live app.
 
 This repository also contains the earlier full-stack source folders. The GitHub Pages version runs from `index.html`, `style.css`, `script.js`, and `manifest.json`.
 
