@@ -210,7 +210,7 @@ function employeeScreen() {
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
         <form class="form" id="correction-form">
-          <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
+          <label>Date<select name="date" required>${leaveDateOptions()}</select></label>
           <label>Missing<select name="missing"><option>Clock In</option><option selected>Clock Out</option><option>Both</option></select></label>
           <label>Requested time<input name="time" type="time" required /></label>
           <label>Reason<textarea name="reason" rows="3" required></textarea></label>
@@ -587,7 +587,7 @@ function bindEmployee() {
     }
   });
   const leaveForm = document.querySelector("#leave-form");
-  leaveForm?.querySelector('input[name="date"]')?.addEventListener("change", () => updateLeaveDurationRule(leaveForm));
+  leaveForm?.querySelector('select[name="date"]')?.addEventListener("change", () => updateLeaveDurationRule(leaveForm));
   leaveForm?.querySelector('select[name="duration"]')?.addEventListener("change", () => updateLeaveDurationRule(leaveForm));
   if (leaveForm) updateLeaveDurationRule(leaveForm);
 }
@@ -834,7 +834,7 @@ function leaveRequestCard(request) {
 }
 
 function updateLeaveDurationRule(form) {
-  const dateInput = form.querySelector('input[name="date"]');
+  const dateInput = form.querySelector('select[name="date"]');
   const durationSelect = form.querySelector('select[name="duration"]');
   const rule = form.querySelector("[data-leave-rule]");
   if (!dateInput || !durationSelect || !rule) return;
@@ -861,6 +861,33 @@ function leaveDateDayOfWeek(value) {
   if (!value) return -1;
   const [year, month, day] = value.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+function leaveDateOptions() {
+  const today = new Date();
+  const options = [];
+  for (let offset = 0; options.length < 365 && offset < 430; offset += 1) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + offset);
+    const value = malaysiaDateKey(date);
+    if (leaveDateDayOfWeek(value) === 0) continue;
+    options.push(`<option value="${value}">${formatLeaveDateOption(date)}</option>`);
+  }
+  return options.join("");
+}
+
+function formatLeaveDateOption(date) {
+  const dateText = date.toLocaleDateString("en-MY", {
+    timeZone: "Asia/Kuala_Lumpur",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  const dayText = date.toLocaleDateString("en-MY", {
+    timeZone: "Asia/Kuala_Lumpur",
+    weekday: "short",
+  });
+  return `${dateText} (${dayText})`;
 }
 
 function adminCorrectionCard(correction) {
