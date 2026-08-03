@@ -305,6 +305,15 @@ h3 {
   gap: 16px;
 }
 
+.employee-content {
+  align-items: start;
+}
+
+.employee-metrics .metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 0;
+}
+
 .panel {
   padding: 18px;
 }
@@ -600,6 +609,19 @@ small,
     border-bottom: 1px solid var(--line);
   }
 
+  .employee-layout .workspace {
+    order: 1;
+  }
+
+  .employee-layout .sidebar {
+    order: 2;
+  }
+
+  .employee-layout .sidebar .nav,
+  .employee-layout .sidebar .warehouse {
+    display: none;
+  }
+
   .metrics,
   .auth-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -607,16 +629,89 @@ small,
 }
 
 @media (max-width: 640px) {
+  body {
+    background-size: 28px 28px;
+  }
+
   .auth-hero,
   .auth-grid,
   .workspace,
   .sidebar {
-    padding: 16px;
+    padding: 12px;
+  }
+
+  .employee-layout .workspace {
+    padding-top: 10px;
+  }
+
+  .employee-layout .sidebar {
+    padding-top: 0;
+    border-bottom: 0;
+  }
+
+  .brand {
+    gap: 8px;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .brand h1 {
+    font-size: 18px;
+    line-height: 1.05;
+  }
+
+  .topbar {
+    margin-bottom: 10px;
+  }
+
+  .topbar h2 {
+    font-size: 26px;
+  }
+
+  .panel {
+    padding: 12px;
+  }
+
+  .employee-content {
+    gap: 10px;
   }
 
   .metrics,
   .auth-grid {
     grid-template-columns: 1fr;
+  }
+
+  .employee-metrics .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .metric {
+    min-height: 86px;
+    padding: 12px;
+  }
+
+  .metric strong {
+    font-size: 28px;
+  }
+
+  .scanner {
+    min-height: 172px;
+    padding: 14px;
+  }
+
+  .qr-large {
+    width: 96px;
+    height: 96px;
+    padding: 9px;
+  }
+
+  .clock-primary {
+    min-height: 52px;
+    font-size: 15px;
   }
 
   .calendar {

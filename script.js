@@ -125,7 +125,7 @@ function loadingScreen() {
 
 function shell(content, subtitle) {
   return `
-    <section class="layout">
+    <section class="layout ${state.currentUser.role === "employee" ? "employee-layout" : "admin-layout"}">
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">W</div>
@@ -177,13 +177,7 @@ function employeeScreen() {
   };
 
   return `
-    ${metrics([
-      ["Present days", stats.present, ""],
-      ["Late records", stats.late, "amber"],
-      ["OT minutes", stats.ot, "blue"],
-      ["Corrections", stats.corrections, "red"],
-    ])}
-    <div class="content">
+    <div class="content employee-content">
       <section class="panel" id="clock">
         <div class="heading"><div><p class="eyebrow">Official phone</p><h3>${escapeHtml(employee.name)}</h3></div><span class="badge">${employee.code}</span></div>
         <div class="scanner idle" id="scanner">
@@ -193,6 +187,14 @@ function employeeScreen() {
         <div class="clock-actions single">
           <button class="clock-primary ${openRecord ? "out" : "in"}" data-clock="${clockAction}">${clockLabel}</button>
         </div>
+      </section>
+      <section class="employee-metrics">
+        ${metrics([
+          ["Present days", stats.present, ""],
+          ["Late records", stats.late, "amber"],
+          ["OT minutes", stats.ot, "blue"],
+          ["Corrections", stats.corrections, "red"],
+        ])}
       </section>
       <section class="panel" id="month">
         <div class="heading"><div><p class="eyebrow">Current month</p><h3>August 2026</h3></div></div>
