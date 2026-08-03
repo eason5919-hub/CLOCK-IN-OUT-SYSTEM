@@ -6,6 +6,10 @@ import {
   sha256Hex,
   type GpsSample,
 } from "../../../../db/runtime";
+import {
+  calculateAttendanceTotals,
+  type AttendanceSchedule,
+} from "../../../../db/attendance-calculations";
 
 type ClockPayload = {
   employeeId?: string;
@@ -30,12 +34,7 @@ type AttendanceRow = {
   clock_out_at: string | null;
 };
 
-type ScheduleRow = {
-  start_time: string | null;
-  end_time: string | null;
-  overtime_starts_at: string | null;
-  is_off_day: number;
-};
+type ScheduleRow = AttendanceSchedule;
 
 export async function POST(request: Request) {
   try {
@@ -182,7 +181,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "Clock out already recorded for today." }, { status: 409 });
     }
 
-    const totals = calculateTotals(existing.clock_in_at, timestamp, schedule);
+    const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule);
     const status =
       totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
 
@@ -268,24 +267,6 @@ async function resolveDevice(db: D1Database, payload: ClockPayload) {
     .bind(id, payload.employeeId, payload.deviceFingerprint, payload.deviceModel)
     .run();
   return { id };
-}
-
-function calculateTotals(clockInAt: string, clockOutAt: string, schedule?: ScheduleRow | null) {
-  const totalMinutes = Math.max(0, Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000));
-  const lateMinutes = schedule?.start_time
-    ? Math.max(0, minutesSinceMidnight(clockInAt) - timeToMinutes(schedule.start_time))
-    : 0;
-  const earlyLeaveMinutes =
-    schedule?.end_time && !schedule.is_off_day
-      ? Math.max(0, timeToMinutes(schedule.end_time) - minutesSinceMidnight(clockOutAt))
-      : 0;
-  const overtimeMinutes = schedule?.is_off_day
-    ? totalMinutes
-    : schedule?.overtime_starts_at
-      ? Math.max(0, minutesSinceMidnight(clockOutAt) - timeToMinutes(schedule.overtime_starts_at))
-      : 0;
-
-  return { totalMinutes, lateMinutes, earlyLeaveMinutes, overtimeMinutes };
 }
 
 function minutesSinceMidnight(value: string) {

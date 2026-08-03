@@ -147,12 +147,12 @@ function toRadians(value: number) {
 }
 
 const scheduleSeed = [
-  { day: 1, start: "09:00", end: "18:00", off: false, ot: "18:00" },
-  { day: 2, start: "09:00", end: "18:00", off: false, ot: "18:00" },
-  { day: 3, start: "09:00", end: "18:00", off: false, ot: "18:00" },
-  { day: 4, start: "09:00", end: "18:00", off: false, ot: "18:00" },
-  { day: 5, start: "09:00", end: "18:00", off: false, ot: "18:00" },
-  { day: 6, start: "09:00", end: "13:00", off: false, ot: "13:00" },
+  { day: 1, start: "09:00", end: "18:00", off: false, ot: "18:16" },
+  { day: 2, start: "09:00", end: "18:00", off: false, ot: "18:16" },
+  { day: 3, start: "09:00", end: "18:00", off: false, ot: "18:16" },
+  { day: 4, start: "09:00", end: "18:00", off: false, ot: "18:16" },
+  { day: 5, start: "09:00", end: "18:00", off: false, ot: "18:16" },
+  { day: 6, start: "09:00", end: "13:00", off: false, ot: "13:16" },
   { day: 0, start: null, end: null, off: true, ot: null },
 ];
 

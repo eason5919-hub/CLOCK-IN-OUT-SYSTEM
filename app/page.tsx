@@ -143,7 +143,7 @@ const attendanceSeed: AttendanceRecord[] = [
     workingMinutes: 553,
     lateMinutes: 0,
     earlyLeaveMinutes: 0,
-    overtimeMinutes: 4,
+    overtimeMinutes: 0,
     status: "Present",
     distanceMeters: 31,
     gpsAccuracy: 15,
@@ -210,12 +210,12 @@ const auditSeed: AuditLog[] = [
 ];
 
 const schedule = [
-  ["Monday", "09:00", "18:00", "18:00"],
-  ["Tuesday", "09:00", "18:00", "18:00"],
-  ["Wednesday", "09:00", "18:00", "18:00"],
-  ["Thursday", "09:00", "18:00", "18:00"],
-  ["Friday", "09:00", "18:00", "18:00"],
-  ["Saturday", "09:00", "13:00", "13:00"],
+  ["Monday", "09:00", "18:00", "18:16"],
+  ["Tuesday", "09:00", "18:00", "18:16"],
+  ["Wednesday", "09:00", "18:00", "18:16"],
+  ["Thursday", "09:00", "18:00", "18:16"],
+  ["Friday", "09:00", "18:00", "18:16"],
+  ["Saturday", "09:00", "13:00", "13:16"],
   ["Sunday", "OFF", "OFF", "All hours"],
 ];
 
@@ -315,7 +315,7 @@ export default function Home() {
         if (record.employeeId !== activeEmployee.id || record.date !== today) return record;
         const start = record.clockIn ?? "09:00";
         const workingMinutes = Math.max(0, toMinutes(time) - toMinutes(start));
-        const overtimeMinutes = Math.max(0, toMinutes(time) - toMinutes("18:00"));
+        const overtimeMinutes = calculateDisplayOvertime(time, "18:00", "18:16");
         return {
           ...record,
           clockOut: time,
@@ -817,7 +817,7 @@ function AdminView({
                 <div key={day}>
                   <strong>{day}</strong>
                   <span>{start === "OFF" ? "OFF" : `${start} - ${end}`}</span>
-                  <small>OT: {ot}</small>
+                  <small>{ot === "All hours" ? "OT: All hours" : `OT: ${ot}, counted from ${end}`}</small>
                 </div>
               ))}
             </div>
@@ -954,6 +954,12 @@ function formatMinutes(minutes: number) {
 function toMinutes(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
+}
+
+function calculateDisplayOvertime(clockOut: string, scheduledEnd: string, overtimeThreshold: string) {
+  return toMinutes(clockOut) >= toMinutes(overtimeThreshold)
+    ? Math.max(0, toMinutes(clockOut) - toMinutes(scheduledEnd))
+    : 0;
 }
 
 async function collectGpsSamples() {

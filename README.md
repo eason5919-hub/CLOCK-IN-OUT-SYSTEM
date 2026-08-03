@@ -10,6 +10,7 @@ A cloud-ready attendance management system for warehouse teams. The app supports
 - Admin device reset workflow.
 - Editable working schedule model with default warehouse hours.
 - Automatic attendance fields for working minutes, late minutes, early leave, and overtime.
+- OT grace rules: weekdays count only after 18:15 and Saturdays only after 13:15, but approved OT minutes are calculated from the scheduled end time.
 - Employee correction requests with HR approval and audit trail.
 - Reports for attendance, OT, late, absent, with CSV and printable HTML export endpoints.
 - D1 database schema and migrations for users, employees, devices, attendance, corrections, QR codes, schedules, departments, settings, audit logs, and warehouses.
