@@ -9,6 +9,7 @@ type AdminAction =
       department?: string;
       position?: string;
       email?: string;
+      leaveEntitlementDays?: number | string;
     }
   | {
       action: "edit_employee";
@@ -18,11 +19,11 @@ type AdminAction =
       phone?: string;
       department?: string;
       position?: string;
+      leaveEntitlementDays?: number | string;
     }
   | { action: "deactivate_employee"; employeeId?: string }
   | { action: "delete_employee"; employeeId?: string }
   | { action: "unlink_device"; deviceId?: string }
-  | { action: "set_leave_entitlement"; employeeId?: string; entitlementDays?: number | string }
   | { action: "review_leave_request"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string };
 
 export async function OPTIONS(request: Request) {
@@ -133,9 +134,6 @@ export async function POST(request: Request) {
     if (payload.action === "unlink_device") {
       return unlinkDevice(db, request, payload.deviceId, auth.userId);
     }
-    if (payload.action === "set_leave_entitlement") {
-      return setLeaveEntitlement(db, request, payload, auth.userId);
-    }
     if (payload.action === "review_leave_request") {
       return reviewLeaveRequest(db, request, payload, auth.userId);
     }
@@ -158,6 +156,7 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
   const employeeId = crypto.randomUUID();
   const email = payload.email?.trim() || `${code.toLowerCase()}@warehouse.local`;
   const departmentId = await ensureDepartment(db, payload.department);
+  const leaveEntitlementDays = normalizeLeaveDays(payload.leaveEntitlementDays ?? 0);
   const existing = await db
     .prepare("SELECT id, status FROM employees WHERE UPPER(employee_code) = ?")
     .bind(code)
@@ -166,9 +165,9 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
     await db.batch([
       db
         .prepare(
-        "UPDATE employees SET full_name = ?, phone = ?, department_id = ?, position = ?, email = ?, status = 'active' WHERE id = ?",
+        "UPDATE employees SET full_name = ?, phone = ?, department_id = ?, position = ?, email = ?, leave_entitlement_days = ?, status = 'active' WHERE id = ?",
       )
-        .bind(name, phone, departmentId, payload.position?.trim() || "Warehouse Associate", email, existing.id),
+        .bind(name, phone, departmentId, payload.position?.trim() || "Warehouse Associate", email, leaveEntitlementDays, existing.id),
       db.prepare("UPDATE users SET is_active = 1 WHERE employee_id = ? AND role = 'employee'").bind(existing.id),
     ]);
     return json(request, { ok: true, employeeId: existing.id }, 200);
@@ -182,7 +181,7 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
       .prepare(
         "INSERT INTO employees (id, employee_code, full_name, department_id, position, phone, email, leave_entitlement_days, status) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active')",
       )
-      .bind(employeeId, code, name, departmentId, payload.position?.trim() || "Warehouse Associate", phone, email),
+      .bind(employeeId, code, name, departmentId, payload.position?.trim() || "Warehouse Associate", phone, email, leaveEntitlementDays),
     db
       .prepare(
         "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, 'employee', ?, 1)",
@@ -217,13 +216,15 @@ async function editEmployee(
   if (duplicate) return json(request, { error: "This employee code already exists." }, 409);
 
   const departmentId = await ensureDepartment(db, payload.department);
+  const previousLeaveDays = Number((before as { leave_entitlement_days?: number }).leave_entitlement_days || 0);
+  const leaveEntitlementDays = normalizeLeaveDays(payload.leaveEntitlementDays ?? previousLeaveDays);
 
   await db.batch([
     db
       .prepare(
-        "UPDATE employees SET employee_code = ?, full_name = ?, phone = ?, department_id = ?, position = ? WHERE id = ?",
+        "UPDATE employees SET employee_code = ?, full_name = ?, phone = ?, department_id = ?, position = ?, leave_entitlement_days = ? WHERE id = ?",
       )
-      .bind(code, name, phone, departmentId, payload.position?.trim() || "Warehouse Associate", employeeId),
+      .bind(code, name, phone, departmentId, payload.position?.trim() || "Warehouse Associate", leaveEntitlementDays, employeeId),
     db
       .prepare(
         "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -235,7 +236,7 @@ async function editEmployee(
         "employee",
         employeeId,
         JSON.stringify(before),
-        JSON.stringify({ employee_code: code, full_name: name, phone, department_id: departmentId, position: payload.position }),
+        JSON.stringify({ employee_code: code, full_name: name, phone, department_id: departmentId, position: payload.position, leave_entitlement_days: leaveEntitlementDays }),
       ),
   ]);
 
@@ -300,44 +301,6 @@ async function unlinkDevice(db: D1Database, request: Request, deviceId: string |
   return json(request, { ok: true });
 }
 
-async function setLeaveEntitlement(
-  db: D1Database,
-  request: Request,
-  payload: Extract<AdminAction, { action: "set_leave_entitlement" }>,
-  adminUserId: string,
-) {
-  const employeeId = payload.employeeId;
-  const entitlementDays = Number(payload.entitlementDays);
-  if (!employeeId || !Number.isFinite(entitlementDays) || entitlementDays < 0) {
-    return json(request, { error: "Employee and leave days are required." }, 400);
-  }
-
-  const before = await db.prepare("SELECT * FROM employees WHERE id = ?").bind(employeeId).first();
-  if (!before) return json(request, { error: "Employee was not found." }, 404);
-
-  const normalizedDays = Math.round(entitlementDays * 2) / 2;
-  await db.batch([
-    db
-      .prepare("UPDATE employees SET leave_entitlement_days = ? WHERE id = ?")
-      .bind(normalizedDays, employeeId),
-    db
-      .prepare(
-        "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      )
-      .bind(
-        crypto.randomUUID(),
-        adminUserId,
-        "set_leave_entitlement",
-        "employee",
-        employeeId,
-        JSON.stringify(before),
-        JSON.stringify({ leave_entitlement_days: normalizedDays }),
-      ),
-  ]);
-
-  return json(request, { ok: true });
-}
-
 async function reviewLeaveRequest(
   db: D1Database,
   request: Request,
@@ -383,6 +346,12 @@ async function reviewLeaveRequest(
   }
 
   return json(request, { ok: true });
+}
+
+function normalizeLeaveDays(value: number | string) {
+  const days = Number(value);
+  if (!Number.isFinite(days) || days < 0) return 0;
+  return Math.round(days * 2) / 2;
 }
 
 async function applyHalfDayLeaveAttendanceRule(db: D1Database, requestId: string) {

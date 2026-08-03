@@ -204,15 +204,19 @@
 
     .leaveControl {
       display: grid;
-      grid-template-columns: 82px auto;
-      gap: 6px;
-      align-items: center;
-      min-width: 150px;
+      gap: 4px;
+      min-width: 120px;
     }
 
     .leaveControl input {
       min-height: 34px;
       padding: 0 8px;
+    }
+
+    .inlineInput {
+      min-height: 34px;
+      padding: 0 8px;
+      min-width: 110px;
     }
 
     .qrGrid {
@@ -378,7 +382,6 @@
         <label>Position<input id="positionInput" type="text" placeholder="Staff"></label>
         <div class="actions">
           <button id="saveEmployeeButton" type="submit">Add</button>
-          <button id="cancelEditButton" class="secondary" type="button" hidden>Cancel</button>
         </div>
       </form>
       <div class="tableWrap">
@@ -475,7 +478,6 @@
     const employeeForm = document.getElementById("employeeForm");
     const employeesBody = document.getElementById("employeesBody");
     const saveEmployeeButton = document.getElementById("saveEmployeeButton");
-    const cancelEditButton = document.getElementById("cancelEditButton");
     const attendanceBody = document.getElementById("attendanceBody");
     const leaveBody = document.getElementById("leaveBody");
     const employeeEmpty = document.getElementById("employeeEmpty");
@@ -644,14 +646,15 @@
       employeesBody.innerHTML = rows.map((employee, index) => {
         const active = employee.status === "active";
         const hasDevice = Boolean(employee.device_id);
+        const editing = editingEmployeeId === employee.id;
         return `
-          <tr>
+          <tr data-employee-row="${escapeHtml(employee.id)}">
             <td>${index + 1}</td>
-            <td><strong>${escapeHtml(employee.employee_code)}</strong></td>
-            <td>${escapeHtml(employee.full_name)}</td>
-            <td>${escapeHtml(employee.phone || "-")}</td>
-            <td>${escapeHtml(employee.department_name || employee.department_id || "-")}</td>
-            <td>${escapeHtml(employee.position || "-")}</td>
+            <td>${editing ? `<input class="inlineInput" data-field="employeeCode" value="${escapeHtml(employee.employee_code || "")}">` : `<strong>${escapeHtml(employee.employee_code)}</strong>`}</td>
+            <td>${editing ? `<input class="inlineInput" data-field="fullName" value="${escapeHtml(employee.full_name || "")}">` : escapeHtml(employee.full_name)}</td>
+            <td>${editing ? `<input class="inlineInput" data-field="phone" value="${escapeHtml(employee.phone || "")}">` : escapeHtml(employee.phone || "-")}</td>
+            <td>${editing ? `<input class="inlineInput" data-field="department" value="${escapeHtml(employee.department_name || employee.department_id || "")}">` : escapeHtml(employee.department_name || employee.department_id || "-")}</td>
+            <td>${editing ? `<input class="inlineInput" data-field="position" value="${escapeHtml(employee.position || "")}">` : escapeHtml(employee.position || "-")}</td>
             <td><span class="pill ${active ? "" : "bad"}">${escapeHtml(employee.status || "-")}</span></td>
             <td>
               ${hasDevice ? escapeHtml(employee.device_model || "Registered phone") : "Not registered"}
@@ -659,22 +662,17 @@
             </td>
             <td>
               <div class="leaveControl">
-                <input type="number" min="0" step="0.5" value="${Number(employee.leave_entitlement_days || 0)}" data-leave-days="${escapeHtml(employee.id)}" aria-label="Leave days for ${escapeHtml(employee.full_name)}">
-                <button class="secondary" type="button" data-save-leave="${escapeHtml(employee.id)}">Save</button>
+                ${editing ? `<input type="number" min="0" step="0.5" value="${Number(employee.leave_entitlement_days || 0)}" data-field="leaveEntitlementDays" aria-label="Leave days for ${escapeHtml(employee.full_name)}">` : `<strong>${escapeHtml(formatLeaveDays(employee.leave_entitlement_days))}</strong>`}
+                <small>Taken ${escapeHtml(formatLeaveDays(employee.leave_taken_days))}</small>
               </div>
-              <small>Taken ${escapeHtml(formatLeaveDays(employee.leave_taken_days))}</small>
             </td>
             <td><strong>${escapeHtml(formatLeaveDays(employee.leave_remaining_days))}</strong></td>
             <td>
               <div class="actions">
-                <button class="blue" type="button"
-                  data-edit-employee="${escapeHtml(employee.id)}"
-                  data-code="${escapeHtml(employee.employee_code || "")}"
-                  data-name="${escapeHtml(employee.full_name || "")}"
-                  data-phone="${escapeHtml(employee.phone || "")}"
-                  data-department="${escapeHtml(employee.department_name || employee.department_id || "")}"
-                  data-position="${escapeHtml(employee.position || "")}"
-                >Edit</button>
+                ${editing ? `
+                  <button class="blue" type="button" data-save-row="${escapeHtml(employee.id)}">Save</button>
+                  <button class="secondary" type="button" data-cancel-row>Cancel</button>
+                ` : `<button class="blue" type="button" data-edit-employee="${escapeHtml(employee.id)}">Edit</button>`}
                 ${hasDevice ? `<button class="secondary" type="button" data-unlink-device="${escapeHtml(employee.device_id)}" data-name="${escapeHtml(employee.full_name)}">Delete Device</button>` : ""}
                 <button class="danger" type="button" data-delete-employee="${escapeHtml(employee.id)}" data-name="${escapeHtml(employee.full_name)}">Delete</button>
               </div>
@@ -744,15 +742,8 @@
 
     function setEditMode(employee) {
       editingEmployeeId = employee ? employee.id : "";
-      document.getElementById("codeInput").value = employee ? employee.employee_code || "" : "";
-      document.getElementById("nameInput").value = employee ? employee.full_name || "" : "";
-      document.getElementById("phoneInput").value = employee ? employee.phone || "" : "";
-      document.getElementById("departmentInput").value = employee ? employee.department_id || "" : "";
-      document.getElementById("positionInput").value = employee ? employee.position || "" : "";
-      saveEmployeeButton.textContent = employee ? "Save Changes" : "Add";
-      cancelEditButton.hidden = !employee;
       setStatus(employeeStatus, employee ? `Editing ${employee.employee_code || ""}` : "", employee ? "ok" : "");
-      if (employee) document.getElementById("codeInput").focus();
+      renderEmployees();
     }
 
     async function loadLiveData(force = false) {
@@ -815,42 +806,56 @@
       event.preventDefault();
       try {
         const payload = {
-          action: editingEmployeeId ? "edit_employee" : "add_employee",
-          employeeId: editingEmployeeId || undefined,
+          action: "add_employee",
           employeeCode: document.getElementById("codeInput").value,
           fullName: document.getElementById("nameInput").value,
           phone: document.getElementById("phoneInput").value,
           department: document.getElementById("departmentInput").value,
-          position: document.getElementById("positionInput").value
+          position: document.getElementById("positionInput").value,
+          leaveEntitlementDays: 0
         };
-        await adminAction({
-          ...payload
-        }, editingEmployeeId ? "Saving employee..." : "Adding employee...");
+        await adminAction(payload, "Adding employee...");
         employeeForm.reset();
-        setEditMode(null);
       } catch (error) {
         setStatus(employeeStatus, error.message || "Unable to save employee", "error");
       }
     });
 
-    cancelEditButton.addEventListener("click", () => {
-      employeeForm.reset();
-      setEditMode(null);
-      setStatus(employeeStatus, "", "");
-    });
-
     employeesBody.addEventListener("click", async event => {
       const edit = event.target.closest("[data-edit-employee]");
       if (edit) {
-        setEditMode({
-          id: edit.dataset.editEmployee,
-          employee_code: edit.dataset.code,
-          full_name: edit.dataset.name,
-          phone: edit.dataset.phone,
-          department_id: edit.dataset.department,
-          position: edit.dataset.position
-        });
-        window.scrollTo({ top: employeeForm.getBoundingClientRect().top + window.scrollY - 120, behavior: "smooth" });
+        const employee = employees.find(item => item.id === edit.dataset.editEmployee);
+        if (employee) setEditMode(employee);
+        return;
+      }
+
+      const cancelRow = event.target.closest("[data-cancel-row]");
+      if (cancelRow) {
+        editingEmployeeId = "";
+        renderEmployees();
+        setStatus(employeeStatus, "", "");
+        return;
+      }
+
+      const saveRow = event.target.closest("[data-save-row]");
+      if (saveRow) {
+        const row = saveRow.closest("[data-employee-row]");
+        const field = name => row.querySelector(`[data-field="${name}"]`)?.value || "";
+        try {
+          await adminAction({
+            action: "edit_employee",
+            employeeId: saveRow.dataset.saveRow,
+            employeeCode: field("employeeCode"),
+            fullName: field("fullName"),
+            phone: field("phone"),
+            department: field("department"),
+            position: field("position"),
+            leaveEntitlementDays: field("leaveEntitlementDays")
+          }, "Saving employee...");
+          editingEmployeeId = "";
+        } catch (error) {
+          setStatus(employeeStatus, error.message || "Unable to save employee", "error");
+        }
         return;
       }
 
@@ -875,27 +880,6 @@
         } catch (error) {
           setStatus(employeeStatus, error.message || "Unable to delete employee", "error");
         }
-      }
-    });
-
-    employeesBody.addEventListener("change", event => {
-      const input = event.target.closest("[data-leave-days]");
-      if (input) input.dataset.changed = "1";
-    });
-
-    employeesBody.addEventListener("click", async event => {
-      const saveLeave = event.target.closest("[data-save-leave]");
-      if (!saveLeave) return;
-      const input = Array.from(employeesBody.querySelectorAll("[data-leave-days]"))
-        .find(item => item.dataset.leaveDays === saveLeave.dataset.saveLeave);
-      try {
-        await adminAction({
-          action: "set_leave_entitlement",
-          employeeId: saveLeave.dataset.saveLeave,
-          entitlementDays: input ? input.value : "0"
-        }, "Saving leave days...");
-      } catch (error) {
-        setStatus(employeeStatus, error.message || "Unable to save leave days", "error");
       }
     });
 
