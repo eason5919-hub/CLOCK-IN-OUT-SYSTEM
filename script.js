@@ -504,7 +504,8 @@ function bindEmployee() {
   if (pendingScanAction) startQrScanner();
   document.querySelector("#correction-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const requestedDate = String(data.get("date"));
     const requestedTime = String(data.get("time"));
     const missing = String(data.get("missing"));
@@ -521,7 +522,7 @@ function bindEmployee() {
         }),
       });
       toast("Correction request submitted.");
-      event.currentTarget.reset();
+      form.reset();
       await loadEmployeeLive(true);
       render();
     } catch (error) {
@@ -530,12 +531,32 @@ function bindEmployee() {
   });
   document.querySelector("#leave-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const leaveType = String(data.get("leaveType"));
+    const leaveDate = String(data.get("date"));
+    const duration = String(data.get("duration"));
+    const reason = String(data.get("reason")).trim();
+    const tempId = `leave-pending-${Date.now()}`;
+
+    state.leaveRequests = [
+      {
+        id: tempId,
+        employeeId: state.currentUser.employeeId,
+        date: leaveDate,
+        type: statusLabel(leaveType),
+        duration: statusLabel(duration),
+        reason,
+        status: "Pending",
+      },
+      ...(state.leaveRequests || []),
+    ];
+    saveState();
+    form.reset();
+    render();
+    toast("Leave/MC submitted");
+
     try {
-      const leaveType = String(data.get("leaveType"));
-      const leaveDate = String(data.get("date"));
-      const duration = String(data.get("duration"));
-      const reason = String(data.get("reason")).trim();
       const result = await liveApi("/api/leave-requests", {
         method: "POST",
         body: JSON.stringify({
@@ -546,24 +567,16 @@ function bindEmployee() {
           reason,
         }),
       });
-      state.leaveRequests = [
-        {
-          id: result.leaveRequestId || `leave-${Date.now()}`,
-          employeeId: state.currentUser.employeeId,
-          date: leaveDate,
-          type: statusLabel(leaveType),
-          duration: statusLabel(duration),
-          reason,
-          status: "Pending",
-        },
-        ...(state.leaveRequests || []).filter((request) => request.id !== result.leaveRequestId),
-      ];
+      state.leaveRequests = (state.leaveRequests || []).map((request) =>
+        request.id === tempId ? { ...request, id: result.leaveRequestId || tempId } : request,
+      );
       saveState();
-      event.currentTarget.reset();
       render();
-      toast("Leave/MC submitted");
       loadEmployeeLive(true).catch(() => {});
     } catch (error) {
+      state.leaveRequests = (state.leaveRequests || []).filter((request) => request.id !== tempId);
+      saveState();
+      render();
       toast(error.message || "Unable to submit Leave/MC request.");
     }
   });
