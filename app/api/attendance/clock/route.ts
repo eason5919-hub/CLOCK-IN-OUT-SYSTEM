@@ -10,7 +10,6 @@ import {
 import {
   calculateAttendanceTotals,
   localDayOfWeek,
-  localMinutesSinceMidnight,
   localWorkDate,
   type AttendanceSchedule,
 } from "../../../../db/attendance-calculations";
@@ -35,6 +34,7 @@ type WarehouseRow = {
 
 type AttendanceRow = {
   id: string;
+  work_date: string;
   clock_in_at: string | null;
   clock_out_at: string | null;
 };
@@ -115,13 +115,8 @@ export async function POST(request: Request) {
     const timestamp = now.toISOString();
     const timeZone = warehouse.timezone || "Asia/Kuala_Lumpur";
     const workDate = localWorkDate(timestamp, timeZone);
-    const schedule = await db
-      .prepare(
-        "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = ? AND day_of_week = ?",
-      )
-      .bind(warehouse.id, localDayOfWeek(timestamp, timeZone))
-      .first<ScheduleRow>();
-    const existing = await db
+    const todaysSchedule = await loadSchedule(db, warehouse.id, localDayOfWeek(timestamp, timeZone));
+    const todaysRecord = await db
       .prepare("SELECT id, clock_in_at, clock_out_at FROM attendance WHERE employee_id = ? AND work_date = ?")
       .bind(payload.employeeId, workDate)
       .first<AttendanceRow>();
@@ -129,17 +124,15 @@ export async function POST(request: Request) {
     const ip = request.headers.get("cf-connecting-ip") ?? "local";
 
     if (payload.action === "clock_in") {
-      if (existing?.clock_in_at) {
+      if (todaysRecord?.clock_in_at) {
         return json(request, { error: "Clock in already recorded for today." }, 409);
       }
 
-      const lateMinutes = schedule?.start_time
-        ? Math.max(0, localMinutesSinceMidnight(timestamp, timeZone) - timeToMinutes(schedule.start_time))
-        : 0;
+      const lateMinutes = calculateAttendanceTotals(timestamp, timestamp, todaysSchedule, timeZone).lateMinutes;
       const status = lateMinutes > 0 ? "late" : "present";
-      const attendanceId = existing?.id ?? crypto.randomUUID();
+      const attendanceId = todaysRecord?.id ?? crypto.randomUUID();
 
-      if (existing) {
+      if (todaysRecord) {
         await db
           .prepare(
             `UPDATE attendance
@@ -194,6 +187,17 @@ export async function POST(request: Request) {
       return json(request, { ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
     }
 
+    const existing = await db
+      .prepare(
+        `SELECT id, work_date, clock_in_at, clock_out_at
+         FROM attendance
+         WHERE employee_id = ? AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
+         ORDER BY work_date DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(payload.employeeId)
+      .first<AttendanceRow>();
+
     if (!existing?.clock_in_at) {
       return json(request, { error: "Clock in is required before clock out." }, 409);
     }
@@ -201,6 +205,7 @@ export async function POST(request: Request) {
       return json(request, { error: "Clock out already recorded for today." }, 409);
     }
 
+    const schedule = await loadSchedule(db, warehouse.id, localDayOfWeek(existing.clock_in_at, timeZone));
     const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone);
     const status =
       totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
@@ -293,9 +298,13 @@ async function resolveDevice(db: D1Database, payload: ClockPayload) {
   return { id };
 }
 
-function timeToMinutes(value: string) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
+async function loadSchedule(db: D1Database, warehouseId: string, dayOfWeek: number) {
+  return db
+    .prepare(
+      "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = ? AND day_of_week = ?",
+    )
+    .bind(warehouseId, dayOfWeek)
+    .first<ScheduleRow>();
 }
 
 async function writeAudit(

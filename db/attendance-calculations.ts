@@ -6,6 +6,8 @@ export type AttendanceSchedule = {
 };
 
 const DEFAULT_TIME_ZONE = "Asia/Kuala_Lumpur";
+const START_GRACE_MINUTES = 15;
+const EARLY_OT_BEFORE_START_MINUTES = 60;
 
 export function calculateAttendanceTotals(
   clockInAt: string,
@@ -17,13 +19,8 @@ export function calculateAttendanceTotals(
     0,
     Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000),
   );
-  const lateMinutes = schedule?.start_time
-    ? Math.max(0, localMinutesSinceMidnight(clockInAt, timeZone) - timeToMinutes(schedule.start_time))
-    : 0;
-  const earlyLeaveMinutes =
-    schedule?.end_time && !schedule.is_off_day
-      ? Math.max(0, timeToMinutes(schedule.end_time) - localMinutesSinceMidnight(clockOutAt, timeZone))
-      : 0;
+  const lateMinutes = calculateLateMinutes(clockInAt, schedule, timeZone);
+  const earlyLeaveMinutes = calculateEarlyLeaveMinutes(clockInAt, clockOutAt, schedule, timeZone);
   const overtimeMinutes = calculateOvertimeMinutes(clockInAt, clockOutAt, schedule, timeZone);
 
   return { totalMinutes, lateMinutes, earlyLeaveMinutes, overtimeMinutes };
@@ -41,13 +38,15 @@ export function calculateOvertimeMinutes(
   }
   if (!schedule.end_time || !schedule.overtime_starts_at) return 0;
 
-  const clockOutMinutes = localMinutesSinceMidnight(clockOutAt, timeZone);
-  const scheduledEndMinutes = timeToMinutes(schedule.end_time);
-  const overtimeThresholdMinutes = timeToMinutes(schedule.overtime_starts_at);
+  const workDate = localDateTimeParts(clockInAt, timeZone);
+  const scheduledEndMs = localDateAndTimeToUtcMs(workDate, schedule.end_time, timeZone);
+  const overtimeThresholdMs = localDateAndTimeToUtcMs(workDate, schedule.overtime_starts_at, timeZone);
+  const clockOutMs = Date.parse(clockOutAt);
+  const earlyOvertimeMinutes = calculateEarlyOvertimeMinutes(clockInAt, schedule, timeZone);
+  const lateOvertimeMinutes =
+    clockOutMs >= overtimeThresholdMs ? Math.max(0, Math.round((clockOutMs - scheduledEndMs) / 60000)) : 0;
 
-  return clockOutMinutes >= overtimeThresholdMinutes
-    ? Math.max(0, clockOutMinutes - scheduledEndMinutes)
-    : 0;
+  return earlyOvertimeMinutes + lateOvertimeMinutes;
 }
 
 export function localWorkDate(value: string | Date, timeZone = DEFAULT_TIME_ZONE) {
@@ -68,6 +67,72 @@ export function localMinutesSinceMidnight(value: string | Date, timeZone = DEFAU
 function timeToMinutes(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
+}
+
+function calculateLateMinutes(clockInAt: string, schedule?: AttendanceSchedule | null, timeZone = DEFAULT_TIME_ZONE) {
+  if (!schedule?.start_time || schedule.is_off_day) return 0;
+  const clockInMinutes = localMinutesSinceMidnight(clockInAt, timeZone);
+  const scheduledStartMinutes = timeToMinutes(schedule.start_time);
+  return clockInMinutes > scheduledStartMinutes + START_GRACE_MINUTES
+    ? Math.max(0, clockInMinutes - scheduledStartMinutes)
+    : 0;
+}
+
+function calculateEarlyLeaveMinutes(
+  clockInAt: string,
+  clockOutAt: string,
+  schedule?: AttendanceSchedule | null,
+  timeZone = DEFAULT_TIME_ZONE,
+) {
+  if (!schedule?.end_time || schedule.is_off_day) return 0;
+  const workDate = localDateTimeParts(clockInAt, timeZone);
+  const scheduledEndMs = localDateAndTimeToUtcMs(workDate, schedule.end_time, timeZone);
+  return Date.parse(clockOutAt) < scheduledEndMs
+    ? Math.max(0, Math.round((scheduledEndMs - Date.parse(clockOutAt)) / 60000))
+    : 0;
+}
+
+function calculateEarlyOvertimeMinutes(
+  clockInAt: string,
+  schedule?: AttendanceSchedule | null,
+  timeZone = DEFAULT_TIME_ZONE,
+) {
+  if (!schedule?.start_time || schedule.is_off_day) return 0;
+  const scheduledStartMinutes = timeToMinutes(schedule.start_time);
+  const earlyNormalStartMinutes = scheduledStartMinutes - EARLY_OT_BEFORE_START_MINUTES;
+  if (earlyNormalStartMinutes < 0) return 0;
+
+  const workDate = localDateTimeParts(clockInAt, timeZone);
+  const earlyNormalStartMs = localDateAndTimeToUtcMs(
+    workDate,
+    minutesToTime(earlyNormalStartMinutes),
+    timeZone,
+  );
+  return Date.parse(clockInAt) < earlyNormalStartMs
+    ? Math.max(0, Math.round((earlyNormalStartMs - Date.parse(clockInAt)) / 60000))
+    : 0;
+}
+
+function minutesToTime(value: number) {
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function localDateAndTimeToUtcMs(
+  dateParts: { year: number; month: number; day: number },
+  time: string,
+  timeZone: string,
+) {
+  const [hour, minute] = time.split(":").map(Number);
+  let utcMs = Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, hour, minute);
+  for (let index = 0; index < 3; index += 1) {
+    const actual = localDateTimeParts(new Date(utcMs), timeZone);
+    const actualAsUtc = Date.UTC(actual.year, actual.month - 1, actual.day, actual.hour, actual.minute);
+    const wantedAsUtc = Date.UTC(dateParts.year, dateParts.month - 1, dateParts.day, hour, minute);
+    utcMs -= actualAsUtc - wantedAsUtc;
+  }
+  return utcMs;
 }
 
 function localDateTimeParts(value: string | Date, timeZone: string) {

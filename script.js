@@ -256,6 +256,7 @@ function adminScreen() {
       </section>
       <section class="panel wide" id="reports">
         <div class="heading"><div><p class="eyebrow">Working hours</p><h3>OT rules</h3></div></div>
+        <p>Start time 09:00. Clock in until 09:15 is normal; 09:16 is late 16m. Clock in before 08:00 counts as early OT.</p>
         <p>Monday-Friday: normal end 18:00, no OT until 18:16, counted from 18:00.</p>
         <p>Saturday: normal end 13:00, no OT until 13:16, counted from 13:00. Sunday approved work is all OT.</p>
       </section>
