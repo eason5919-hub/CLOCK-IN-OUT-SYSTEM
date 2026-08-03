@@ -1,19 +1,20 @@
 # Warehouse Attendance Management
 
-A cloud-ready attendance management system for warehouse teams. The app supports Owner/Admin, HR/Admin Staff, and Employee surfaces from one responsive React interface, with Cloudflare D1 persistence for production data.
+A cloud-ready attendance system for warehouse teams. Employees, HR, and owners sign in through the same app, and server-side sessions keep employees limited to their own attendance records.
 
 ## Included
 
-- Role-based dashboards for Owner/Admin, HR/Admin Staff, and Employee users.
+- Employee mobile app for official-phone registration, QR/GPS clocking, history, OT, and correction requests.
+- HR/Owner dashboard for employee records, registered devices, attendance, reports, and corrections.
 - Employee phone clock in/out flow using permanent warehouse QR validation plus GPS sampling.
 - Device registration lock: one employee account can be linked to one official device.
-- Admin device reset workflow.
 - Editable working schedule model with default warehouse hours.
 - Automatic attendance fields for working minutes, late minutes, early leave, and overtime.
 - OT grace rules: weekdays count only after 18:15 and Saturdays only after 13:15, but approved OT minutes are calculated from the scheduled end time.
-- Employee correction requests with HR approval and audit trail.
+- Employee correction requests for forgotten clock in/out.
 - Reports for attendance, OT, late, absent, with CSV and printable HTML export endpoints.
 - D1 database schema and migrations for users, employees, devices, attendance, corrections, QR codes, schedules, departments, settings, audit logs, and warehouses.
+
 
 ## Local Use
 

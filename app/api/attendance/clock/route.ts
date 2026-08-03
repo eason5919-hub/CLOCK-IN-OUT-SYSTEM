@@ -2,6 +2,7 @@ import {
   distanceMeters,
   ensureDatabase,
   getD1,
+  getSessionFromRequest,
   pickBestSample,
   sha256Hex,
   type GpsSample,
@@ -44,6 +45,14 @@ export async function POST(request: Request) {
 
     const db = getD1();
     await ensureDatabase(db);
+    const session = await getSessionFromRequest(db, request);
+    if (session?.role !== "employee" || !session.employee_id) {
+      return Response.json({ error: "Employee login is required." }, { status: 401 });
+    }
+    if (payload.employeeId && payload.employeeId !== session.employee_id) {
+      return Response.json({ error: "Employees can only clock their own attendance." }, { status: 403 });
+    }
+    payload.employeeId = session.employee_id;
 
     const qrHash = await sha256Hex(payload.qrToken!);
     const warehouse = await db

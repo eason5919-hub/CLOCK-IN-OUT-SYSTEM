@@ -1,4 +1,4 @@
-import { ensureDatabase, getD1 } from "../../../db/runtime";
+import { ensureDatabase, getD1, getSessionFromRequest, isAdminSession } from "../../../db/runtime";
 
 export async function POST(request: Request) {
   try {
@@ -17,6 +17,13 @@ export async function POST(request: Request) {
 
     const db = getD1();
     await ensureDatabase(db);
+    const session = await getSessionFromRequest(db, request);
+    if (session?.role !== "employee" || !session.employee_id) {
+      return Response.json({ error: "Employee login is required." }, { status: 401 });
+    }
+    if (payload.employeeId !== session.employee_id) {
+      return Response.json({ error: "Employees can only submit their own corrections." }, { status: 403 });
+    }
     const existing = await db
       .prepare("SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?")
       .bind(payload.employeeId, payload.requestedDate)
@@ -65,6 +72,10 @@ export async function PATCH(request: Request) {
 
     const db = getD1();
     await ensureDatabase(db);
+    const session = await getSessionFromRequest(db, request);
+    if (!isAdminSession(session)) {
+      return Response.json({ error: "Admin login is required." }, { status: 401 });
+    }
     const correction = await db
       .prepare("SELECT * FROM attendance_corrections WHERE id = ? AND status = 'pending'")
       .bind(payload.correctionId)

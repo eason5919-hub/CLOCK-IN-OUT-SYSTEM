@@ -7,6 +7,16 @@ export type GpsSample = {
   timestamp?: string;
 };
 
+export type AppSession = {
+  id: string;
+  user_id: string;
+  role: "owner" | "hr" | "employee";
+  employee_id: string | null;
+  expires_at: string;
+};
+
+export const SESSION_COOKIE = "warehouse_session";
+
 export function getD1() {
   if (!env.DB) {
     throw new Error("D1 binding DB is unavailable.");
@@ -85,6 +95,11 @@ export async function ensureDatabase(db: D1Database) {
       .bind("user-emp-001", "siti@example.com", passwordHash, "employee", "emp-001", 1),
     db
       .prepare(
+        "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .bind("user-emp-002", "daniel@example.com", passwordHash, "employee", "emp-002", 1),
+    db
+      .prepare(
         "INSERT INTO qr_codes (id, warehouse_id, token_hash, version, is_active, generated_by_user_id) VALUES (?, ?, ?, ?, ?, ?)",
       )
       .bind("qr-main-v1", "wh-main", qrHash, 1, 1, "user-owner"),
@@ -111,6 +126,47 @@ export async function ensureDatabase(db: D1Database) {
       .prepare("INSERT INTO settings (key, value, updated_by_user_id) VALUES (?, ?, ?)")
       .bind("default_radius_meters", "100", "user-owner"),
   ]);
+}
+
+export async function createSession(
+  db: D1Database,
+  user: { id: string; role: "owner" | "hr" | "employee"; employee_id: string | null },
+) {
+  const id = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
+  await db
+    .prepare(
+      "INSERT INTO sessions (id, user_id, role, employee_id, expires_at) VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(id, user.id, user.role, user.employee_id, expiresAt)
+    .run();
+  return { id, expiresAt };
+}
+
+export async function getSessionFromRequest(db: D1Database, request: Request) {
+  const sessionId = parseCookie(request.headers.get("cookie") ?? "")[SESSION_COOKIE];
+  if (!sessionId) return null;
+
+  const session = await db
+    .prepare(
+      "SELECT id, user_id, role, employee_id, expires_at FROM sessions WHERE id = ? AND expires_at > ?",
+    )
+    .bind(sessionId, new Date().toISOString())
+    .first<AppSession>();
+
+  return session ?? null;
+}
+
+export function sessionCookie(sessionId: string, expiresAt: string) {
+  return `${SESSION_COOKIE}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Secure; Expires=${new Date(expiresAt).toUTCString()}`;
+}
+
+export function clearSessionCookie() {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`;
+}
+
+export function isAdminSession(session: AppSession | null) {
+  return session?.role === "owner" || session?.role === "hr";
 }
 
 export function pickBestSample(samples: GpsSample[]) {
@@ -144,6 +200,21 @@ export async function sha256Hex(value: string) {
 
 function toRadians(value: number) {
   return (value * Math.PI) / 180;
+}
+
+function parseCookie(value: string) {
+  return Object.fromEntries(
+    value
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const index = part.indexOf("=");
+        return index === -1
+          ? [part, ""]
+          : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+      }),
+  );
 }
 
 const scheduleSeed = [
@@ -289,5 +360,14 @@ const schemaStatements = [
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id)`,
+  `CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    role TEXT NOT NULL,
+    employee_id TEXT REFERENCES employees(id),
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
   `PRAGMA optimize`,
 ];
