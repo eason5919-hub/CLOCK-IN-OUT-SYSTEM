@@ -225,7 +225,7 @@ function employeeScreen() {
         <form class="form" id="leave-form">
           <label>Type<select name="leaveType"><option value="leave">Annual Leave</option><option value="mc">MC</option></select></label>
           <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
-          <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select></label>
+          <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select><small class="muted" data-leave-rule></small></label>
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
           <button>Submit Annual Leave/MC</button>
         </form>
@@ -537,6 +537,12 @@ function bindEmployee() {
     const leaveDate = String(data.get("date"));
     const duration = String(data.get("duration"));
     const reason = String(data.get("reason")).trim();
+    const validation = validateLeaveDateAndDuration(leaveDate, duration);
+    if (validation) {
+      toast(validation);
+      updateLeaveDurationRule(form);
+      return;
+    }
     const tempId = `leave-pending-${Date.now()}`;
 
     state.leaveRequests = [
@@ -580,6 +586,10 @@ function bindEmployee() {
       toast(error.message || "Unable to submit Annual Leave/MC request.");
     }
   });
+  const leaveForm = document.querySelector("#leave-form");
+  leaveForm?.querySelector('input[name="date"]')?.addEventListener("change", () => updateLeaveDurationRule(leaveForm));
+  leaveForm?.querySelector('select[name="duration"]')?.addEventListener("change", () => updateLeaveDurationRule(leaveForm));
+  if (leaveForm) updateLeaveDurationRule(leaveForm);
 }
 
 function bindAdmin() {
@@ -821,6 +831,36 @@ function correctionCard(correction) {
 function leaveRequestCard(request) {
   const canCancel = !["Rejected", "Cancelled"].includes(request.status) && request.date >= malaysiaDateKey(new Date());
   return `<div class="list-item leave-card"><div><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div><div class="actions"><span class="badge ${request.status.toLowerCase()}">${request.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div></div>`;
+}
+
+function updateLeaveDurationRule(form) {
+  const dateInput = form.querySelector('input[name="date"]');
+  const durationSelect = form.querySelector('select[name="duration"]');
+  const rule = form.querySelector("[data-leave-rule]");
+  if (!dateInput || !durationSelect || !rule) return;
+
+  const day = leaveDateDayOfWeek(dateInput.value);
+  durationSelect.querySelector('option[value="full_day"]').disabled = day === 6;
+  if (day === 6) durationSelect.value = "half_day";
+  rule.textContent =
+    day === 0
+      ? "Sunday cannot be selected."
+      : day === 6
+        ? "Saturday is half day only."
+        : "";
+}
+
+function validateLeaveDateAndDuration(date, duration) {
+  const day = leaveDateDayOfWeek(date);
+  if (day === 0) return "Annual Leave/MC cannot be selected on Sunday.";
+  if (day === 6 && duration !== "half_day") return "Saturday Annual Leave/MC can only be half day.";
+  return "";
+}
+
+function leaveDateDayOfWeek(value) {
+  if (!value) return -1;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
 function adminCorrectionCard(correction) {

@@ -119,7 +119,15 @@ function validatePayload(payload: LeavePayload) {
   if (payload.leaveType !== "leave" && payload.leaveType !== "mc") return "Select Leave or MC.";
   if (!payload.leaveDate || !/^\d{4}-\d{2}-\d{2}$/.test(payload.leaveDate)) return "Select leave date.";
   if (payload.duration !== "half_day" && payload.duration !== "full_day") return "Select half day or full day.";
+  const day = dayOfWeek(payload.leaveDate);
+  if (day === 0) return "Annual Leave/MC cannot be selected on Sunday.";
+  if (day === 6 && payload.duration !== "half_day") return "Saturday Annual Leave/MC can only be half day.";
   return null;
+}
+
+function dayOfWeek(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
 function malaysiaTodayKey() {
