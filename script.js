@@ -1,4 +1,4 @@
-const STORAGE_KEY = "warehouse-attendance-static-v1";
+const STORAGE_KEY = "warehouse-attendance-static-v2";
 const DEVICE_KEY = "warehouse-device-fingerprint";
 const WAREHOUSE = {
   name: "Main Warehouse",
@@ -15,69 +15,8 @@ const ADMIN_ACCOUNT = {
 
 const defaultState = {
   currentUser: null,
-  employees: [
-    {
-      id: "emp-001",
-      code: "WH-001",
-      name: "Siti Rahman",
-      department: "Operations",
-      position: "Warehouse Supervisor",
-      phone: "+60 12-400 1001",
-      deviceFingerprint: null,
-      deviceModel: "Not registered",
-      deviceStatus: "Not registered",
-    },
-    {
-      id: "emp-002",
-      code: "WH-002",
-      name: "Daniel Tan",
-      department: "Picking",
-      position: "Picker",
-      phone: "+60 12-400 1002",
-      deviceFingerprint: null,
-      deviceModel: "Not registered",
-      deviceStatus: "Not registered",
-    },
-    {
-      id: "emp-003",
-      code: "WH-003",
-      name: "Nur Aisyah",
-      department: "Packing",
-      position: "Packer",
-      phone: "+60 12-400 1003",
-      deviceFingerprint: null,
-      deviceModel: "Not registered",
-      deviceStatus: "Not registered",
-    },
-  ],
-  attendance: [
-    {
-      id: "att-001",
-      employeeId: "emp-001",
-      date: "2026-08-01",
-      clockIn: "08:58",
-      clockOut: "18:35",
-      workingMinutes: 577,
-      lateMinutes: 0,
-      earlyLeaveMinutes: 0,
-      overtimeMinutes: 35,
-      status: "OT",
-      gps: "12m / 22m",
-    },
-    {
-      id: "att-002",
-      employeeId: "emp-002",
-      date: "2026-08-01",
-      clockIn: "08:51",
-      clockOut: "18:04",
-      workingMinutes: 553,
-      lateMinutes: 0,
-      earlyLeaveMinutes: 0,
-      overtimeMinutes: 0,
-      status: "Present",
-      gps: "15m / 31m",
-    },
-  ],
+  employees: [],
+  attendance: [],
   corrections: [],
   auditLogs: [],
 };
@@ -293,7 +232,7 @@ function adminScreen() {
       </section>
       <section class="panel">
         <div class="heading"><div><p class="eyebrow">Devices</p><h3>Official phones</h3></div></div>
-        <div class="list">${state.employees.map(employeeCard).join("")}</div>
+        <div class="list">${state.employees.map(employeeCard).join("") || `<small>No employees added yet.</small>`}</div>
       </section>
       <section class="panel wide" id="attendance">
         <div class="heading">
