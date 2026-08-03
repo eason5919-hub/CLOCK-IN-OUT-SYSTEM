@@ -32,7 +32,10 @@ export async function ensureDatabase(db: D1Database) {
     .prepare("SELECT COUNT(*) AS count FROM departments")
     .first<{ count: number }>();
 
-  if ((existing?.count ?? 0) > 0) return;
+  if ((existing?.count ?? 0) > 0) {
+    await ensureEmployeeUsers(db);
+    return;
+  }
 
   const qrHash = await sha256Hex("WAREHOUSE-MAIN-QR");
   const passwordHash =
@@ -126,6 +129,33 @@ export async function ensureDatabase(db: D1Database) {
       .prepare("INSERT INTO settings (key, value, updated_by_user_id) VALUES (?, ?, ?)")
       .bind("default_radius_meters", "100", "user-owner"),
   ]);
+  await ensureEmployeeUsers(db);
+}
+
+async function ensureEmployeeUsers(db: D1Database) {
+  const rows = await db
+    .prepare(
+      `SELECT e.id, e.email, e.employee_code
+       FROM employees e
+       LEFT JOIN users u ON u.employee_id = e.id
+       WHERE u.id IS NULL AND e.status = 'active'`,
+    )
+    .all<{ id: string; email: string | null; employee_code: string }>();
+
+  const statements = (rows.results ?? []).map((employee) =>
+    db
+      .prepare(
+        "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, 'employee', ?, 1)",
+      )
+      .bind(
+        crypto.randomUUID(),
+        employee.email || `${employee.employee_code.toLowerCase()}@warehouse.local`,
+        "employee-phone-login",
+        employee.id,
+      ),
+  );
+
+  if (statements.length) await db.batch(statements);
 }
 
 export async function createSession(
