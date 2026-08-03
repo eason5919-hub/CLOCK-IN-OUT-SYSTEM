@@ -340,6 +340,15 @@ h3 {
   padding: 6px;
 }
 
+.qr-mini-image {
+  width: 86px;
+  height: 86px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px;
+}
+
 .qr-large i,
 .qr-mini i {
   background: var(--ink);

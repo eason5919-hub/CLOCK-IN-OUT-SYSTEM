@@ -148,11 +148,11 @@ function shell(content, subtitle) {
         <nav class="nav">
           ${state.currentUser.role === "employee"
             ? `<a href="#clock">Clock In/Out</a><a href="#month">Monthly View</a><a href="#history">History</a><a href="#corrections">Correction Request</a>`
-            : `<a href="#employees">Employees</a><a href="#attendance">Attendance</a><a href="#corrections">Corrections</a><a href="#reports">Reports</a>`}
+            : `<a href="#warehouse-qr">QR Code</a><a href="#employees">Employees</a><a href="#attendance">Attendance</a><a href="#corrections">Corrections</a><a href="#reports">Reports</a>`}
         </nav>
         <div class="warehouse">
           <p class="eyebrow">Warehouse QR</p>
-          <div class="qr-mini">${"<i></i>".repeat(9)}</div>
+          <img class="qr-mini-image" src="${warehouseQrImageUrl()}" alt="Warehouse QR code" />
           <strong>${WAREHOUSE.name}</strong>
           <small>Allowed radius ${WAREHOUSE.radius}m</small>
         </div>
@@ -232,6 +232,15 @@ function adminScreen() {
       ["Pending requests", pending.length, "red"],
     ])}
     <div class="content">
+      <section class="panel" id="warehouse-qr">
+        <div class="heading"><div><p class="eyebrow">Clock in QR</p><h3>Warehouse QR Code</h3></div></div>
+        <div class="qr-print">
+          <img src="${warehouseQrImageUrl()}" alt="Warehouse clock in QR code" />
+          <strong>${WAREHOUSE.qr}</strong>
+          <small>Employees scan this QR when clocking in or out.</small>
+          <a class="button secondary" href="${warehouseQrImageUrl()}" target="_blank" rel="noreferrer">Open QR</a>
+        </div>
+      </section>
       <section class="panel" id="employees">
         <div class="heading"><div><p class="eyebrow">Employee management</p><h3>Add employee</h3></div></div>
         <form class="form" id="add-employee">
@@ -262,14 +271,6 @@ function adminScreen() {
         <div class="heading"><div><p class="eyebrow">Working hours</p><h3>OT rules</h3></div></div>
         <p>Monday-Friday: normal end 18:00, no OT until 18:16, counted from 18:00.</p>
         <p>Saturday: normal end 13:00, no OT until 13:16, counted from 13:00. Sunday approved work is all OT.</p>
-      </section>
-      <section class="panel" id="warehouse-qr">
-        <div class="heading"><div><p class="eyebrow">Clock in QR</p><h3>Warehouse QR Code</h3></div></div>
-        <div class="qr-print">
-          <img src="${warehouseQrImageUrl()}" alt="Warehouse clock in QR code" />
-          <strong>${WAREHOUSE.qr}</strong>
-          <small>Employees scan this QR when clocking in or out.</small>
-        </div>
       </section>
     </div>
     ${deleteEmployeeModal()}
@@ -711,7 +712,7 @@ function employeeById(id) {
 }
 
 function warehouseQrImageUrl() {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data=${encodeURIComponent(WAREHOUSE.qr)}`;
+  return "public/warehouse-qr.png";
 }
 
 function findEmployeeById(id) {
