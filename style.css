@@ -25,6 +25,7 @@ body {
   background-size: 36px 36px;
   color: var(--ink);
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  touch-action: manipulation;
 }
 
 button,
@@ -34,6 +35,7 @@ textarea {
   font: inherit;
   max-width: 100%;
   min-width: 0;
+  touch-action: manipulation;
 }
 
 button,
