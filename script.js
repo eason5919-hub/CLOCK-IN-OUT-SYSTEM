@@ -1153,13 +1153,6 @@ function calculatePresentDays(records, leaveRequests) {
       dayValues.set(row.date, Math.max(dayValues.get(row.date) || 0, 1));
     });
 
-  (leaveRequests || [])
-    .filter((request) => ["Pending", "Approved"].includes(request.status))
-    .forEach((request) => {
-      const value = request.duration === "Half Day" ? 0.5 : 1;
-      dayValues.set(request.date, Math.max(dayValues.get(request.date) || 0, value));
-    });
-
   return [...dayValues.values()].reduce((total, value) => total + value, 0);
 }
 
