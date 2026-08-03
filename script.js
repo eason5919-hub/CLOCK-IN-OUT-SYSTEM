@@ -27,9 +27,8 @@ let pendingScanAction = null;
 let qrScanController = null;
 
 window.addEventListener("hashchange", () => {
-  if (window.location.hash.toLowerCase() === "#admin" && state.currentUser?.role === "employee") {
-    state.currentUser = null;
-    saveState();
+  if (window.location.hash.toLowerCase() === "#admin") {
+    history.replaceState(null, "", window.location.pathname);
   }
   render();
 });
@@ -49,59 +48,31 @@ function saveState() {
 
 function render() {
   const app = document.querySelector("#app");
+  if (state.currentUser && state.currentUser.role !== "employee") {
+    state.currentUser = null;
+    saveState();
+  }
+
   if (!state.currentUser) {
     app.innerHTML = loginScreen();
     bindLogin();
     return;
   }
 
-  if (state.currentUser.role === "employee") {
-    if (!findEmployeeById(state.currentUser.employeeId)) {
-      state.currentUser = null;
-      saveState();
-      app.innerHTML = loginScreen();
-      bindLogin();
-      toast("This employee account was deleted by HR.");
-      return;
-    }
-    app.innerHTML = shell(employeeScreen(), "Employee attendance app");
-    bindEmployee();
-  } else {
-    app.innerHTML = shell(adminScreen(), "HR / Owner console");
-    bindAdmin();
+  if (!findEmployeeById(state.currentUser.employeeId)) {
+    state.currentUser = null;
+    saveState();
+    app.innerHTML = loginScreen();
+    bindLogin();
+    toast("This employee account was deleted by HR.");
+    return;
   }
+
+  app.innerHTML = shell(employeeScreen(), "Employee attendance app");
+  bindEmployee();
 }
 
 function loginScreen() {
-  const adminMode = window.location.hash.toLowerCase() === "#admin";
-  if (adminMode) {
-    return `
-      <section class="auth">
-        <div class="auth-hero">
-          <div class="brand">
-            <div class="brand-mark">W</div>
-            <div><p class="eyebrow">Warehouse</p><h1>Attendance Management</h1></div>
-          </div>
-          <h2>HR and owner attendance control</h2>
-          <div class="actions">
-            <span class="badge">Employee records</span>
-            <span class="badge">OT reports</span>
-            <span class="badge">Correction approvals</span>
-          </div>
-        </div>
-        <div class="auth-grid single">
-          <form class="auth-panel" id="admin-login">
-            <div><p class="eyebrow">Authorized staff</p><h3>HR / Owner Login</h3></div>
-            <label>Email<input name="email" type="email" required /></label>
-            <label>Password<input name="password" type="password" required /></label>
-            <button>Open Admin</button>
-            <a class="text-link" href="./">Employee app</a>
-          </form>
-        </div>
-      </section>
-    `;
-  }
-
   return `
     <section class="auth">
       <div class="auth-hero">
@@ -334,20 +305,6 @@ function bindLogin() {
     render();
   });
 
-  const adminLoginForm = document.querySelector("#admin-login");
-  if (adminLoginForm) adminLoginForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const email = String(data.get("email")).trim().toLowerCase();
-    const password = String(data.get("password")).trim();
-    if (email === ADMIN_ACCOUNT.email && await sha256Hex(password) === ADMIN_ACCOUNT.passwordHash) {
-      state.currentUser = { role: "hr", name: "HR/Admin Staff", label: "HR/Admin" };
-    } else {
-      return toast("Admin email or password is incorrect.");
-    }
-    saveState();
-    render();
-  });
 }
 
 function bindEmployee() {

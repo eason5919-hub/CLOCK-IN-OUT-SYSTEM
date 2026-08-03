@@ -4,6 +4,8 @@ A cloud-ready attendance system for warehouse teams. Employees, HR, and owners s
 
 GitHub Pages app: https://eason5919-hub.github.io/CLOCK-IN-OUT-SYSTEM/
 
+HR live admin file: `HR ADMIN LIVE.html`
+
 This repository also contains the earlier full-stack source folders. The GitHub Pages version runs from `index.html`, `style.css`, `script.js`, and `manifest.json`.
 
 ## Included

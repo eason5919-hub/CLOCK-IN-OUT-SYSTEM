@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>Warehouse HR Attendance</title>
+  <style>
+    :root {
+      --ink: #13211d;
+      --panel: #ffffff;
+      --soft: #f4f7f5;
+      --line: #d8e2dc;
+      --green: #1f7a4d;
+      --green-dark: #14241f;
+      --gold: #c7a24c;
+      --muted: #66736f;
+      --danger: #b42318;
+      --blue: #1769aa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background: #edf3f0;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 18px;
+      background: var(--green-dark);
+      color: #f6fff9;
+      border-bottom: 3px solid var(--gold);
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 4px; font-size: 22px; }
+    header p { margin-bottom: 0; color: #dce8e2; font-size: 14px; }
+
+    main {
+      width: min(1280px, calc(100% - 24px));
+      margin: 18px auto 40px;
+    }
+
+    input, button, select {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: inherit;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 0 11px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    button, .buttonLink {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 40px;
+      padding: 0 13px;
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button.secondary, .buttonLink.secondary {
+      border-color: var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+
+    button.danger {
+      border-color: var(--danger);
+      background: var(--danger);
+    }
+
+    button.blue {
+      border-color: var(--blue);
+      background: var(--blue);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .loginBox {
+      width: min(460px, calc(100% - 24px));
+      margin: 80px auto;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: 0 18px 45px rgba(19, 33, 29, 0.16);
+    }
+
+    .loginBox label, .formGrid label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .loginBox form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .metric {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 26px;
+    }
+
+    .panel {
+      margin-bottom: 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(19, 33, 29, 0.08);
+    }
+
+    .panelHead {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--soft);
+    }
+
+    .panelHead h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .status {
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .status.ok { color: var(--green); }
+    .status.error { color: var(--danger); }
+
+    .formGrid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(130px, 1fr)) auto;
+      gap: 10px;
+      padding: 14px;
+      align-items: end;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .qrGrid {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 16px;
+      padding: 14px;
+      align-items: center;
+    }
+
+    .qrGrid img {
+      width: 180px;
+      height: 180px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .tableWrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 1000px;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+    }
+
+    th {
+      position: sticky;
+      top: 75px;
+      background: var(--green-dark);
+      color: #fff;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    tbody tr:nth-child(even) { background: #f8faf8; }
+    td small { display: block; margin-top: 3px; color: var(--muted); }
+
+    .pill {
+      display: inline-flex;
+      min-height: 24px;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e7f4ed;
+      color: var(--green);
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .pill.warn { background: #fff3cd; color: #866400; }
+    .pill.bad { background: #fde7e5; color: var(--danger); }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .empty {
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    [hidden] { display: none !important; }
+
+    @media (max-width: 840px) {
+      header { align-items: flex-start; flex-direction: column; }
+      .toolbar { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+      .formGrid { grid-template-columns: 1fr; }
+      .qrGrid { grid-template-columns: 1fr; }
+      th { top: 122px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Warehouse HR Attendance</h1>
+      <p>Live employee and attendance records from the shared warehouse database.</p>
+    </div>
+    <div class="actions">
+      <a class="buttonLink secondary" href="index.html">Employee App</a>
+      <button id="logoutButton" class="secondary" type="button" hidden>Logout</button>
+    </div>
+  </header>
+
+  <section id="loginSection" class="loginBox">
+    <form id="loginForm">
+      <div>
+        <h2>HR / Owner Login</h2>
+        <p>Sign in to open the live admin table.</p>
+      </div>
+      <label>Email<input id="emailInput" type="email" autocomplete="username" required></label>
+      <label>Password<input id="passwordInput" type="password" autocomplete="current-password" required></label>
+      <button id="loginButton" type="submit">Open Admin</button>
+      <span id="loginStatus" class="status"></span>
+    </form>
+  </section>
+
+  <main id="adminSection" hidden>
+    <div class="toolbar">
+      <input id="searchInput" type="search" placeholder="Search employee, code, phone, date, status..." autocomplete="off">
+      <button id="refreshButton" type="button">Refresh</button>
+      <button id="exportButton" class="blue" type="button">Export CSV</button>
+      <span id="statusText" class="status">Connecting...</span>
+    </div>
+
+    <section class="cards">
+      <div class="metric">Employees<strong id="employeeCount">0</strong></div>
+      <div class="metric">Clocked In<strong id="clockedInCount">0</strong></div>
+      <div class="metric">Missing Out<strong id="missingOutCount">0</strong></div>
+      <div class="metric">Today Records<strong id="todayCount">0</strong></div>
+      <div class="metric">OT Minutes<strong id="otCount">0</strong></div>
+    </section>
+
+    <section class="panel">
+      <div class="panelHead">
+        <h2>Warehouse QR Code</h2>
+        <div class="actions">
+          <button id="printQrButton" class="secondary" type="button">Print QR</button>
+          <a id="downloadQrLink" class="buttonLink secondary" download="warehouse-qr.png">Download QR</a>
+        </div>
+      </div>
+      <div class="qrGrid">
+        <img id="qrImage" alt="Warehouse QR Code">
+        <div>
+          <h3>QR token: <span id="qrTokenText">WAREHOUSE-MAIN-QR</span></h3>
+          <p>Employees scan this QR at the warehouse. The phone must also pass GPS within 100 meters of the warehouse location.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panelHead">
+        <h2>Add Employee</h2>
+        <span id="employeeStatus" class="status"></span>
+      </div>
+      <form id="employeeForm" class="formGrid">
+        <label>Code<input id="codeInput" type="text" required placeholder="EMP001"></label>
+        <label>Name<input id="nameInput" type="text" required placeholder="Full name"></label>
+        <label>Phone<input id="phoneInput" type="tel" required placeholder="0123456789"></label>
+        <label>Department<input id="departmentInput" type="text" placeholder="Warehouse"></label>
+        <label>Position<input id="positionInput" type="text" placeholder="Staff"></label>
+        <button type="submit">Add</button>
+      </form>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Code</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Department</th>
+              <th>Position</th>
+              <th>Status</th>
+              <th>Device</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="employeesBody"></tbody>
+        </table>
+      </div>
+      <div id="employeeEmpty" class="empty" hidden>No employees yet.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panelHead">
+        <h2>Attendance Records</h2>
+        <span id="attendanceCountText" class="status"></span>
+      </div>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Date</th>
+              <th>Employee</th>
+              <th>Clock In</th>
+              <th>Clock Out</th>
+              <th>Working</th>
+              <th>Late</th>
+              <th>OT</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="attendanceBody"></tbody>
+        </table>
+      </div>
+      <div id="attendanceEmpty" class="empty" hidden>No attendance records yet.</div>
+    </section>
+  </main>
+
+  <script>
+    const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
+    const TOKEN_KEY = "warehouseHrLiveToken";
+    const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
+    const loginSection = document.getElementById("loginSection");
+    const adminSection = document.getElementById("adminSection");
+    const loginForm = document.getElementById("loginForm");
+    const loginButton = document.getElementById("loginButton");
+    const loginStatus = document.getElementById("loginStatus");
+    const emailInput = document.getElementById("emailInput");
+    const passwordInput = document.getElementById("passwordInput");
+    const logoutButton = document.getElementById("logoutButton");
+    const searchInput = document.getElementById("searchInput");
+    const refreshButton = document.getElementById("refreshButton");
+    const exportButton = document.getElementById("exportButton");
+    const statusText = document.getElementById("statusText");
+    const employeeForm = document.getElementById("employeeForm");
+    const employeesBody = document.getElementById("employeesBody");
+    const attendanceBody = document.getElementById("attendanceBody");
+    const employeeEmpty = document.getElementById("employeeEmpty");
+    const attendanceEmpty = document.getElementById("attendanceEmpty");
+    const attendanceCountText = document.getElementById("attendanceCountText");
+    const employeeStatus = document.getElementById("employeeStatus");
+    const qrImage = document.getElementById("qrImage");
+    const downloadQrLink = document.getElementById("downloadQrLink");
+    const printQrButton = document.getElementById("printQrButton");
+
+    let employees = [];
+    let attendance = [];
+    let loading = false;
+
+    emailInput.value = "d1_racing@yahoo.com";
+    qrImage.src = `${API_BASE}/warehouse-qr.png`;
+    downloadQrLink.href = `${API_BASE}/warehouse-qr.png`;
+
+    function setStatus(target, message, type) {
+      target.textContent = message;
+      target.className = `status ${type || ""}`.trim();
+    }
+
+    function token() {
+      return sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY) || "";
+    }
+
+    function saveToken(value, expiresAt) {
+      sessionStorage.setItem(TOKEN_KEY, value);
+      sessionStorage.setItem(TOKEN_EXPIRY_KEY, expiresAt || "");
+    }
+
+    function clearToken() {
+      sessionStorage.removeItem(TOKEN_KEY);
+      sessionStorage.removeItem(TOKEN_EXPIRY_KEY);
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(TOKEN_EXPIRY_KEY);
+    }
+
+    function showAdmin() {
+      loginSection.hidden = true;
+      adminSection.hidden = false;
+      logoutButton.hidden = false;
+    }
+
+    function showLogin(message) {
+      adminSection.hidden = true;
+      logoutButton.hidden = true;
+      loginSection.hidden = false;
+      if (message) setStatus(loginStatus, message, "error");
+    }
+
+    async function api(path, options = {}) {
+      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+      const savedToken = token();
+      if (savedToken) headers.Authorization = `Bearer ${savedToken}`;
+
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+        cache: "no-store"
+      });
+
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok) {
+        if (response.status === 401) {
+          clearToken();
+          showLogin("Please login again.");
+        }
+        throw new Error(data.error || "Request failed.");
+      }
+      return data;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatDateTime(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString("en-MY", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+    }
+
+    function formatMinutes(value) {
+      const minutes = Number(value || 0);
+      if (!minutes) return "-";
+      const hours = Math.floor(minutes / 60);
+      const rest = minutes % 60;
+      return hours ? `${hours}h ${rest}m` : `${rest}m`;
+    }
+
+    function todayKey() {
+      return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+    }
+
+    function searchable(row) {
+      return Object.values(row).join(" ").toLowerCase();
+    }
+
+    function visibleEmployees() {
+      const q = searchInput.value.trim().toLowerCase();
+      return q ? employees.filter(item => searchable(item).includes(q)) : employees;
+    }
+
+    function visibleAttendance() {
+      const q = searchInput.value.trim().toLowerCase();
+      return q ? attendance.filter(item => searchable(item).includes(q)) : attendance;
+    }
+
+    function renderMetrics() {
+      const today = todayKey();
+      const todayRows = attendance.filter(row => row.work_date === today);
+      const clockedIn = todayRows.filter(row => row.clock_in_at && !row.clock_out_at);
+      const ot = todayRows.reduce((sum, row) => sum + Number(row.overtime_minutes || 0), 0);
+
+      document.getElementById("employeeCount").textContent = employees.filter(row => row.status === "active").length;
+      document.getElementById("clockedInCount").textContent = clockedIn.length;
+      document.getElementById("missingOutCount").textContent = clockedIn.length;
+      document.getElementById("todayCount").textContent = todayRows.length;
+      document.getElementById("otCount").textContent = ot;
+    }
+
+    function renderEmployees() {
+      const rows = visibleEmployees();
+      employeesBody.innerHTML = rows.map((employee, index) => {
+        const active = employee.status === "active";
+        const hasDevice = Boolean(employee.device_id);
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td><strong>${escapeHtml(employee.employee_code)}</strong></td>
+            <td>${escapeHtml(employee.full_name)}</td>
+            <td>${escapeHtml(employee.phone || "-")}</td>
+            <td>${escapeHtml(employee.department_id || "-")}</td>
+            <td>${escapeHtml(employee.position || "-")}</td>
+            <td><span class="pill ${active ? "" : "bad"}">${escapeHtml(employee.status || "-")}</span></td>
+            <td>
+              ${hasDevice ? escapeHtml(employee.device_model || "Registered phone") : "Not registered"}
+              ${employee.last_seen_at ? `<small>Last seen ${escapeHtml(formatDateTime(employee.last_seen_at))}</small>` : ""}
+            </td>
+            <td>
+              <div class="actions">
+                ${hasDevice ? `<button class="secondary" type="button" data-unlink-device="${escapeHtml(employee.device_id)}" data-name="${escapeHtml(employee.full_name)}">Delete Device</button>` : ""}
+                ${active ? `<button class="danger" type="button" data-deactivate-employee="${escapeHtml(employee.id)}" data-name="${escapeHtml(employee.full_name)}">Deactivate</button>` : ""}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+      employeeEmpty.hidden = rows.length > 0;
+    }
+
+    function renderAttendance() {
+      const rows = visibleAttendance();
+      attendanceBody.innerHTML = rows.map((row, index) => `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${escapeHtml(row.work_date || "-")}</td>
+          <td>
+            <strong>${escapeHtml(row.full_name || "-")}</strong>
+            <small>${escapeHtml(row.employee_code || "-")}</small>
+          </td>
+          <td>${escapeHtml(formatDateTime(row.clock_in_at))}</td>
+          <td>${escapeHtml(formatDateTime(row.clock_out_at))}</td>
+          <td>${escapeHtml(formatMinutes(row.total_minutes))}</td>
+          <td><span class="pill ${Number(row.late_minutes || 0) ? "warn" : ""}">${escapeHtml(formatMinutes(row.late_minutes))}</span></td>
+          <td><span class="pill ${Number(row.overtime_minutes || 0) ? "" : "warn"}">${escapeHtml(formatMinutes(row.overtime_minutes))}</span></td>
+          <td><span class="pill ${row.clock_in_at && !row.clock_out_at ? "warn" : ""}">${escapeHtml(row.status || "-")}</span></td>
+        </tr>
+      `).join("");
+      attendanceEmpty.hidden = rows.length > 0;
+      attendanceCountText.textContent = `${rows.length} shown / ${attendance.length} records`;
+    }
+
+    function renderAll() {
+      renderMetrics();
+      renderEmployees();
+      renderAttendance();
+    }
+
+    async function loadLiveData(force = false) {
+      if (loading && !force) return;
+      loading = true;
+      try {
+        const data = await api(`/api/admin/live?refresh=${Date.now()}`);
+        employees = Array.isArray(data.employees) ? data.employees : [];
+        attendance = Array.isArray(data.attendance) ? data.attendance : [];
+        renderAll();
+        setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}`, "ok");
+      } catch (error) {
+        setStatus(statusText, error.message || "Cannot connect", "error");
+      } finally {
+        loading = false;
+      }
+    }
+
+    async function adminAction(payload, message) {
+      setStatus(employeeStatus, message || "Saving...", "");
+      await api("/api/admin/live", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      setStatus(employeeStatus, "Saved", "ok");
+      await loadLiveData(true);
+    }
+
+    loginForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      loginButton.disabled = true;
+      setStatus(loginStatus, "Signing in...", "");
+      try {
+        const data = await api("/api/admin/live-login", {
+          method: "POST",
+          body: JSON.stringify({
+            email: emailInput.value,
+            password: passwordInput.value
+          })
+        });
+        saveToken(data.token, data.expiresAt);
+        passwordInput.value = "";
+        setStatus(loginStatus, "", "");
+        showAdmin();
+        await loadLiveData(true);
+      } catch (error) {
+        setStatus(loginStatus, error.message || "Login failed", "error");
+      } finally {
+        loginButton.disabled = false;
+      }
+    });
+
+    logoutButton.addEventListener("click", () => {
+      clearToken();
+      showLogin("");
+    });
+
+    employeeForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      try {
+        await adminAction({
+          action: "add_employee",
+          employeeCode: document.getElementById("codeInput").value,
+          fullName: document.getElementById("nameInput").value,
+          phone: document.getElementById("phoneInput").value,
+          department: document.getElementById("departmentInput").value,
+          position: document.getElementById("positionInput").value
+        }, "Adding employee...");
+        employeeForm.reset();
+      } catch (error) {
+        setStatus(employeeStatus, error.message || "Unable to add employee", "error");
+      }
+    });
+
+    employeesBody.addEventListener("click", async event => {
+      const unlink = event.target.closest("[data-unlink-device]");
+      if (unlink) {
+        const ok = confirm(`Delete device for ${unlink.dataset.name}?\n\nAttendance history will NOT be deleted.`);
+        if (!ok) return;
+        try {
+          await adminAction({ action: "unlink_device", deviceId: unlink.dataset.unlinkDevice }, "Deleting device link...");
+        } catch (error) {
+          setStatus(employeeStatus, error.message || "Unable to delete device", "error");
+        }
+        return;
+      }
+
+      const deactivate = event.target.closest("[data-deactivate-employee]");
+      if (deactivate) {
+        const ok = confirm(`Deactivate ${deactivate.dataset.name}?\n\nAttendance history will NOT be deleted.`);
+        if (!ok) return;
+        try {
+          await adminAction({ action: "deactivate_employee", employeeId: deactivate.dataset.deactivateEmployee }, "Deactivating employee...");
+        } catch (error) {
+          setStatus(employeeStatus, error.message || "Unable to deactivate employee", "error");
+        }
+      }
+    });
+
+    searchInput.addEventListener("input", renderAll);
+    refreshButton.addEventListener("click", () => loadLiveData(true));
+    window.addEventListener("focus", () => token() && loadLiveData(true));
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && token()) loadLiveData(true);
+    });
+
+    exportButton.addEventListener("click", () => {
+      const rows = visibleAttendance();
+      const csv = [
+        ["No", "Date", "Employee Code", "Name", "Clock In", "Clock Out", "Working Minutes", "Late Minutes", "OT Minutes", "Status"],
+        ...rows.map((row, index) => [
+          index + 1,
+          row.work_date || "",
+          row.employee_code || "",
+          row.full_name || "",
+          row.clock_in_at || "",
+          row.clock_out_at || "",
+          row.total_minutes || 0,
+          row.late_minutes || 0,
+          row.overtime_minutes || 0,
+          row.status || ""
+        ])
+      ].map(line => line.map(value => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `warehouse-attendance-${todayKey()}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+
+    printQrButton.addEventListener("click", () => {
+      const popup = window.open("", "_blank", "width=420,height=520");
+      if (!popup) return;
+      popup.document.write(`<!doctype html><title>Warehouse QR</title><body style="font-family:Arial;text-align:center;padding:24px"><h2>Warehouse QR</h2><img src="${API_BASE}/warehouse-qr.png" style="width:280px;height:280px"><p>WAREHOUSE-MAIN-QR</p><script>window.onload=()=>window.print();<\/script></body>`);
+      popup.document.close();
+    });
+
+    if (token()) {
+      showAdmin();
+      loadLiveData(true);
+    } else {
+      showLogin("");
+    }
+
+    setInterval(() => {
+      if (token() && !document.hidden) loadLiveData();
+    }, 5000);
+  </script>
+</body>
+</html>
