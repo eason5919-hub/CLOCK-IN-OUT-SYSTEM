@@ -2,8 +2,8 @@ const STORAGE_KEY = "warehouse-attendance-static-v2";
 const DEVICE_KEY = "warehouse-device-fingerprint";
 const WAREHOUSE = {
   name: "Main Warehouse",
-  lat: 3.139,
-  lng: 101.6869,
+  lat: 2.9850965,
+  lng: 101.7700882,
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
 };
@@ -534,12 +534,12 @@ async function clock(action, qr) {
     message.textContent = "Invalid warehouse QR code.";
     return;
   }
-  message.textContent = "Collecting high accuracy GPS samples...";
+  message.textContent = "Verifying warehouse GPS location...";
   const sample = await bestGpsSample();
   const distance = Math.round(distanceMeters(sample.latitude, sample.longitude, WAREHOUSE.lat, WAREHOUSE.lng));
-  if (sample.accuracy > 30 || distance > WAREHOUSE.radius) {
+  if (sample.source !== "browser" || sample.accuracy > 30 || distance > WAREHOUSE.radius) {
     scanner.className = "scanner rejected";
-    message.textContent = "Unable to verify location. Please move closer to warehouse or enable GPS.";
+    message.textContent = "Unable to verify location. Please enable phone GPS and stand near the warehouse QR.";
     return;
   }
 
@@ -580,10 +580,10 @@ async function clock(action, qr) {
     record.overtimeMinutes = calculateOvertime(time, "18:00", "18:16");
     record.status = record.overtimeMinutes > 0 ? "OT" : record.lateMinutes > 0 ? "Late" : "Present";
   }
-  record.gps = `${sample.accuracy}m / ${distance}m`;
+  record.gps = `${sample.accuracy}m accuracy / ${distance}m from warehouse`;
   saveState();
   scanner.className = "scanner accepted";
-  message.textContent = `Attendance accepted. GPS ${sample.accuracy}m, distance ${distance}m.`;
+  message.textContent = `Attendance accepted. GPS ${sample.accuracy}m accuracy, ${distance}m from warehouse.`;
   await wait(900);
   render();
 }
@@ -675,6 +675,7 @@ function getGpsSample(index) {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: Math.round(position.coords.accuracy),
+          source: "browser",
         }),
       () => resolve(fallbackGps(index)),
       { enableHighAccuracy: true, timeout: 1400, maximumAge: 0 },
@@ -687,6 +688,7 @@ function fallbackGps(index) {
     latitude: WAREHOUSE.lat + index * 0.00001,
     longitude: WAREHOUSE.lng + index * 0.00001,
     accuracy: [24, 18, 12, 16, 9][index] || 18,
+    source: "fallback",
   };
 }
 
