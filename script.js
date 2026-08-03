@@ -25,6 +25,8 @@ let pendingDeleteEmployeeId = null;
 let pendingScanAction = null;
 let qrScanController = null;
 let liveRefreshInFlight = false;
+let gpsWatchId = null;
+let latestGpsSamples = [];
 
 window.addEventListener("hashchange", () => {
   if (window.location.hash.toLowerCase() === "#admin") {
@@ -65,6 +67,7 @@ function render() {
 
   app.innerHTML = shell(employeeScreen(), "Employee attendance app");
   bindEmployee();
+  startLocationWatch();
   loadEmployeeLive();
 }
 
@@ -337,6 +340,7 @@ function clearEmployeeSession(message) {
   state.corrections = [];
   saveState();
   stopQrScanner();
+  stopLocationWatch();
   pendingScanAction = null;
   render();
   toast(message || "Employee account was deleted by HR.");
@@ -687,28 +691,65 @@ async function bestGpsSample() {
 }
 
 async function collectGpsSamples() {
-  const samples = [];
-  for (let i = 0; i < 5; i += 1) {
+  startLocationWatch();
+  const samples = recentGpsSamples();
+  for (let i = samples.length; i < 5; i += 1) {
     samples.push(await getGpsSample(i));
+    await wait(250);
   }
-  return samples;
+  return samples.sort((a, b) => a.accuracy - b.accuracy).slice(0, 5);
 }
 
 function getGpsSample(index) {
   return new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(fallbackGps(index));
     navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: Math.round(position.coords.accuracy),
-          source: "browser",
-        }),
+      (position) => resolve(saveGpsSample(position)),
       () => resolve(fallbackGps(index)),
-      { enableHighAccuracy: true, timeout: 1400, maximumAge: 0 },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 },
     );
   });
+}
+
+function startLocationWatch() {
+  if (!navigator.geolocation || gpsWatchId !== null) return;
+  gpsWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      saveGpsSample(position);
+      const message = document.querySelector("#gps-message");
+      if (message && !pendingScanAction) {
+        const sample = latestGpsSamples[latestGpsSamples.length - 1];
+        message.textContent = `GPS ready. Accuracy ${Math.round(sample.accuracy)}m.`;
+      }
+    },
+    () => {},
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+  );
+}
+
+function stopLocationWatch() {
+  if (gpsWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+  }
+  gpsWatchId = null;
+  latestGpsSamples = [];
+}
+
+function saveGpsSample(position) {
+  const sample = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    accuracy: Math.round(position.coords.accuracy),
+    timestamp: Date.now(),
+    source: "browser",
+  };
+  latestGpsSamples.push(sample);
+  latestGpsSamples = latestGpsSamples.filter((item) => Date.now() - item.timestamp < 30000).slice(-10);
+  return sample;
+}
+
+function recentGpsSamples() {
+  return latestGpsSamples.filter((sample) => Date.now() - sample.timestamp < 30000);
 }
 
 function fallbackGps(index) {

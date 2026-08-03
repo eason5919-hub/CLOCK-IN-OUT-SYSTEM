@@ -185,7 +185,7 @@ export async function POST(request: Request) {
           .run();
       }
 
-      await writeAudit(db, "system", "clock_in", "attendance", attendanceId, null, { timestamp });
+      await writeAudit(db, session.user_id, "clock_in", "attendance", attendanceId, null, { timestamp });
       return json(request, { ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
     }
 
@@ -223,7 +223,7 @@ export async function POST(request: Request) {
       )
       .run();
 
-    await writeAudit(db, "system", "clock_out", "attendance", existing.id, null, { timestamp });
+    await writeAudit(db, session.user_id, "clock_out", "attendance", existing.id, null, { timestamp });
     return json(request, { ok: true, action: "clock_out", timestamp, distance, accuracy: bestSample.accuracy, totals });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
