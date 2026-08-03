@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import test from "node:test";
+import ts from "typescript";
+
+async function loadCalculations() {
+  const source = await readFile(new URL("../db/attendance-calculations.ts", import.meta.url), "utf8");
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const file = join(tmpdir(), `attendance-calculations-${process.pid}-${Date.now()}.mjs`);
+  await import("node:fs/promises").then(({ writeFile }) => writeFile(file, output));
+  return import(pathToFileURL(file).href);
+}
+
+test("weekday overtime uses grace for eligibility and scheduled end for counting", async () => {
+  const { calculateOvertimeMinutes } = await loadCalculations();
+  const weekday = {
+    start_time: "09:00",
+    end_time: "18:00",
+    overtime_starts_at: "18:16",
+    is_off_day: 0,
+  };
+
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T18:10:00.000Z", weekday), 0);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T18:15:00.000Z", weekday), 0);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T18:16:00.000Z", weekday), 16);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T18:30:00.000Z", weekday), 30);
+  assert.equal(calculateOvertimeMinutes("2026-08-03T09:00:00.000Z", "2026-08-03T19:00:00.000Z", weekday), 60);
+});
+
+test("saturday and sunday overtime rules are applied", async () => {
+  const { calculateOvertimeMinutes } = await loadCalculations();
+  const saturday = {
+    start_time: "09:00",
+    end_time: "13:00",
+    overtime_starts_at: "13:16",
+    is_off_day: 0,
+  };
+  const sunday = {
+    start_time: null,
+    end_time: null,
+    overtime_starts_at: null,
+    is_off_day: 1,
+  };
+
+  assert.equal(calculateOvertimeMinutes("2026-08-08T09:00:00.000Z", "2026-08-08T13:15:00.000Z", saturday), 0);
+  assert.equal(calculateOvertimeMinutes("2026-08-08T09:00:00.000Z", "2026-08-08T13:16:00.000Z", saturday), 16);
+  assert.equal(calculateOvertimeMinutes("2026-08-09T10:00:00.000Z", "2026-08-09T12:30:00.000Z", sunday), 150);
+});
