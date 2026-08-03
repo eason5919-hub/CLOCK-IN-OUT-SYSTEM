@@ -8,6 +8,11 @@ const WAREHOUSE = {
   qr: "WAREHOUSE-MAIN-QR",
 };
 
+const ADMIN_ACCOUNT = {
+  email: "d1_racing@yahoo.com",
+  passwordHash: "fad4b78390b338486a88d8706127faa3fc30657b2889f960d194fe5afde98002",
+};
+
 const defaultState = {
   currentUser: null,
   employees: [
@@ -346,15 +351,13 @@ function bindLogin() {
   });
 
   const adminLoginForm = document.querySelector("#admin-login");
-  if (adminLoginForm) adminLoginForm.addEventListener("submit", (event) => {
+  if (adminLoginForm) adminLoginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const email = String(data.get("email")).trim().toLowerCase();
     const password = String(data.get("password"));
-    if (email === "hr@example.com" && password === "hr123") {
+    if (email === ADMIN_ACCOUNT.email && await sha256Hex(password) === ADMIN_ACCOUNT.passwordHash) {
       state.currentUser = { role: "hr", name: "HR/Admin Staff", label: "HR/Admin" };
-    } else if (email === "owner@example.com" && password === "owner123") {
-      state.currentUser = { role: "owner", name: "Owner/Admin", label: "Owner" };
     } else {
       return toast("Admin email or password is incorrect.");
     }
@@ -643,6 +646,12 @@ function getDeviceFingerprint() {
   const fingerprint = crypto.randomUUID();
   localStorage.setItem(DEVICE_KEY, fingerprint);
   return fingerprint;
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hashBuffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function browserDeviceLabel() {
