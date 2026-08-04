@@ -35,6 +35,7 @@ let liveRefreshInFlight = false;
 let gpsWatchId = null;
 let latestGpsSamples = [];
 let selectedHistoryDate = malaysiaDateKey(new Date());
+let optimisticLeaveSubmitInFlight = false;
 
 window.addEventListener("hashchange", () => {
   if (window.location.hash.toLowerCase() === "#admin") {
@@ -167,6 +168,7 @@ function employeeScreen() {
   const records = state.attendance;
   const corrections = state.corrections;
   const leaveRequests = state.leaveRequests || [];
+  const visibleLeaveRequests = visibleEmployeeLeaveRequests(leaveRequests);
   const leaveRemaining = formatLeaveDays(state.currentUser.leaveRemainingDays || 0);
   const leaveDefaultDate = defaultLeaveDate();
   const todayDate = malaysiaToday();
@@ -232,19 +234,15 @@ function employeeScreen() {
         </div>
         <form class="form" id="leave-form">
           <label>Type<select name="leaveType"><option value="leave">Annual Leave</option><option value="mc">MC</option></select></label>
-          <div class="field">
-            <span>Date</span>
-            <input name="date" type="hidden" value="${leaveDefaultDate}" required />
-            <button class="date-picker-button" type="button" data-open-leave-calendar>
-              <span data-selected-leave-date>${formatLeaveDateDisplay(leaveDefaultDate)}</span>
-            </button>
-            <div class="leave-calendar" data-leave-calendar hidden></div>
+          <div class="date-range-fields">
+            ${leaveDateField("Start date", "startDate", leaveDefaultDate)}
+            ${leaveDateField("End date", "endDate", leaveDefaultDate)}
           </div>
           <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select><small class="muted" data-leave-rule></small></label>
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
           <button>Submit Annual Leave/MC</button>
         </form>
-        <div class="list" style="margin-top:14px">${leaveRequests.map(leaveRequestCard).join("") || `<small>No Annual Leave/MC requests.</small>`}</div>
+        <div class="list" style="margin-top:14px">${visibleLeaveRequests.map(leaveRequestCard).join("") || `<small>No Annual Leave/MC requests.</small>`}</div>
       </section>
     </div>
     ${qrScannerModal()}
@@ -348,6 +346,7 @@ function bindLogin() {
 }
 
 async function loadEmployeeLive(force = false) {
+  if (optimisticLeaveSubmitInFlight && !force) return;
   if (!employeeToken() || (liveRefreshInFlight && !force)) return;
   liveRefreshInFlight = true;
   try {
@@ -555,53 +554,76 @@ function bindEmployee() {
     const form = event.currentTarget;
     const data = new FormData(form);
     const leaveType = String(data.get("leaveType"));
-    const leaveDate = String(data.get("date"));
+    const startDate = String(data.get("startDate"));
+    const endDate = String(data.get("endDate"));
     const duration = String(data.get("duration"));
     const reason = String(data.get("reason")).trim();
-    const validation = validateLeaveDateAndDuration(leaveDate, duration);
+    const validation = validateLeaveRange(startDate, endDate, duration);
     if (validation) {
       toast(validation);
       updateLeaveDurationRule(form);
       return;
     }
-    const tempId = `leave-pending-${Date.now()}`;
-
-    state.leaveRequests = [
-      {
-        id: tempId,
+    const leaveDates = leaveDatesInRange(startDate, endDate);
+    const createdAt = Date.now();
+    const tempRequests = leaveDates.map((leaveDate, index) => {
+      const requestDuration = leaveDurationForDate(leaveDate, duration);
+      return {
+        id: `leave-pending-${createdAt}-${index}`,
         employeeId: state.currentUser.employeeId,
         date: leaveDate,
         type: leaveTypeLabel(leaveType),
-        duration: statusLabel(duration),
+        duration: statusLabel(requestDuration),
+        rawDuration: requestDuration,
         reason,
         status: "Pending",
-      },
-      ...(state.leaveRequests || []),
-    ];
+      };
+    });
+
+    optimisticLeaveSubmitInFlight = true;
+    state.leaveRequests = [...tempRequests, ...(state.leaveRequests || [])];
     saveState();
     form.reset();
     render();
-    toast("Annual Leave/MC submitted");
+    toast(leaveDates.length === 1 ? "Annual Leave/MC submitted" : `Annual Leave/MC submitted for ${leaveDates.length} days.`);
 
+    const failedTempIds = new Set();
+    const serverIds = new Map();
     try {
-      const result = await liveApi("/api/leave-requests", {
-        method: "POST",
-        body: JSON.stringify({
-          employeeId: state.currentUser.employeeId,
-          leaveType,
-          leaveDate,
-          duration,
-          reason,
-        }),
-      });
+      for (const request of tempRequests) {
+        try {
+          const result = await liveApi("/api/leave-requests", {
+            method: "POST",
+            body: JSON.stringify({
+              employeeId: state.currentUser.employeeId,
+              leaveType,
+              leaveDate: request.date,
+              duration: request.rawDuration,
+              reason,
+            }),
+          });
+          serverIds.set(request.id, result.leaveRequestId || request.id);
+        } catch (error) {
+          failedTempIds.add(request.id);
+        }
+      }
+      if (failedTempIds.size === tempRequests.length) throw new Error("Unable to submit Annual Leave/MC request.");
       state.leaveRequests = (state.leaveRequests || []).map((request) =>
-        request.id === tempId ? { ...request, id: result.leaveRequestId || tempId } : request,
-      );
+        serverIds.has(request.id) ? { ...request, id: serverIds.get(request.id) } : request,
+      ).filter((request) => !failedTempIds.has(request.id));
       saveState();
       render();
-      loadEmployeeLive(true).catch(() => {});
+      optimisticLeaveSubmitInFlight = false;
+      await loadEmployeeLive(true);
+      render();
+      if (failedTempIds.size > 0) {
+        toast(`${tempRequests.length - failedTempIds.size} submitted. ${failedTempIds.size} date already exists or failed.`);
+      }
     } catch (error) {
-      state.leaveRequests = (state.leaveRequests || []).filter((request) => request.id !== tempId);
+      state.leaveRequests = (state.leaveRequests || []).filter(
+        (request) => !tempRequests.some((tempRequest) => tempRequest.id === request.id),
+      );
+      optimisticLeaveSubmitInFlight = false;
       saveState();
       render();
       toast(error.message || "Unable to submit Annual Leave/MC request.");
@@ -909,66 +931,113 @@ function correctionCard(correction) {
   return `<div class="list-item"><strong>${correction.date} - ${correction.missing}</strong><span>${escapeHtml(correction.reason)}</span><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span></div>`;
 }
 
+function visibleEmployeeLeaveRequests(requests) {
+  const activeRequests = [];
+  const cancelledRequests = [];
+
+  (requests || []).forEach((request) => {
+    if (request.status === "Cancelled") {
+      cancelledRequests.push(request);
+    } else {
+      activeRequests.push(request);
+    }
+  });
+
+  return [...activeRequests, ...cancelledRequests.slice(0, 3)];
+}
+
 function leaveRequestCard(request) {
   const canCancel = !["Rejected", "Cancelled"].includes(request.status) && request.date >= malaysiaDateKey(new Date());
   return `<div class="list-item leave-card"><div><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div><div class="actions"><span class="badge ${request.status.toLowerCase()}">${request.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div></div>`;
 }
 
+function leaveDateField(label, name, value) {
+  return `
+    <div class="field leave-date-field" data-leave-date-field>
+      <span>${label}</span>
+      <input name="${name}" type="hidden" value="${value}" required data-leave-date-input />
+      <button class="date-picker-button" type="button" data-open-leave-calendar>
+        <span data-selected-leave-date>${formatLeaveDateDisplay(value)}</span>
+      </button>
+      <div class="leave-calendar" data-leave-calendar hidden></div>
+    </div>
+  `;
+}
+
 function updateLeaveDurationRule(form) {
-  const dateInput = form.querySelector('input[name="date"]');
+  const startInput = form.querySelector('input[name="startDate"]');
+  const endInput = form.querySelector('input[name="endDate"]');
   const durationSelect = form.querySelector('select[name="duration"]');
   const rule = form.querySelector("[data-leave-rule]");
-  if (!dateInput || !durationSelect || !rule) return;
+  if (!startInput || !endInput || !durationSelect || !rule) return;
 
-  const day = leaveDateDayOfWeek(dateInput.value);
-  durationSelect.querySelector('option[value="full_day"]').disabled = day === 6;
-  if (day === 6) durationSelect.value = "half_day";
-  rule.textContent =
-    day === 0
-      ? "Sunday cannot be selected."
-      : day === 6
-        ? "Saturday is half day only."
-        : "";
+  const dates = leaveDatesInRange(startInput.value, endInput.value);
+  const fullDayOption = durationSelect.querySelector('option[value="full_day"]');
+  const hasSaturday = dates.some((date) => leaveDateDayOfWeek(date) === 6);
+  const allSaturday = dates.length > 0 && dates.every((date) => leaveDateDayOfWeek(date) === 6);
+  if (fullDayOption) fullDayOption.disabled = allSaturday;
+  if (allSaturday) durationSelect.value = "half_day";
+
+  const notes = [];
+  if (rangeIncludesSunday(startInput.value, endInput.value)) notes.push("Sundays are skipped.");
+  if (allSaturday) notes.push("Saturday is half day only.");
+  else if (hasSaturday) notes.push("Saturday in this range will be submitted as half day.");
+  rule.textContent = notes.join(" ");
 }
 
 function setupLeaveCalendar(form) {
-  const dateInput = form.querySelector('input[name="date"]');
-  const button = form.querySelector("[data-open-leave-calendar]");
-  const label = form.querySelector("[data-selected-leave-date]");
-  const calendar = form.querySelector("[data-leave-calendar]");
-  if (!dateInput || !button || !label || !calendar) return;
+  const fields = Array.from(form.querySelectorAll("[data-leave-date-field]"));
+  if (!fields.length) return;
 
-  const refresh = () => {
-    label.textContent = formatLeaveDateDisplay(dateInput.value);
-    calendar.innerHTML = leaveCalendarMarkup(dateInput.value, calendar.dataset.month || dateInput.value);
+  const refreshAll = () => {
+    fields.forEach((field) => {
+      const dateInput = field.querySelector("[data-leave-date-input]");
+      const label = field.querySelector("[data-selected-leave-date]");
+      const calendar = field.querySelector("[data-leave-calendar]");
+      if (!dateInput || !label || !calendar) return;
+      label.textContent = formatLeaveDateDisplay(dateInput.value);
+      calendar.innerHTML = leaveCalendarMarkup(dateInput.value, calendar.dataset.month || dateInput.value);
+    });
     updateLeaveDurationRule(form);
   };
 
-  button.addEventListener("click", () => {
-    calendar.hidden = !calendar.hidden;
-    if (!calendar.hidden) refresh();
+  fields.forEach((field) => {
+    const dateInput = field.querySelector("[data-leave-date-input]");
+    const button = field.querySelector("[data-open-leave-calendar]");
+    const calendar = field.querySelector("[data-leave-calendar]");
+    if (!dateInput || !button || !calendar) return;
+
+    button.addEventListener("click", () => {
+      fields.forEach((otherField) => {
+        const otherCalendar = otherField.querySelector("[data-leave-calendar]");
+        if (otherCalendar && otherCalendar !== calendar) otherCalendar.hidden = true;
+      });
+      calendar.hidden = !calendar.hidden;
+      if (!calendar.hidden) refreshAll();
+    });
+
+    calendar.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+
+      const monthButton = target.closest("[data-calendar-month]");
+      if (monthButton) {
+        calendar.dataset.month = monthButton.dataset.calendarMonth;
+        refreshAll();
+        return;
+      }
+
+      const dayButton = target.closest("[data-calendar-date]");
+      if (!dayButton || dayButton.disabled) return;
+      dateInput.value = dayButton.dataset.calendarDate;
+      calendar.dataset.month = dateInput.value;
+      syncLeaveDateRange(form, dateInput);
+      calendar.hidden = true;
+      refreshAll();
+    });
   });
 
-  calendar.addEventListener("click", (event) => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target) return;
-
-    const monthButton = target.closest("[data-calendar-month]");
-    if (monthButton) {
-      calendar.dataset.month = monthButton.dataset.calendarMonth;
-      refresh();
-      return;
-    }
-
-    const dayButton = target.closest("[data-calendar-date]");
-    if (!dayButton || dayButton.disabled) return;
-    dateInput.value = dayButton.dataset.calendarDate;
-    calendar.dataset.month = dateInput.value;
-    calendar.hidden = true;
-    refresh();
-  });
-
-  refresh();
+  refreshAll();
 }
 
 function validateLeaveDateAndDuration(date, duration) {
@@ -978,6 +1047,66 @@ function validateLeaveDateAndDuration(date, duration) {
   if (day === 0) return "Annual Leave/MC cannot be selected on Sunday.";
   if (day === 6 && duration !== "half_day") return "Saturday Annual Leave/MC can only be half day.";
   return "";
+}
+
+function validateLeaveRange(startDate, endDate, duration) {
+  if (!startDate || !endDate) return "Select Annual Leave/MC start and end date.";
+  if (startDate < malaysiaDateKey(new Date()) || endDate < malaysiaDateKey(new Date())) return "Past dates cannot be selected for Annual Leave/MC.";
+  if (endDate < startDate) return "End date cannot be before start date.";
+  const dates = leaveDatesInRange(startDate, endDate);
+  if (!dates.length) return "Select at least one working day. Sunday cannot be selected.";
+  return dates.map((date) => validateLeaveDateAndDuration(date, leaveDurationForDate(date, duration))).find(Boolean) || "";
+}
+
+function leaveDurationForDate(date, duration) {
+  return leaveDateDayOfWeek(date) === 6 ? "half_day" : duration;
+}
+
+function syncLeaveDateRange(form, changedInput) {
+  const startInput = form.querySelector('input[name="startDate"]');
+  const endInput = form.querySelector('input[name="endDate"]');
+  if (!startInput || !endInput || !changedInput) return;
+  if (startInput.value <= endInput.value) return;
+  if (changedInput.name === "startDate") {
+    endInput.value = startInput.value;
+  } else {
+    startInput.value = endInput.value;
+  }
+}
+
+function leaveDatesInRange(startDate, endDate) {
+  if (!startDate || !endDate || endDate < startDate) return [];
+  const dates = [];
+  const cursor = parseUtcDateKey(startDate);
+  const end = parseUtcDateKey(endDate);
+
+  while (cursor <= end) {
+    const dateKey = utcDateKey(cursor);
+    if (leaveDateDayOfWeek(dateKey) !== 0) dates.push(dateKey);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return dates;
+}
+
+function rangeIncludesSunday(startDate, endDate) {
+  if (!startDate || !endDate || endDate < startDate) return false;
+  const cursor = parseUtcDateKey(startDate);
+  const end = parseUtcDateKey(endDate);
+  while (cursor <= end) {
+    if (cursor.getUTCDay() === 0) return true;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return false;
+}
+
+function parseUtcDateKey(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function utcDateKey(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function leaveDateDayOfWeek(value) {
