@@ -18,6 +18,7 @@ const WAREHOUSE = {
 const WHATSAPP_NOTIFY_NUMBER = "60122159225";
 const MAX_GPS_ACCURACY_METERS = 30;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
+const QR_SCAN_INTERVAL_MS = 120;
 
 const defaultState = {
   currentUser: null,
@@ -768,17 +769,32 @@ async function startQrScanner() {
     const detector = "BarcodeDetector" in window ? new BarcodeDetector({ formats: ["qr_code"] }) : null;
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-    qrScanController = { active: true, stream };
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+      audio: false,
+    });
+    await configureQrCamera(stream);
+    qrScanController = { active: true, stream, processing: false, lastScanAt: 0 };
     video.srcObject = stream;
     await video.play();
     message.textContent = "Point the camera at the warehouse QR code.";
 
     const scan = async () => {
       if (!qrScanController?.active) return;
+      if (Date.now() - qrScanController.lastScanAt < QR_SCAN_INTERVAL_MS) {
+        requestAnimationFrame(scan);
+        return;
+      }
+      qrScanController.lastScanAt = Date.now();
       try {
         const qr = await detectQrCode(video, detector, canvas, context);
         if (qr) {
+          if (qrScanController.processing) return;
+          qrScanController.processing = true;
           await completeQrScan(qr);
           return;
         }
@@ -793,17 +809,43 @@ async function startQrScanner() {
   }
 }
 
+async function configureQrCamera(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track?.getCapabilities || !track.applyConstraints) return;
+  try {
+    const capabilities = track.getCapabilities();
+    const advanced = [];
+    if (capabilities.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" });
+    if (capabilities.zoom) advanced.push({ zoom: capabilities.zoom.min });
+    if (advanced.length) await track.applyConstraints({ advanced });
+  } catch {
+    // Camera tuning is optional. Scanning still works when a browser ignores these constraints.
+  }
+}
+
 async function detectQrCode(video, detector, canvas, context) {
   if (detector) {
-    const codes = await detector.detect(video);
-    return codes[0]?.rawValue || "";
+    try {
+      const codes = await detector.detect(video);
+      const raw = codes[0]?.rawValue || "";
+      if (raw) return raw;
+    } catch {
+      // Fall back to jsQR below; some phones expose BarcodeDetector but fail on video frames.
+    }
   }
-  if (!window.jsQR || !context || video.readyState < 2) return "";
+  if (!window.jsQR || !context || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return "";
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
   const image = context.getImageData(0, 0, canvas.width, canvas.height);
-  return window.jsQR(image.data, image.width, image.height)?.data || "";
+  const fullFrame = window.jsQR(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" })?.data;
+  if (fullFrame) return fullFrame;
+
+  const cropSize = Math.floor(Math.min(canvas.width, canvas.height) * 0.78);
+  const cropX = Math.floor((canvas.width - cropSize) / 2);
+  const cropY = Math.floor((canvas.height - cropSize) / 2);
+  const crop = context.getImageData(cropX, cropY, cropSize, cropSize);
+  return window.jsQR(crop.data, crop.width, crop.height, { inversionAttempts: "attemptBoth" })?.data || "";
 }
 
 function stopQrScanner() {
