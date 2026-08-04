@@ -996,20 +996,48 @@ function compareAttendanceLatest(a, b) {
   return left - right;
 }
 
+function isSameOrNewer(left, right) {
+  const leftMs = Date.parse(left || "");
+  const rightMs = Date.parse(right || "");
+  if (Number.isNaN(leftMs)) return false;
+  if (Number.isNaN(rightMs)) return true;
+  return leftMs >= rightMs;
+}
+
+function approvedCorrectionForField(row, field, corrections = []) {
+  const key = field === "clockIn" ? "requestedClockIn" : "requestedClockOut";
+  return corrections
+    .filter((correction) => correction.date === row.date && correction.status === "Approved" && correction[key])
+    .sort((a, b) => Date.parse(b.reviewedAt || b.createdAt || "") - Date.parse(a.reviewedAt || a.createdAt || ""))
+    .find((correction) => {
+      if (row.source === "admin_report_edit") {
+        return isSameOrNewer(correction.reviewedAt || correction.createdAt, row.updatedAt || row.createdAt);
+      }
+      return correction[key] === row[field];
+    });
+}
+
+function attendanceDisplayTimes(row, corrections = []) {
+  const correctedIn = approvedCorrectionForField(row, "clockIn", corrections);
+  const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
+  return {
+    clockIn: correctedIn?.requestedClockIn || row.clockIn,
+    clockOut: correctedOut?.requestedClockOut || row.clockOut,
+  };
+}
+
 function attendanceEditMarks(row, corrections = []) {
+  const correctedIn = approvedCorrectionForField(row, "clockIn", corrections);
+  const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
   if (row.source === "admin_report_edit") {
     return {
-      clockIn: row.clockIn ? "edited" : "",
-      clockOut: row.clockOut ? "edited" : "",
+      clockIn: correctedIn ? "corrected" : row.clockIn ? "edited" : "",
+      clockOut: correctedOut ? "corrected" : row.clockOut ? "edited" : "",
     };
   }
-  const approved = corrections.filter((correction) => correction.date === row.date && correction.status === "Approved");
-  const correctedIn = approved.some((correction) => correction.requestedClockIn && correction.requestedClockIn === row.clockIn);
-  const correctedOut = approved.some((correction) => correction.requestedClockOut && correction.requestedClockOut === row.clockOut);
-  const adminEdited = row.source === "admin_adjustment" && !approved.length;
   return {
-    clockIn: correctedIn ? "corrected" : adminEdited ? "edited" : "",
-    clockOut: correctedOut ? "corrected" : adminEdited ? "edited" : "",
+    clockIn: correctedIn ? "corrected" : row.source === "admin_adjustment" ? "edited" : "",
+    clockOut: correctedOut ? "corrected" : row.source === "admin_adjustment" ? "edited" : "",
   };
 }
 
@@ -1034,7 +1062,8 @@ function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []
         <tbody>${records
           .map((row) => {
             const marks = attendanceEditMarks(row, corrections);
-            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employeeLabel(row))}</td>`}<td>${row.date}</td><td>${timeCell(row.clockIn, marks.clockIn)}</td><td>${timeCell(row.clockOut, marks.clockOut)}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatOtMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
+            const display = attendanceDisplayTimes(row, corrections);
+            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employeeLabel(row))}</td>`}<td>${row.date}</td><td>${timeCell(display.clockIn, marks.clockIn)}</td><td>${timeCell(display.clockOut, marks.clockOut)}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatOtMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
           })
           .join("")}</tbody>
       </table>
