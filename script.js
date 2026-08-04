@@ -15,6 +15,7 @@ const WAREHOUSE = {
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
 };
+const WHATSAPP_NOTIFY_NUMBERS = ["60122159225", "60177395919"];
 const MAX_GPS_ACCURACY_METERS = 30;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
 
@@ -37,6 +38,7 @@ let latestGpsSamples = [];
 let selectedHistoryDate = malaysiaDateKey(new Date());
 let selectedEmployeeMonthKey = employeeMonthKey(malaysiaToday());
 let optimisticLeaveSubmitInFlight = false;
+let pendingWhatsAppNotification = null;
 
 window.addEventListener("hashchange", () => {
   if (window.location.hash.toLowerCase() === "#admin") {
@@ -246,6 +248,7 @@ function employeeScreen() {
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
           <button>Submit Annual Leave/MC</button>
         </form>
+        ${pendingWhatsAppNotification ? whatsappNotificationPanel(pendingWhatsAppNotification) : ""}
         <div class="list" style="margin-top:14px">${visibleLeaveRequests.map(leaveRequestCard).join("") || `<small>No Annual Leave/MC requests.</small>`}</div>
       </section>
     </div>
@@ -530,6 +533,16 @@ function bindEmployee() {
       }
     });
   });
+  document.querySelectorAll("[data-whatsapp-notify]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!pendingWhatsAppNotification) return;
+      openWhatsAppMessage(button.dataset.whatsappNotify, pendingWhatsAppNotification.message);
+    });
+  });
+  document.querySelector("[data-dismiss-whatsapp]")?.addEventListener("click", () => {
+    pendingWhatsAppNotification = null;
+    render();
+  });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
     const qr = prompt("Enter the warehouse QR code shown by HR");
@@ -604,9 +617,6 @@ function bindEmployee() {
 
     const failedTempIds = new Set();
     const serverIds = new Map();
-    let whatsappAttempted = false;
-    let whatsappSent = false;
-    let whatsappConfigured = true;
     try {
       for (const request of tempRequests) {
         try {
@@ -618,16 +628,10 @@ function bindEmployee() {
               leaveDate: request.date,
               duration: request.rawDuration,
               reason,
-              notifyWhatsApp: !whatsappAttempted,
-              whatsappMessage,
+              notifyWhatsApp: false,
             }),
           });
           serverIds.set(request.id, result.leaveRequestId || request.id);
-          if (!whatsappAttempted && result.whatsapp) {
-            whatsappAttempted = true;
-            whatsappConfigured = result.whatsapp.configured !== false;
-            whatsappSent = Number(result.whatsapp.sent || 0) >= 2;
-          }
         } catch (error) {
           failedTempIds.add(request.id);
         }
@@ -643,12 +647,11 @@ function bindEmployee() {
       render();
       if (failedTempIds.size > 0) {
         toast(`${tempRequests.length - failedTempIds.size} submitted. ${failedTempIds.size} date already exists or failed.`);
-      } else if (whatsappAttempted && whatsappSent) {
-        toast("Annual Leave/MC submitted. WhatsApp sent to both numbers.");
-      } else if (whatsappAttempted && !whatsappConfigured) {
-        toast("Annual Leave/MC submitted. WhatsApp API is not configured.");
-      } else if (whatsappAttempted) {
-        toast("Annual Leave/MC submitted. WhatsApp API did not send to both numbers.");
+      } else {
+        openWhatsAppMessage(WHATSAPP_NOTIFY_NUMBERS[0], whatsappMessage);
+        pendingWhatsAppNotification = { message: whatsappMessage, remainingNumbers: WHATSAPP_NOTIFY_NUMBERS.slice(1) };
+        render();
+        toast("Annual Leave/MC submitted. WhatsApp opened.");
       }
     } catch (error) {
       state.leaveRequests = (state.leaveRequests || []).filter(
@@ -990,6 +993,19 @@ function leaveRequestCard(request) {
   return `<div class="list-item leave-card"><div><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div><div class="actions"><span class="badge ${request.status.toLowerCase()}">${request.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div></div>`;
 }
 
+function whatsappNotificationPanel(notification) {
+  return `
+    <div class="whatsapp-notice">
+      <strong>WhatsApp notification</strong>
+      <small>Send the same Leave/MC message to the remaining HR number.</small>
+      <div class="actions">
+        ${(notification.remainingNumbers || []).map((phone) => `<button class="secondary" type="button" data-whatsapp-notify="${phone}">WhatsApp ${phone}</button>`).join("")}
+        <button class="secondary" type="button" data-dismiss-whatsapp>Done</button>
+      </div>
+    </div>
+  `;
+}
+
 function leaveRangeField(value) {
   return `
     <div class="field leave-date-field" data-leave-date-field>
@@ -1033,6 +1049,10 @@ function formatLeaveSubmittedDays(leaveDates, duration) {
 
 function leaveSubmittedDayValue(date, duration) {
   return leaveDurationForDate(date, duration) === "half_day" ? 0.5 : 1;
+}
+
+function openWhatsAppMessage(phone, message) {
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener");
 }
 
 function updateLeaveDurationRule(form) {

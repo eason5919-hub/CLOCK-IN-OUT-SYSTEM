@@ -721,6 +721,21 @@ th {
   display: block;
 }
 
+.whatsapp-notice {
+  border: 1px solid rgba(28, 124, 84, 0.28);
+  border-radius: 8px;
+  background: rgba(28, 124, 84, 0.08);
+  padding: 12px;
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.whatsapp-notice strong,
+.whatsapp-notice small {
+  display: block;
+}
+
 .employee-row {
   display: grid;
   grid-template-columns: minmax(200px, 1fr) auto auto;
