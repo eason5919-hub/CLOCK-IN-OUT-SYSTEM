@@ -105,7 +105,7 @@ export async function PATCH(request: Request) {
             `UPDATE attendance
              SET clock_in_at = COALESCE(?, clock_in_at),
                  clock_out_at = COALESCE(?, clock_out_at),
-                 source = 'admin_adjustment',
+                 source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END,
                  status = 'pending_review',
                  updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
