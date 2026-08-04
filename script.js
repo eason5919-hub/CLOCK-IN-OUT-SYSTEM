@@ -37,6 +37,7 @@ let gpsWatchId = null;
 let latestGpsSamples = [];
 let selectedHistoryDate = malaysiaDateKey(new Date());
 let selectedEmployeeMonthKey = employeeMonthKey(malaysiaToday());
+let selectedAdminAttendanceDate = malaysiaDateKey(new Date());
 let optimisticLeaveSubmitInFlight = false;
 
 window.addEventListener("hashchange", () => {
@@ -256,6 +257,7 @@ function employeeScreen() {
 
 function adminScreen() {
   const pending = state.corrections.filter((row) => row.status === "Pending");
+  const selectedAttendance = state.attendance.filter((row) => row.date === selectedAdminAttendanceDate);
   return `
     ${metrics([
       ["Employees", state.employees.length, ""],
@@ -292,9 +294,12 @@ function adminScreen() {
       <section class="panel wide" id="attendance">
         <div class="heading">
           <div><p class="eyebrow">Attendance</p><h3>All employees</h3></div>
-          <button class="secondary" id="export-csv">Export CSV</button>
+          <div class="actions">
+            <label class="date-filter">Date <input id="admin-attendance-date" type="date" value="${selectedAdminAttendanceDate}" /></label>
+            <button class="secondary" id="export-csv">Export CSV</button>
+          </div>
         </div>
-        ${attendanceTable(state.attendance, false)}
+        ${attendanceTable(selectedAttendance, false, selectedAdminAttendanceDate)}
       </section>
       <section class="panel wide" id="corrections">
         <div class="heading"><div><p class="eyebrow">Corrections</p><h3>Approval queue</h3></div></div>
@@ -717,6 +722,10 @@ function bindAdmin() {
     });
   });
 
+  document.querySelector("#admin-attendance-date")?.addEventListener("change", (event) => {
+    selectedAdminAttendanceDate = event.currentTarget.value || malaysiaDateKey(new Date());
+    render();
+  });
   document.querySelector("#export-csv").addEventListener("click", exportCsv);
 }
 
@@ -1387,9 +1396,13 @@ function gpsReadyMessage(sample) {
 }
 
 function exportCsv() {
+  const rowsForExport =
+    state.currentUser?.role === "admin"
+      ? state.attendance.filter((row) => row.date === selectedAdminAttendanceDate)
+      : state.attendance;
   const rows = [
     ["Employee", "Date", "Clock In", "Clock Out", "Working Minutes", "OT Minutes", "Status"],
-    ...state.attendance.map((row) => {
+    ...rowsForExport.map((row) => {
       return [employeeLabel(row), row.date, row.clockIn || "", row.clockOut || "", row.workingMinutes, row.overtimeMinutes, row.status];
     }),
   ];
@@ -1398,7 +1411,7 @@ function exportCsv() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "attendance-report.csv";
+  link.download = state.currentUser?.role === "admin" ? `attendance-report-${selectedAdminAttendanceDate}.csv` : "attendance-report.csv";
   link.click();
   URL.revokeObjectURL(url);
 }
