@@ -961,18 +961,13 @@ function correctionCard(correction) {
 }
 
 function visibleEmployeeLeaveRequests(requests) {
-  const activeRequests = [];
-  const cancelledRequests = [];
-
-  (requests || []).forEach((request) => {
-    if (request.status === "Cancelled") {
-      cancelledRequests.push(request);
-    } else {
-      activeRequests.push(request);
-    }
+  let closedShown = 0;
+  return (requests || []).filter((request) => {
+    const isClosed = ["cancelled", "rejected"].includes(String(request.status || "").toLowerCase());
+    if (!isClosed) return true;
+    closedShown += 1;
+    return closedShown <= 5;
   });
-
-  return [...activeRequests, ...cancelledRequests.slice(0, 3)];
 }
 
 function leaveRequestCard(request) {
