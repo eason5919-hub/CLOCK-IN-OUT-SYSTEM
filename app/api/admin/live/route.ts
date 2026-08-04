@@ -1,4 +1,5 @@
 import { ensureDatabase, getD1, isAdminSession } from "../../../../db/runtime";
+import { calculateAttendanceTotals, localDayOfWeek } from "../../../../db/attendance-calculations";
 
 type AdminAction =
   | {
@@ -24,7 +25,8 @@ type AdminAction =
   | { action: "deactivate_employee"; employeeId?: string }
   | { action: "delete_employee"; employeeId?: string }
   | { action: "unlink_device"; deviceId?: string }
-  | { action: "review_leave_request"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string };
+  | { action: "review_leave_request"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string }
+  | { action: "review_correction"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string };
 
 export async function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -136,6 +138,9 @@ export async function POST(request: Request) {
     }
     if (payload.action === "review_leave_request") {
       return reviewLeaveRequest(db, request, payload, auth.userId);
+    }
+    if (payload.action === "review_correction") {
+      return reviewCorrectionRequest(db, request, payload, auth.userId);
     }
 
     return json(request, { error: "Unknown admin action." }, 400);
@@ -348,6 +353,137 @@ async function reviewLeaveRequest(
   return json(request, { ok: true });
 }
 
+async function reviewCorrectionRequest(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "review_correction" }>,
+  adminUserId: string,
+) {
+  if (!payload.requestId || (payload.status !== "approved" && payload.status !== "rejected")) {
+    return json(request, { error: "Correction request and review status are required." }, 400);
+  }
+
+  const correction = await db
+    .prepare("SELECT * FROM attendance_corrections WHERE id = ? AND status = 'pending'")
+    .bind(payload.requestId)
+    .first<Record<string, string | null>>();
+  if (!correction) return json(request, { error: "Pending correction was not found." }, 404);
+
+  let newRecordJson: string | null = null;
+  if (payload.status === "approved") {
+    const attendanceId = correction.attendance_id ?? crypto.randomUUID();
+    const existingRecord = correction.attendance_id
+      ? await db.prepare("SELECT id FROM attendance WHERE id = ?").bind(correction.attendance_id).first()
+      : null;
+
+    if (existingRecord) {
+      await db
+        .prepare(
+          `UPDATE attendance
+           SET clock_in_at = COALESCE(?, clock_in_at),
+               clock_out_at = COALESCE(?, clock_out_at),
+               source = 'admin_adjustment',
+               status = 'pending_review',
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+        )
+        .bind(correction.requested_clock_in_at, correction.requested_clock_out_at, attendanceId)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO attendance
+           (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at, source, status)
+           VALUES (?, ?, 'wh-main', ?, ?, ?, 'admin_adjustment', 'pending_review')`,
+        )
+        .bind(
+          attendanceId,
+          correction.employee_id,
+          correction.requested_date,
+          correction.requested_clock_in_at,
+          correction.requested_clock_out_at,
+        )
+        .run();
+    }
+
+    const updated = await db
+      .prepare(
+        `SELECT a.*, w.timezone
+         FROM attendance a
+         JOIN warehouses w ON w.id = a.warehouse_id
+         WHERE a.id = ?`,
+      )
+      .bind(attendanceId)
+      .first<Record<string, string | number | null>>();
+    if (updated?.clock_in_at && updated.clock_out_at) {
+      const timeZone = String(updated.timezone || "Asia/Kuala_Lumpur");
+      const schedule = await db
+        .prepare(
+          "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = ? AND day_of_week = ?",
+        )
+        .bind(updated.warehouse_id, localDayOfWeek(`${correction.requested_date}T12:00:00+08:00`, timeZone))
+        .first();
+      const previousRegularMinutes = await getPreviousRegularMinutes(
+        db,
+        String(updated.employee_id),
+        String(updated.work_date),
+        String(updated.id),
+      );
+      const totals = calculateAttendanceTotals(String(updated.clock_in_at), String(updated.clock_out_at), schedule, timeZone, {
+        previousRegularMinutes,
+      });
+      const status = totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+      await db
+        .prepare(
+          `UPDATE attendance
+           SET total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
+               overtime_minutes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+        )
+        .bind(
+          totals.totalMinutes,
+          totals.lateMinutes,
+          totals.earlyLeaveMinutes,
+          totals.overtimeMinutes,
+          status,
+          updated.id,
+        )
+        .run();
+    }
+    const recalculated = await db
+      .prepare("SELECT * FROM attendance WHERE id = ?")
+      .bind(attendanceId)
+      .first<Record<string, unknown>>();
+    newRecordJson = recalculated ? JSON.stringify(recalculated) : null;
+  }
+
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE attendance_corrections
+         SET status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
+             admin_note = ?, new_record_json = ?
+         WHERE id = ?`,
+      )
+      .bind(payload.status, adminUserId, payload.adminNote?.trim() || null, newRecordJson, payload.requestId),
+    db
+      .prepare(
+        "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        crypto.randomUUID(),
+        adminUserId,
+        `correction_${payload.status}`,
+        "attendance_corrections",
+        payload.requestId,
+        JSON.stringify(correction),
+        newRecordJson,
+      ),
+  ]);
+
+  return json(request, { ok: true });
+}
+
 function normalizeLeaveDays(value: number | string) {
   const days = Number(value);
   if (!Number.isFinite(days) || days < 0) return 0;
@@ -388,6 +524,25 @@ async function applyHalfDayLeaveAttendanceRule(db: D1Database, requestId: string
     .prepare("UPDATE attendance SET late_minutes = ?, status = 'late', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
     .bind(Math.max(Number(latest.late_minutes || 0), shortMinutes), latest.id)
     .run();
+}
+
+async function getPreviousRegularMinutes(
+  db: D1Database,
+  employeeId: string,
+  workDate: string,
+  currentAttendanceId: string,
+) {
+  const rows = await db
+    .prepare(
+      `SELECT total_minutes, overtime_minutes
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND id <> ?`,
+    )
+    .bind(employeeId, workDate, currentAttendanceId)
+    .all<{ total_minutes: number | null; overtime_minutes: number | null }>();
+  return (rows.results ?? []).reduce((total, row) => {
+    return total + Math.max(0, Number(row.total_minutes || 0) - Number(row.overtime_minutes || 0));
+  }, 0);
 }
 
 async function requireAdmin(db: D1Database, request: Request) {

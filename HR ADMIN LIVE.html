@@ -180,6 +180,11 @@
       background: var(--soft);
     }
 
+    .subHead {
+      margin-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
     .panelHead h2 {
       margin: 0;
       font-size: 18px;
@@ -430,6 +435,29 @@
         </table>
       </div>
       <div id="leaveEmpty" class="empty" hidden>No current Annual Leave/MC notices.</div>
+
+      <div class="panelHead subHead">
+        <h2>Correction Requests</h2>
+        <span id="correctionCountText" class="status"></span>
+      </div>
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>No.</th>
+              <th>Date</th>
+              <th>Employee</th>
+              <th>Missing</th>
+              <th>Requested</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="correctionBody"></tbody>
+        </table>
+      </div>
+      <div id="correctionEmpty" class="empty" hidden>No pending correction requests.</div>
     </section>
 
     <section class="panel">
@@ -480,11 +508,14 @@
     const saveEmployeeButton = document.getElementById("saveEmployeeButton");
     const attendanceBody = document.getElementById("attendanceBody");
     const leaveBody = document.getElementById("leaveBody");
+    const correctionBody = document.getElementById("correctionBody");
     const employeeEmpty = document.getElementById("employeeEmpty");
     const attendanceEmpty = document.getElementById("attendanceEmpty");
     const leaveEmpty = document.getElementById("leaveEmpty");
+    const correctionEmpty = document.getElementById("correctionEmpty");
     const attendanceCountText = document.getElementById("attendanceCountText");
     const leaveCountText = document.getElementById("leaveCountText");
+    const correctionCountText = document.getElementById("correctionCountText");
     const employeeStatus = document.getElementById("employeeStatus");
     const qrImage = document.getElementById("qrImage");
     const downloadQrLink = document.getElementById("downloadQrLink");
@@ -493,6 +524,7 @@
     let employees = [];
     let attendance = [];
     let leaveRequests = [];
+    let corrections = [];
     let loading = false;
     let editingEmployeeId = "";
 
@@ -632,6 +664,12 @@
       return q ? active.filter(item => searchable(item).includes(q)) : active;
     }
 
+    function activeCorrectionRequests() {
+      const active = corrections.filter(item => String(item.status || "").toLowerCase() === "pending");
+      const q = searchInput.value.trim().toLowerCase();
+      return q ? active.filter(item => searchable(item).includes(q)) : active;
+    }
+
     function renderMetrics() {
       const today = todayKey();
       const todayRows = attendance.filter(row => row.work_date === today);
@@ -715,6 +753,37 @@
       leaveCountText.textContent = `${rows.length} active notice${rows.length === 1 ? "" : "s"}`;
     }
 
+    function renderCorrections() {
+      const rows = activeCorrectionRequests();
+      correctionBody.innerHTML = rows.map((request, index) => {
+        const clockIn = request.requested_clock_in_at ? formatDateTime(request.requested_clock_in_at) : "";
+        const clockOut = request.requested_clock_out_at ? formatDateTime(request.requested_clock_out_at) : "";
+        const requested = [clockIn && `In: ${clockIn}`, clockOut && `Out: ${clockOut}`].filter(Boolean).join(" | ") || "-";
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(request.requested_date || "-")}</td>
+            <td>
+              <strong>${escapeHtml(request.full_name || "-")}</strong>
+              <small>${escapeHtml(request.employee_code || "-")}</small>
+            </td>
+            <td>${escapeHtml(labelText(request.missing_type))}</td>
+            <td>${escapeHtml(requested)}</td>
+            <td>${escapeHtml(request.reason || "-")}</td>
+            <td><span class="pill warn">${escapeHtml(labelText(request.status))}</span></td>
+            <td>
+              <div class="actions">
+                <button type="button" data-review-correction="${escapeHtml(request.id)}" data-status="approved">Approve</button>
+                <button class="danger" type="button" data-review-correction="${escapeHtml(request.id)}" data-status="rejected">Reject</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+      correctionEmpty.hidden = rows.length > 0;
+      correctionCountText.textContent = `${rows.length} pending request${rows.length === 1 ? "" : "s"}`;
+    }
+
     function renderAttendance() {
       const rows = visibleAttendance();
       attendanceBody.innerHTML = rows.map((row, index) => `
@@ -741,6 +810,7 @@
       renderMetrics();
       renderEmployees();
       renderLeaveRequests();
+      renderCorrections();
       renderAttendance();
     }
 
@@ -758,6 +828,7 @@
         employees = Array.isArray(data.employees) ? data.employees : [];
         attendance = Array.isArray(data.attendance) ? data.attendance : [];
         leaveRequests = Array.isArray(data.leaveRequests) ? data.leaveRequests : [];
+        corrections = Array.isArray(data.corrections) ? data.corrections : [];
         renderAll();
         setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}`, "ok");
       } catch (error) {
@@ -898,6 +969,20 @@
         }, review.dataset.status === "approved" ? "Approving Annual Leave/MC..." : "Rejecting Annual Leave/MC...");
       } catch (error) {
         setStatus(employeeStatus, error.message || "Unable to review Annual Leave/MC", "error");
+      }
+    });
+
+    correctionBody.addEventListener("click", async event => {
+      const review = event.target.closest("[data-review-correction]");
+      if (!review) return;
+      try {
+        await adminAction({
+          action: "review_correction",
+          requestId: review.dataset.reviewCorrection,
+          status: review.dataset.status
+        }, review.dataset.status === "approved" ? "Approving correction request..." : "Rejecting correction request...");
+      } catch (error) {
+        setStatus(employeeStatus, error.message || "Unable to review correction request", "error");
       }
     });
 
