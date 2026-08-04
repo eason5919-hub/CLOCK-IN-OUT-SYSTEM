@@ -27,7 +27,7 @@ test("employee app opens one WhatsApp number after leave submit", async () => {
   assert.match(script, /Annual Leave\/MC request/);
   assert.match(script, /leaveWhatsAppDateLines/);
   assert.match(script, /Working days submitted: \$\{formatLeaveSubmittedDays/);
-  assert.match(script, /return index === 0 \? `Date: \$\{line\}` : `      \$\{line\}`/);
+  assert.match(script, /return line/);
   assert.match(script, /leaveSubmittedDayValue\(date, duration\)/);
   assert.match(script, /notifyWhatsApp: false/);
   assert.match(script, /openWhatsAppMessage\(WHATSAPP_NOTIFY_NUMBER/);

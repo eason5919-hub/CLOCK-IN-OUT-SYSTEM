@@ -1011,7 +1011,7 @@ function leaveWhatsAppDateLines(leaveDates, duration) {
   return leaveDates
     .map((date, index) => {
       const line = `${date} (${statusLabel(leaveDurationForDate(date, duration))})`;
-      return index === 0 ? `Date: ${line}` : `      ${line}`;
+      return line;
     })
     .join("\n");
 }
