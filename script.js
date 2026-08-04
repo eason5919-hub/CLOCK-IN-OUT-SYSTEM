@@ -852,11 +852,12 @@ function calendarLeaveForDate(leaveRequests, date) {
 function calendarRecordSummary(records, date, today) {
   if (!records.length) return { label: "-", tone: "" };
 
-  const hasMissing = records.some((row) => {
-    const missingClock = !row.clockIn || !row.clockOut;
-    return missingClock && (date < today || !row.clockIn);
-  });
-  if (hasMissing) return { label: "Missed", tone: "missed" };
+  if (records.some((row) => !row.clockIn && row.clockOut)) {
+    return { label: "Out", tone: "missed" };
+  }
+  if (records.some((row) => row.clockIn && !row.clockOut && date < today)) {
+    return { label: "Missed", tone: "missed" };
+  }
   if (records.some((row) => Number(row.lateMinutes || 0) > 0 || row.status === "Late")) {
     return { label: "Late", tone: "late" };
   }
