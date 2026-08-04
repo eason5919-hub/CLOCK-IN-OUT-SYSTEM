@@ -643,7 +643,7 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260804-paid-work-report";
+    const REPORT_CALC_VERSION = "20260804-break-deduct-report";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "in", "out", "work", "overtime", "diffOt", "short", "leaveTaken"]);
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
@@ -951,9 +951,18 @@
       const elapsed = elapsedMinutes(clockIn, clockOut);
       if (!elapsed) return 0;
       if (day === 0) return elapsed;
+      const clockInMs = Date.parse(clockIn || "");
+      const clockOutMs = Date.parse(clockOut || "");
+      if (Number.isNaN(clockInMs) || Number.isNaN(clockOutMs)) return 0;
       const overtime = reportOvertimeFromTimes(clockIn, clockOut, dateKey, day);
+      const start = 9 * 60;
+      const end = day === 6 ? 13 * 60 : 18 * 60;
+      const regularStartMs = scheduledDateTimeMs(dateKey, start - 60);
+      const regularEndMs = scheduledDateTimeMs(dateKey, end);
+      const regularSpan = Math.max(0, Math.round((Math.min(clockOutMs, regularEndMs) - Math.max(clockInMs, regularStartMs)) / 60000));
+      const breakDeduction = day >= 1 && day <= 5 && regularSpan > 300 ? 60 : 0;
       const regularCap = day === 6 ? 240 : 480;
-      return Math.min(Math.max(0, elapsed - overtime), regularCap) + overtime;
+      return Math.min(Math.max(0, regularSpan - breakDeduction), regularCap) + overtime;
     }
 
     function reportOvertimeMinutes(attendanceRow, day) {
