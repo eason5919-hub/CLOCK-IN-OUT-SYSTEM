@@ -868,13 +868,66 @@
         timeZone: "Asia/Kuala_Lumpur",
         hour: "2-digit",
         minute: "2-digit",
-        hour12: true
-      }).replace(/\s/g, "");
+        hour12: false
+      });
     }
 
     function reportHours(minutes) {
       const value = Number(minutes || 0);
-      return value ? (value / 60).toFixed(2) : "";
+      if (!value) return "";
+      return `${Math.floor(value / 60)}.${String(Math.abs(value % 60)).padStart(2, "0")}`;
+    }
+
+    function reportHoursToMinutes(value) {
+      const text = String(value || "").trim();
+      if (!text) return 0;
+      const [hours, minutes = "0"] = text.split(".");
+      return (Number.parseInt(hours, 10) || 0) * 60 + (Number.parseInt(minutes.padEnd(2, "0").slice(0, 2), 10) || 0);
+    }
+
+    function malaysiaClockMinutes(value) {
+      if (!value) return null;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return null;
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kuala_Lumpur",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).formatToParts(date);
+      const hour = Number(parts.find(part => part.type === "hour")?.value || 0);
+      const minute = Number(parts.find(part => part.type === "minute")?.value || 0);
+      return hour * 60 + minute;
+    }
+
+    function elapsedMinutes(start, end) {
+      if (!start || !end) return 0;
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
+      return Math.max(0, Math.round((endDate - startDate) / 60000));
+    }
+
+    function reportOvertimeMinutes(attendanceRow, day) {
+      if (!attendanceRow?.clockOut) return 0;
+      if (day === 0) return attendanceRow.actualMinutes || 0;
+      const outMinutes = malaysiaClockMinutes(attendanceRow.clockOut);
+      if (outMinutes == null) return 0;
+      const normalEnd = day === 6 ? 13 * 60 : 18 * 60;
+      return outMinutes > normalEnd + 15 ? Math.max(0, outMinutes - normalEnd) : 0;
+    }
+
+    function reportShortMinutes(attendanceRow, day) {
+      if (!attendanceRow?.clockIn || day === 0) return 0;
+      const inMinutes = malaysiaClockMinutes(attendanceRow.clockIn);
+      const outMinutes = malaysiaClockMinutes(attendanceRow.clockOut);
+      if (inMinutes == null) return 0;
+      const start = 9 * 60;
+      const end = day === 6 ? 13 * 60 : 18 * 60;
+      let late = Math.max(0, inMinutes - start);
+      if (day !== 6 && late > 60) late -= 60;
+      const earlyOut = outMinutes == null ? 0 : Math.max(0, end - outMinutes);
+      return late + earlyOut;
     }
 
     function reportEditKey(employeeId, dateKey, field) {
@@ -901,6 +954,7 @@
       return {
         clockIn: firstIn,
         clockOut: lastOut,
+        actualMinutes: rows.reduce((sum, row) => sum + elapsedMinutes(row.clock_in_at, row.clock_out_at), 0),
         totalMinutes: rows.reduce((sum, row) => sum + Number(row.total_minutes || 0), 0),
         lateMinutes: rows.reduce((sum, row) => sum + Number(row.late_minutes || 0), 0),
         overtimeMinutes: rows.reduce((sum, row) => sum + Number(row.overtime_minutes || 0), 0),
@@ -1122,15 +1176,15 @@
         const day = dateParts(dateKey).getUTCDay();
         const leaveTaken = employeeLeaveForDate(employee.id, dateKey);
         const dayType = day === 0 ? "Restday" : "Workday";
-        const work = reportValue(employee.id, dateKey, "work", reportHours(attendanceRow?.totalMinutes));
-        const overtime = reportValue(employee.id, dateKey, "overtime", reportHours(attendanceRow?.overtimeMinutes));
+        const work = reportValue(employee.id, dateKey, "work", reportHours(attendanceRow?.actualMinutes));
+        const overtime = reportValue(employee.id, dateKey, "overtime", reportHours(reportOvertimeMinutes(attendanceRow, day)));
         const diffOt = reportValue(employee.id, dateKey, "diffOt", "");
-        const short = reportValue(employee.id, dateKey, "short", reportHours(Number(attendanceRow?.lateMinutes || 0) + Number(attendanceRow?.earlyLeaveMinutes || 0)));
+        const short = reportValue(employee.id, dateKey, "short", reportHours(reportShortMinutes(attendanceRow, day)));
 
-        totalWork += Number.parseFloat(work) || 0;
-        totalOt += Number.parseFloat(overtime) || 0;
-        totalDiffOt += Number.parseFloat(diffOt) || 0;
-        totalShort += Number.parseFloat(short) || 0;
+        totalWork += reportHoursToMinutes(work);
+        totalOt += reportHoursToMinutes(overtime);
+        totalDiffOt += reportHoursToMinutes(diffOt);
+        totalShort += reportHoursToMinutes(short);
 
         return `
           <tr class="${day === 6 ? "weekEnd" : ""}">
@@ -1188,10 +1242,10 @@
               <tfoot>
                 <tr>
                   <td colspan="7">Total</td>
-                  <td>${totalWork.toFixed(2)}</td>
-                  <td>${totalOt.toFixed(2)}</td>
-                  <td>${totalDiffOt.toFixed(2)}</td>
-                  <td>${totalShort.toFixed(2)}</td>
+                  <td>${reportHours(totalWork)}</td>
+                  <td>${reportHours(totalOt)}</td>
+                  <td>${reportHours(totalDiffOt)}</td>
+                  <td>${reportHours(totalShort)}</td>
                   <td colspan="2"></td>
                 </tr>
               </tfoot>
