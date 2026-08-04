@@ -1095,10 +1095,6 @@
       return `${selectedReportMonth}|${employeeId}|${dateKey}|${field}`;
     }
 
-    function reportHasTimeEdit(edits, employeeId, dateKey) {
-      return [...REPORT_TIME_FIELDS].some(field => Object.prototype.hasOwnProperty.call(edits, reportEditKey(employeeId, dateKey, field)));
-    }
-
     function reportValue(employeeId, dateKey, field, fallback = "") {
       if (!isEditableReportField(field)) return fallback;
       if (reportCorrectionWins(employeeId, dateKey, field)) return fallback;
@@ -1126,7 +1122,7 @@
       const key = reportEditKey(employeeId, dateKey, field);
       const editableField = isEditableReportField(field);
       const correctionWins = reportCorrectionWins(employeeId, dateKey, field);
-      const manualEdit = editableField && !correctionWins && Object.prototype.hasOwnProperty.call(monthlyReportEdits, key);
+      const manualEdit = editableField && !correctionWins && (Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) || reportFieldWasEdited(employeeId, dateKey, field));
       const value = reportValue(employeeId, dateKey, field, fallback);
       const editable = editing && editableField;
       const classes = ["editableCell", correctionWins ? "correctedTime" : className, manualEdit ? "manualEdit" : ""].filter(Boolean).join(" ");
@@ -1161,24 +1157,43 @@
       return field === "in" ? Boolean(row?.correctedClockIn) : Boolean(row?.correctedClockOut);
     }
 
+    function reportFieldWasEdited(employeeId, dateKey, field) {
+      const row = employeeAttendanceByDate(employeeId, dateKey);
+      if (!row) return false;
+      if (field === "in") return Boolean(row.reportEditedClockIn);
+      if (field === "break") return Boolean(row.reportEditedBreak);
+      if (field === "resume") return Boolean(row.reportEditedResume);
+      if (field === "out") return Boolean(row.reportEditedClockOut);
+      return false;
+    }
+
     function employeeAttendanceByDate(employeeId, dateKey) {
       const dayRows = attendance.filter(row => row.employee_id === employeeId && row.work_date === dateKey);
       const reportRows = dayRows.filter(row => row.source === "admin_report_edit");
       const rows = reportRows.length ? reportRows : dayRows;
       const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
       if (!rows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
+      const reportSegments = [...reportRows].sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
       const reportUpdatedAt = rows.map(row => row.updated_at || row.created_at || "").filter(Boolean).sort().pop() || "";
       const correctionInWins = Boolean(approvedTimes.clockIn) && isSameOrNewer(approvedTimes.clockInReviewedAt, reportUpdatedAt);
       const correctionOutWins = Boolean(approvedTimes.clockOut) && isSameOrNewer(approvedTimes.clockOutReviewedAt, reportUpdatedAt);
       const firstIn = correctionInWins ? approvedTimes.clockIn : rows.map(row => row.clock_in_at).filter(Boolean).sort()[0] || "";
       const outTimes = rows.map(row => row.clock_out_at).filter(Boolean).sort();
       const lastOut = correctionOutWins ? approvedTimes.clockOut : outTimes[outTimes.length - 1] || "";
+      const breakTime = reportSegments.length > 1 ? reportSegments[0].clock_out_at || "" : "";
+      const resumeTime = reportSegments.length > 1 ? reportSegments[1].clock_in_at || "" : "";
       return {
         dateKey,
         clockIn: firstIn,
+        breakTime,
+        resumeTime,
         clockOut: lastOut,
         correctedClockIn: correctionInWins,
         correctedClockOut: correctionOutWins,
+        reportEditedClockIn: reportRows.some(row => row.clock_in_at) && !correctionInWins,
+        reportEditedBreak: Boolean(breakTime),
+        reportEditedResume: Boolean(resumeTime),
+        reportEditedClockOut: reportRows.some(row => row.clock_out_at) && !correctionOutWins,
         actualMinutes: reportPaidWorkMinutes(firstIn, lastOut, dateKey, dateParts(dateKey).getUTCDay()),
         totalMinutes: rows.reduce((sum, row) => sum + Number(row.total_minutes || 0), 0),
         lateMinutes: rows.reduce((sum, row) => sum + Number(row.late_minutes || 0), 0),
@@ -1402,8 +1417,8 @@
         const dayType = day === 0 ? "Restday" : "Workday";
         const reportTimes = {
           in: reportValue(employee.id, dateKey, "in", reportTime(attendanceRow?.clockIn)),
-          break: reportValue(employee.id, dateKey, "break", ""),
-          resume: reportValue(employee.id, dateKey, "resume", ""),
+          break: reportValue(employee.id, dateKey, "break", reportTime(attendanceRow?.breakTime)),
+          resume: reportValue(employee.id, dateKey, "resume", reportTime(attendanceRow?.resumeTime)),
           out: reportValue(employee.id, dateKey, "out", reportTime(attendanceRow?.clockOut)),
         };
         const calculated = calculatedReportValues(dateKey, reportTimes);
@@ -1521,7 +1536,9 @@
     function originalReportValue(employeeId, dateKey, field) {
       const attendanceRow = employeeAttendanceByDate(employeeId, dateKey);
       if (field === "in") return reportTime(attendanceRow?.clockIn);
-      if (field === "break" || field === "resume" || field === "remark") return "";
+      if (field === "break") return reportTime(attendanceRow?.breakTime);
+      if (field === "resume") return reportTime(attendanceRow?.resumeTime);
+      if (field === "remark") return "";
       if (field === "out") return reportTime(attendanceRow?.clockOut);
       if (field === "leaveTaken") return employeeLeaveForDate(employeeId, dateKey);
       return "";
@@ -1594,10 +1611,7 @@
           resume: reportRowText(row, "resume"),
           out: reportRowText(row, "out"),
         }));
-      const restoreRows = [...reportRows.keys()]
-        .filter(dateKey => reportHasTimeEdit(monthlyReportEdits, employeeId, dateKey) && !reportHasTimeEdit(nextEdits, employeeId, dateKey))
-        .map(dateKey => ({ dateKey, in: "", break: "", resume: "", out: "" }));
-      const liveRows = [...timeRows, ...restoreRows];
+      const liveRows = timeRows;
       if (liveRows.length) {
         setStatus(monthlyReportStatus, "Saving report times to employee history...", "");
         await api("/api/admin/live", {
