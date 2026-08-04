@@ -396,7 +396,7 @@ async function reviewCorrectionRequest(
                clock_out_at = COALESCE(?, clock_out_at),
                source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END,
                status = 'pending_review',
-               updated_at = CURRENT_TIMESTAMP
+               updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
            WHERE id = ?`,
         )
         .bind(correction.requested_clock_in_at, correction.requested_clock_out_at, attendanceId)
@@ -449,7 +449,8 @@ async function reviewCorrectionRequest(
         .prepare(
           `UPDATE attendance
            SET total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
-               overtime_minutes = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+               overtime_minutes = ?, status = ?,
+               updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
            WHERE id = ?`,
         )
         .bind(

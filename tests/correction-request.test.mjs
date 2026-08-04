@@ -44,6 +44,14 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminRoute, /source = 'admin_report_edit'/);
   assert.match(adminRoute, /source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END/);
   assert.match(employeeRoute, /source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END/);
+  assert.equal(
+    (adminRoute.match(/updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END/g) || []).length,
+    2,
+  );
+  assert.equal(
+    (employeeRoute.match(/updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END/g) || []).length,
+    2,
+  );
   assert.match(adminRoute, /function reportTimeSegments/);
   assert.match(adminRoute, /monthly_report_time_edit/);
   assert.match(adminRoute, /monthly_report_time_restore/);
