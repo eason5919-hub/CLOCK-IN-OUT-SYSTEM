@@ -21,5 +21,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function approvedCorrectionTimes/);
   assert.match(adminHtml, /clockOut: approved\.find\(item => item\.requested_clock_out_at\)\?\.requested_clock_out_at/);
   assert.match(adminHtml, /const lastOut = approvedTimes\.clockOut \|\| outTimes\[outTimes\.length - 1\] \|\| ""/);
-  assert.match(adminHtml, /20260804-approved-correction-times/);
+  assert.match(adminHtml, /function reportPaidWorkMinutes/);
+  assert.match(adminHtml, /const regularCap = day === 6 \? 240 : 480/);
+  assert.match(adminHtml, /Math\.min\(Math\.max\(0, elapsed - overtime\), regularCap\) \+ overtime/);
+  assert.match(adminHtml, /20260804-paid-work-report/);
 });

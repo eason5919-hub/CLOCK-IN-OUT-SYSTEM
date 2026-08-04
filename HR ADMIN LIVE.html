@@ -643,7 +643,7 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260804-approved-correction-times";
+    const REPORT_CALC_VERSION = "20260804-paid-work-report";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "in", "out", "work", "overtime", "diffOt", "short", "leaveTaken"]);
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
@@ -924,13 +924,41 @@
       return Math.max(1, Math.round(diffMs / 60000));
     }
 
+    function scheduledDateTimeMs(dateKey, minutes) {
+      const hours = Math.floor(minutes / 60);
+      const mins = minutes % 60;
+      return Date.parse(`${dateKey}T${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00+08:00`);
+    }
+
+    function reportOvertimeFromTimes(clockIn, clockOut, dateKey, day) {
+      if (!clockOut) return 0;
+      const elapsed = elapsedMinutes(clockIn, clockOut);
+      if (day === 0) return elapsed;
+      const clockInMs = Date.parse(clockIn || "");
+      const clockOutMs = Date.parse(clockOut);
+      if (Number.isNaN(clockOutMs)) return 0;
+      const start = 9 * 60;
+      const end = day === 6 ? 13 * 60 : 18 * 60;
+      const earlyOtStartMs = scheduledDateTimeMs(dateKey, start - 60);
+      const normalEndMs = scheduledDateTimeMs(dateKey, end);
+      const lateOtStartMs = normalEndMs + 16 * 60000;
+      const earlyOt = !Number.isNaN(clockInMs) && clockInMs < earlyOtStartMs ? Math.max(0, Math.round((earlyOtStartMs - clockInMs) / 60000)) : 0;
+      const lateOt = clockOutMs >= lateOtStartMs ? Math.max(0, Math.round((clockOutMs - Math.max(clockInMs || normalEndMs, normalEndMs)) / 60000)) : 0;
+      return earlyOt + lateOt;
+    }
+
+    function reportPaidWorkMinutes(clockIn, clockOut, dateKey, day) {
+      const elapsed = elapsedMinutes(clockIn, clockOut);
+      if (!elapsed) return 0;
+      if (day === 0) return elapsed;
+      const overtime = reportOvertimeFromTimes(clockIn, clockOut, dateKey, day);
+      const regularCap = day === 6 ? 240 : 480;
+      return Math.min(Math.max(0, elapsed - overtime), regularCap) + overtime;
+    }
+
     function reportOvertimeMinutes(attendanceRow, day) {
       if (!attendanceRow?.clockOut) return 0;
-      if (day === 0) return attendanceRow.actualMinutes || 0;
-      const outMinutes = malaysiaClockMinutes(attendanceRow.clockOut);
-      if (outMinutes == null) return 0;
-      const normalEnd = day === 6 ? 13 * 60 : 18 * 60;
-      return outMinutes > normalEnd + 15 ? Math.max(0, outMinutes - normalEnd) : 0;
+      return reportOvertimeFromTimes(attendanceRow.clockIn, attendanceRow.clockOut, attendanceRow.dateKey, day);
     }
 
     function reportShortMinutes(attendanceRow, day) {
@@ -997,9 +1025,10 @@
       const outTimes = rows.map(row => row.clock_out_at).filter(Boolean).sort();
       const lastOut = approvedTimes.clockOut || outTimes[outTimes.length - 1] || "";
       return {
+        dateKey,
         clockIn: firstIn,
         clockOut: lastOut,
-        actualMinutes: elapsedMinutes(firstIn, lastOut),
+        actualMinutes: reportPaidWorkMinutes(firstIn, lastOut, dateKey, dateParts(dateKey).getUTCDay()),
         totalMinutes: rows.reduce((sum, row) => sum + Number(row.total_minutes || 0), 0),
         lateMinutes: rows.reduce((sum, row) => sum + Number(row.late_minutes || 0), 0),
         overtimeMinutes: rows.reduce((sum, row) => sum + Number(row.overtime_minutes || 0), 0),
