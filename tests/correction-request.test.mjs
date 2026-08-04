@@ -32,7 +32,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(script, /function attendanceEditMarks/);
   assert.match(script, /function approvedCorrectionForField/);
   assert.match(script, /function attendanceDisplayTimes/);
-  assert.match(script, /isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, row\.updatedAt \|\| row\.createdAt\)/);
+  assert.match(script, /function sameClockValue/);
+  assert.match(script, /sameClockValue\(correction\[key\], row\[field\]\) \|\| isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, row\.updatedAt \|\| row\.createdAt\)/);
   assert.match(script, /if \(row\.source === "admin_report_edit"\)/);
   assert.match(script, /clockOut: correctedOut \? "corrected" : row\.clockOut \? "edited" : ""/);
   assert.match(script, /const display = attendanceDisplayTimes\(row, corrections\)/);
@@ -60,13 +61,15 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function approvedCorrectionTimes/);
   assert.match(adminHtml, /const clockOut = approved\.find\(item => item\.requested_clock_out_at\)/);
   assert.match(adminHtml, /clockOut: clockOut\?\.requested_clock_out_at \|\| ""/);
-  assert.match(adminHtml, /const lastOut = correctionOutWins \? approvedTimes\.clockOut : outTimes\[outTimes\.length - 1\] \|\| ""/);
+  assert.match(adminHtml, /const rowLastOut = outTimes\[outTimes\.length - 1\] \|\| ""/);
+  assert.match(adminHtml, /const lastOut = correctionOutWins \? approvedTimes\.clockOut : rowLastOut/);
   assert.match(adminHtml, /manualEdit/);
   assert.match(adminHtml, /correctedTime/);
   assert.match(adminHtml, /function reportCorrectionWins/);
   assert.match(adminHtml, /function isSameOrNewer/);
-  assert.match(adminHtml, /const correctionInWins = Boolean\(approvedTimes\.clockIn\) && isSameOrNewer\(approvedTimes\.clockInReviewedAt, reportUpdatedAt\)/);
-  assert.match(adminHtml, /const correctionOutWins = Boolean\(approvedTimes\.clockOut\) && isSameOrNewer\(approvedTimes\.clockOutReviewedAt, reportUpdatedAt\)/);
+  assert.match(adminHtml, /function sameReportInstant/);
+  assert.match(adminHtml, /const correctionInWins = Boolean\(approvedTimes\.clockIn\) && \(sameReportInstant\(approvedTimes\.clockIn, rowFirstIn\) \|\| isSameOrNewer\(approvedTimes\.clockInReviewedAt, reportUpdatedAt\)\)/);
+  assert.match(adminHtml, /const correctionOutWins = Boolean\(approvedTimes\.clockOut\) && \(sameReportInstant\(approvedTimes\.clockOut, rowLastOut\) \|\| isSameOrNewer\(approvedTimes\.clockOutReviewedAt, reportUpdatedAt\)\)/);
   assert.match(adminHtml, /class="highlightTime"/);
   assert.match(adminHtml, /function reportPaidWorkMinutes/);
   assert.match(adminHtml, /function normalizeReportTime/);

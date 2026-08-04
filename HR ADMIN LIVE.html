@@ -1151,6 +1151,14 @@
       return leftMs >= rightMs;
     }
 
+    function sameReportInstant(left, right) {
+      if (!left || !right) return false;
+      const leftMs = Date.parse(left);
+      const rightMs = Date.parse(right);
+      if (!Number.isNaN(leftMs) && !Number.isNaN(rightMs)) return leftMs === rightMs;
+      return String(left) === String(right);
+    }
+
     function reportCorrectionWins(employeeId, dateKey, field) {
       if (field !== "in" && field !== "out") return false;
       const row = employeeAttendanceByDate(employeeId, dateKey);
@@ -1175,11 +1183,13 @@
       if (!rows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
       const reportSegments = [...reportRows].sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
       const reportUpdatedAt = rows.map(row => row.updated_at || row.created_at || "").filter(Boolean).sort().pop() || "";
-      const correctionInWins = Boolean(approvedTimes.clockIn) && isSameOrNewer(approvedTimes.clockInReviewedAt, reportUpdatedAt);
-      const correctionOutWins = Boolean(approvedTimes.clockOut) && isSameOrNewer(approvedTimes.clockOutReviewedAt, reportUpdatedAt);
-      const firstIn = correctionInWins ? approvedTimes.clockIn : rows.map(row => row.clock_in_at).filter(Boolean).sort()[0] || "";
+      const rowFirstIn = rows.map(row => row.clock_in_at).filter(Boolean).sort()[0] || "";
       const outTimes = rows.map(row => row.clock_out_at).filter(Boolean).sort();
-      const lastOut = correctionOutWins ? approvedTimes.clockOut : outTimes[outTimes.length - 1] || "";
+      const rowLastOut = outTimes[outTimes.length - 1] || "";
+      const correctionInWins = Boolean(approvedTimes.clockIn) && (sameReportInstant(approvedTimes.clockIn, rowFirstIn) || isSameOrNewer(approvedTimes.clockInReviewedAt, reportUpdatedAt));
+      const correctionOutWins = Boolean(approvedTimes.clockOut) && (sameReportInstant(approvedTimes.clockOut, rowLastOut) || isSameOrNewer(approvedTimes.clockOutReviewedAt, reportUpdatedAt));
+      const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;
+      const lastOut = correctionOutWins ? approvedTimes.clockOut : rowLastOut;
       const breakTime = reportSegments.length > 1 ? reportSegments[0].clock_out_at || "" : "";
       const resumeTime = reportSegments.length > 1 ? reportSegments[1].clock_in_at || "" : "";
       return {

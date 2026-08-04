@@ -1004,6 +1004,10 @@ function isSameOrNewer(left, right) {
   return leftMs >= rightMs;
 }
 
+function sameClockValue(left, right) {
+  return Boolean(left && right && String(left) === String(right));
+}
+
 function approvedCorrectionForField(row, field, corrections = []) {
   const key = field === "clockIn" ? "requestedClockIn" : "requestedClockOut";
   return corrections
@@ -1011,7 +1015,7 @@ function approvedCorrectionForField(row, field, corrections = []) {
     .sort((a, b) => Date.parse(b.reviewedAt || b.createdAt || "") - Date.parse(a.reviewedAt || a.createdAt || ""))
     .find((correction) => {
       if (row.source === "admin_report_edit") {
-        return isSameOrNewer(correction.reviewedAt || correction.createdAt, row.updatedAt || row.createdAt);
+        return sameClockValue(correction[key], row[field]) || isSameOrNewer(correction.reviewedAt || correction.createdAt, row.updatedAt || row.createdAt);
       }
       return correction[key] === row[field];
     });
