@@ -958,6 +958,21 @@
       return Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) ? monthlyReportEdits[key] : fallback;
     }
 
+    function clearCalculatedReportEdits(employeeId, dateKey) {
+      if (!employeeId || !dateKey) return;
+      const monthKey = dateKey.slice(0, 7);
+      const prefix = `${monthKey}|${employeeId}|${dateKey}|`;
+      let changed = false;
+      Object.keys(monthlyReportEdits).forEach(key => {
+        const field = key.slice(prefix.length);
+        if (key.startsWith(prefix) && REPORT_CALCULATED_FIELDS.has(field)) {
+          delete monthlyReportEdits[key];
+          changed = true;
+        }
+      });
+      if (changed) saveReportEdits();
+    }
+
     function editableReportCell(employeeId, dateKey, field, fallback = "", className = "") {
       const editing = editingReportEmployeeId === employeeId;
       const value = reportValue(employeeId, dateKey, field, fallback);
@@ -1362,11 +1377,17 @@
     }
 
     async function adminAction(payload, message) {
+      const approvedCorrection = payload.action === "review_correction" && payload.status === "approved"
+        ? corrections.find(item => item.id === payload.requestId)
+        : null;
       setStatus(employeeStatus, message || "Saving...", "");
       await api("/api/admin/live", {
         method: "POST",
         body: JSON.stringify(payload)
       });
+      if (approvedCorrection) {
+        clearCalculatedReportEdits(approvedCorrection.employee_id, approvedCorrection.requested_date);
+      }
       setStatus(employeeStatus, payload.action === "delete_employee" ? "Deleted" : "Saved", "ok");
       await loadLiveData(true);
     }

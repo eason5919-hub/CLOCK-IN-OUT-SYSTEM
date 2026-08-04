@@ -231,7 +231,7 @@ function employeeScreen() {
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
         <form class="form" id="correction-form">
           <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
-          <label>Missing<select name="missing"><option>Clock In</option><option selected>Clock Out</option><option>Both</option></select></label>
+          <label>Missing<select name="missing"><option>Clock In</option><option selected>Clock Out</option></select></label>
           <label>Requested time<input name="time" type="time" required /></label>
           <label>Reason<textarea name="reason" rows="3" required></textarea></label>
           <button>Submit Request</button>
@@ -557,9 +557,9 @@ function bindEmployee() {
         body: JSON.stringify({
           employeeId: state.currentUser.employeeId,
           requestedDate,
-          missingType: missing === "Clock In" ? "clock_in" : missing === "Clock Out" ? "clock_out" : "both",
-          requestedClockInAt: missing !== "Clock Out" ? localDateTimeToIso(requestedDate, requestedTime) : null,
-          requestedClockOutAt: missing !== "Clock In" ? localDateTimeToIso(requestedDate, requestedTime) : null,
+          missingType: missing === "Clock In" ? "clock_in" : "clock_out",
+          requestedClockInAt: missing === "Clock In" ? localDateTimeToIso(requestedDate, requestedTime) : null,
+          requestedClockOutAt: missing === "Clock Out" ? localDateTimeToIso(requestedDate, requestedTime) : null,
           reason: String(data.get("reason")).trim(),
         }),
       });
@@ -1008,7 +1008,9 @@ function employeeCard(employee) {
 }
 
 function correctionCard(correction) {
-  return `<div class="list-item"><strong>${correction.date} - ${correction.missing}</strong><span>${escapeHtml(correction.reason)}</span><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span></div>`;
+  const requested = correction.requestedTime ? `Requested: ${escapeHtml(correction.requestedTime)}` : "Requested: -";
+  const reason = correction.reason ? ` | ${escapeHtml(correction.reason)}` : "";
+  return `<div class="list-item"><strong>${correction.date} - ${correction.missing}</strong><span>${requested}${reason}</span><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span></div>`;
 }
 
 function visibleEmployeeLeaveRequests(requests) {

@@ -104,3 +104,14 @@ test("employee correction metric counts pending requests only", async () => {
   assert.match(script, /function pendingCorrectionCount/);
   assert.match(script, /correction\.status === "Pending"/);
 });
+
+test("employee correction form records one missing time and shows requested time", async () => {
+  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+
+  assert.match(script, /<option>Clock In<\/option><option selected>Clock Out<\/option>/);
+  assert.doesNotMatch(script, /<option>Both<\/option>/);
+  assert.match(script, /missingType: missing === "Clock In" \? "clock_in" : "clock_out"/);
+  assert.match(script, /requestedClockInAt: missing === "Clock In"/);
+  assert.match(script, /requestedClockOutAt: missing === "Clock Out"/);
+  assert.match(script, /Requested: \$\{escapeHtml\(correction\.requestedTime\)\}/);
+});
