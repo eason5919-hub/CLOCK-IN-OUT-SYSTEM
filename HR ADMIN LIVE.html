@@ -657,7 +657,7 @@
     function activeLeaveNotices() {
       const today = todayKey();
       const active = leaveRequests.filter(item => {
-        const status = String(item.status || "").toLowerCase();
+        const status = leaveRequestStatusText(item).toLowerCase();
         return item.leave_date >= today && status !== "rejected" && status !== "cancelled";
       });
       const q = searchInput.value.trim().toLowerCase();
@@ -738,7 +738,7 @@
           <td>${escapeHtml(leaveTypeText(request.leave_type))}</td>
           <td>${escapeHtml(labelText(request.duration))}</td>
           <td>${escapeHtml(request.reason || "-")}</td>
-          <td><span class="pill ${request.status === "pending" ? "warn" : request.status === "rejected" ? "bad" : ""}">${escapeHtml(labelText(request.status))}</span></td>
+          <td><span class="pill ${leaveRequestStatusClass(request)}">${escapeHtml(leaveRequestStatusText(request))}</span></td>
           <td>
             ${request.status === "pending" ? `
               <div class="actions">
@@ -751,6 +751,21 @@
       `).join("");
       leaveEmpty.hidden = rows.length > 0;
       leaveCountText.textContent = `${rows.length} active notice${rows.length === 1 ? "" : "s"}`;
+    }
+
+    function leaveRequestStatusText(request) {
+      const status = String(request?.status || "").toLowerCase();
+      const note = String(request?.admin_note || "").toLowerCase();
+      if (status === "cancelled" || note.includes("cancelled by employee")) return "Cancelled";
+      if (status === "rejected") return "Rejected";
+      return labelText(request?.status);
+    }
+
+    function leaveRequestStatusClass(request) {
+      const status = leaveRequestStatusText(request).toLowerCase();
+      if (status === "pending") return "warn";
+      if (status === "rejected" || status === "cancelled") return "bad";
+      return "";
     }
 
     function renderCorrections() {

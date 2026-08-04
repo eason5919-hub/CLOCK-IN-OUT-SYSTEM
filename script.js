@@ -486,7 +486,8 @@ function mapLiveLeaveRequest(row) {
     type: leaveTypeLabel(row.leave_type),
     duration: statusLabel(row.duration),
     reason: row.reason || "",
-    status: statusLabel(row.status),
+    status: leaveRequestStatusLabel(row),
+    adminNote: row.admin_note || "",
   };
 }
 
@@ -1515,6 +1516,14 @@ function statusLabel(value) {
   return String(value || "-")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function leaveRequestStatusLabel(row) {
+  const status = String(row?.status || "").toLowerCase();
+  const note = String(row?.admin_note || "").toLowerCase();
+  if (status === "cancelled" || note.includes("cancelled by employee")) return "Cancelled";
+  if (status === "rejected") return "Rejected";
+  return statusLabel(row?.status);
 }
 
 function leaveTypeLabel(value) {

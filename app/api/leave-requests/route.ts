@@ -199,7 +199,10 @@ async function cancelLeaveRequest(request: Request, payload: LeavePayload) {
   await db
     .prepare(
       `UPDATE leave_requests
-       SET status = 'cancelled', admin_note = 'Cancelled by employee'
+       SET status = 'cancelled',
+           admin_note = 'Cancelled by employee',
+           reviewed_by_user_id = NULL,
+           reviewed_at = NULL
        WHERE id = ?`,
     )
     .bind(existing.id)

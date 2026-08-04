@@ -69,7 +69,7 @@ export async function GET(request: Request) {
 
   const leaveRequests = await db
     .prepare(
-      `SELECT id, leave_type, leave_date, duration, reason, status, created_at
+      `SELECT id, leave_type, leave_date, duration, reason, status, admin_note, created_at
        FROM leave_requests
        WHERE employee_id = ?
        ORDER BY created_at DESC`,
