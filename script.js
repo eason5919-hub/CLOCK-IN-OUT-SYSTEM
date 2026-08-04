@@ -15,7 +15,7 @@ const WAREHOUSE = {
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
 };
-const WHATSAPP_NOTIFY_NUMBERS = ["60122159225", "60177395919"];
+const WHATSAPP_NOTIFY_NUMBER = "60122159225";
 const MAX_GPS_ACCURACY_METERS = 30;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
 
@@ -38,7 +38,6 @@ let latestGpsSamples = [];
 let selectedHistoryDate = malaysiaDateKey(new Date());
 let selectedEmployeeMonthKey = employeeMonthKey(malaysiaToday());
 let optimisticLeaveSubmitInFlight = false;
-let pendingWhatsAppNotification = null;
 
 window.addEventListener("hashchange", () => {
   if (window.location.hash.toLowerCase() === "#admin") {
@@ -248,7 +247,6 @@ function employeeScreen() {
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
           <button>Submit Annual Leave/MC</button>
         </form>
-        ${pendingWhatsAppNotification ? whatsappNotificationPanel(pendingWhatsAppNotification) : ""}
         <div class="list" style="margin-top:14px">${visibleLeaveRequests.map(leaveRequestCard).join("") || `<small>No Annual Leave/MC requests.</small>`}</div>
       </section>
     </div>
@@ -533,16 +531,6 @@ function bindEmployee() {
       }
     });
   });
-  document.querySelectorAll("[data-whatsapp-notify]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (!pendingWhatsAppNotification) return;
-      openWhatsAppMessage(button.dataset.whatsappNotify, pendingWhatsAppNotification.message);
-    });
-  });
-  document.querySelector("[data-dismiss-whatsapp]")?.addEventListener("click", () => {
-    pendingWhatsAppNotification = null;
-    render();
-  });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
     const qr = prompt("Enter the warehouse QR code shown by HR");
@@ -648,9 +636,7 @@ function bindEmployee() {
       if (failedTempIds.size > 0) {
         toast(`${tempRequests.length - failedTempIds.size} submitted. ${failedTempIds.size} date already exists or failed.`);
       } else {
-        openWhatsAppMessage(WHATSAPP_NOTIFY_NUMBERS[0], whatsappMessage);
-        pendingWhatsAppNotification = { message: whatsappMessage, remainingNumbers: WHATSAPP_NOTIFY_NUMBERS.slice(1) };
-        render();
+        openWhatsAppMessage(WHATSAPP_NOTIFY_NUMBER, whatsappMessage);
         toast("Annual Leave/MC submitted. WhatsApp opened.");
       }
     } catch (error) {
@@ -991,19 +977,6 @@ function visibleEmployeeLeaveRequests(requests) {
 function leaveRequestCard(request) {
   const canCancel = !["Rejected", "Cancelled"].includes(request.status) && request.date >= malaysiaDateKey(new Date());
   return `<div class="list-item leave-card"><div><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div><div class="actions"><span class="badge ${request.status.toLowerCase()}">${request.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div></div>`;
-}
-
-function whatsappNotificationPanel(notification) {
-  return `
-    <div class="whatsapp-notice">
-      <strong>WhatsApp notification</strong>
-      <small>Send the same Leave/MC message to the remaining HR number.</small>
-      <div class="actions">
-        ${(notification.remainingNumbers || []).map((phone) => `<button class="secondary" type="button" data-whatsapp-notify="${phone}">WhatsApp ${phone}</button>`).join("")}
-        <button class="secondary" type="button" data-dismiss-whatsapp>Done</button>
-      </div>
-    </div>
-  `;
 }
 
 function leaveRangeField(value) {
