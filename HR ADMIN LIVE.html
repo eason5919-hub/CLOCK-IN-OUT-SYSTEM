@@ -252,14 +252,21 @@
       font-weight: 800;
     }
 
-    .reportControls select {
-      min-height: 42px;
-      padding: 0 10px;
+    .monthStepper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .monthLabel {
+      min-width: 150px;
+      padding: 10px 12px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
       color: var(--ink);
-      font: inherit;
+      text-align: center;
     }
 
     .monthlyReportArea {
@@ -305,6 +312,10 @@
       border-top: 2px solid var(--green-dark);
       background: #fff;
       font-weight: 800;
+    }
+
+    .reportTable tr.weekEnd td {
+      border-bottom: 2px dashed var(--green-dark);
     }
 
     .editableCell {
@@ -492,9 +503,14 @@
         <span id="monthlyReportStatus" class="status"></span>
       </div>
       <div class="reportControls">
-        <label>Month
-          <select id="reportMonthSelect"></select>
-        </label>
+        <div>
+          <small class="status">Month</small>
+          <div class="monthStepper">
+            <button id="reportPrevMonthButton" class="secondary" type="button">Prev</button>
+            <strong id="reportMonthLabel" class="monthLabel"></strong>
+            <button id="reportNextMonthButton" class="secondary" type="button">Next</button>
+          </div>
+        </div>
         <button id="openMonthlyReportButton" type="button">Monthly Report</button>
         <button id="closeMonthlyReportButton" class="secondary" type="button" hidden>Close Report</button>
       </div>
@@ -652,7 +668,9 @@
     const qrImage = document.getElementById("qrImage");
     const downloadQrLink = document.getElementById("downloadQrLink");
     const printQrButton = document.getElementById("printQrButton");
-    const reportMonthSelect = document.getElementById("reportMonthSelect");
+    const reportPrevMonthButton = document.getElementById("reportPrevMonthButton");
+    const reportNextMonthButton = document.getElementById("reportNextMonthButton");
+    const reportMonthLabel = document.getElementById("reportMonthLabel");
     const openMonthlyReportButton = document.getElementById("openMonthlyReportButton");
     const closeMonthlyReportButton = document.getElementById("closeMonthlyReportButton");
     const monthlyReportArea = document.getElementById("monthlyReportArea");
@@ -670,7 +688,7 @@
 
     emailInput.value = "d1_racing@yahoo.com";
     attendanceDateInput.value = selectedAttendanceDate;
-    setupReportMonthOptions();
+    updateReportMonthControls();
     qrImage.src = `${API_BASE}/warehouse-qr.png`;
     downloadQrLink.href = `${API_BASE}/warehouse-qr.png`;
 
@@ -794,20 +812,9 @@
       localStorage.setItem(REPORT_EDIT_KEY, JSON.stringify(monthlyReportEdits));
     }
 
-    function setupReportMonthOptions() {
-      const start = new Date(Date.UTC(2026, 6, 1));
-      const currentParts = todayKey().split("-").map(Number);
-      const current = new Date(Date.UTC(currentParts[0], currentParts[1] - 1, 1));
-      const end = new Date(Date.UTC(Math.max(current.getUTCFullYear(), 2026) + 3, 11, 1));
-      const options = [];
-      for (let date = new Date(start); date <= end; date.setUTCMonth(date.getUTCMonth() + 1)) {
-        const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
-        options.push(`<option value="${monthKey}">${escapeHtml(monthLabel(monthKey))}</option>`);
-      }
-      reportMonthSelect.innerHTML = options.join("");
-      if ([...reportMonthSelect.options].some(option => option.value === selectedReportMonth)) {
-        reportMonthSelect.value = selectedReportMonth;
-      }
+    function updateReportMonthControls() {
+      reportMonthLabel.textContent = monthLabel(selectedReportMonth);
+      reportPrevMonthButton.disabled = selectedReportMonth <= "2026-07";
     }
 
     function monthLabel(monthKey) {
@@ -817,6 +824,15 @@
         month: "long",
         year: "numeric"
       });
+    }
+
+    function shiftReportMonth(step) {
+      const [year, month] = selectedReportMonth.split("-").map(Number);
+      const date = new Date(Date.UTC(year, month - 1 + step, 1));
+      selectedReportMonth = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+      if (selectedReportMonth < "2026-07") selectedReportMonth = "2026-07";
+      updateReportMonthControls();
+      if (!monthlyReportArea.hidden) renderMonthlyReport();
     }
 
     function monthDates(monthKey) {
@@ -1110,7 +1126,7 @@
         totalShort += Number.parseFloat(short) || 0;
 
         return `
-          <tr>
+          <tr class="${day === 6 ? "weekEnd" : ""}">
             <td>${escapeHtml(reportDateLabel(dateKey))}</td>
             ${editableReportCell(employee.id, dateKey, "dayType", dayType)}
             ${editableReportCell(employee.id, dateKey, "schedule", "1")}
@@ -1357,21 +1373,17 @@
       renderAll();
     });
     openMonthlyReportButton.addEventListener("click", () => {
-      selectedReportMonth = reportMonthSelect.value || selectedReportMonth;
       monthlyReportArea.hidden = false;
       closeMonthlyReportButton.hidden = false;
       renderMonthlyReport();
-      monthlyReportArea.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     closeMonthlyReportButton.addEventListener("click", () => {
       monthlyReportArea.hidden = true;
       closeMonthlyReportButton.hidden = true;
       monthlyReportStatus.textContent = "";
     });
-    reportMonthSelect.addEventListener("change", () => {
-      selectedReportMonth = reportMonthSelect.value || selectedReportMonth;
-      if (!monthlyReportArea.hidden) renderMonthlyReport();
-    });
+    reportPrevMonthButton.addEventListener("click", () => shiftReportMonth(-1));
+    reportNextMonthButton.addEventListener("click", () => shiftReportMonth(1));
     monthlyReportArea.addEventListener("input", event => {
       const cell = event.target.closest("[data-report-field]");
       if (!cell) return;
