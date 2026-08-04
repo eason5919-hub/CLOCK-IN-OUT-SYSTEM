@@ -47,7 +47,10 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /const breakDeduction = day >= 1 && day <= 5 && regularSpan > 300 \? 60 : 0/);
   assert.match(adminHtml, /const regularCap = day === 6 \? 240 : 480/);
   assert.match(adminHtml, /Math\.min\(Math\.max\(0, regularSpan - breakDeduction\), regularCap\) \+ overtime/);
-  assert.match(adminHtml, /20260804-report-time-formulas/);
+  assert.match(adminHtml, /const outMs = Date\.parse\(attendanceRow\.clockOut \|\| ""\)/);
+  assert.match(adminHtml, /Math\.round\(\(endMs - outMs\) \/ 60000\)/);
+  assert.doesNotMatch(adminHtml, /Math\.max\(0, end - outMinutes\)/);
+  assert.match(adminHtml, /20260804-overnight-short-report/);
   assert.doesNotMatch(adminHtml, /<th>Sche<\/th>/);
   assert.doesNotMatch(adminHtml, /<th>Diff OT<\/th>/);
   assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "schedule"/);
