@@ -47,15 +47,21 @@ export async function GET(request: Request) {
 
   const attendance = await db
     .prepare(
-      `SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
+      `WITH report_days AS (
+         SELECT DISTINCT work_date
+         FROM attendance
+         WHERE employee_id = ? AND source = 'admin_report_edit'
+       )
+       SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
               early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
               source, created_at, updated_at
        FROM attendance
        WHERE employee_id = ?
+         AND (source = 'admin_report_edit' OR work_date NOT IN (SELECT work_date FROM report_days))
        ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC, created_at DESC`,
     )
-    .bind(session.employee_id)
+    .bind(session.employee_id, session.employee_id)
     .all();
 
   const corrections = await db

@@ -26,7 +26,13 @@ type AdminAction =
   | { action: "delete_employee"; employeeId?: string }
   | { action: "unlink_device"; deviceId?: string }
   | { action: "review_leave_request"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string }
-  | { action: "review_correction"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string };
+  | { action: "review_correction"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string }
+  | {
+      action: "save_report_attendance_times";
+      employeeId?: string;
+      rows?: Array<{ dateKey?: string; in?: string; break?: string; resume?: string; out?: string }>;
+    }
+  | { action: "restore_report_attendance_times"; employeeId?: string; monthKey?: string };
 
 export async function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -141,6 +147,12 @@ export async function POST(request: Request) {
     }
     if (payload.action === "review_correction") {
       return reviewCorrectionRequest(db, request, payload, auth.userId);
+    }
+    if (payload.action === "save_report_attendance_times") {
+      return saveReportAttendanceTimes(db, request, payload, auth.userId);
+    }
+    if (payload.action === "restore_report_attendance_times") {
+      return restoreReportAttendanceTimes(db, request, payload, auth.userId);
     }
 
     return json(request, { error: "Unknown admin action." }, 400);
@@ -535,6 +547,178 @@ async function findTargetAttendanceForCorrection(db: D1Database, correction: Rec
     .first<Record<string, string | number | null>>();
 }
 
+async function saveReportAttendanceTimes(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "save_report_attendance_times" }>,
+  adminUserId: string,
+) {
+  if (!payload.employeeId || !Array.isArray(payload.rows)) {
+    return json(request, { error: "Employee and report time rows are required." }, 400);
+  }
+
+  const employee = await db
+    .prepare("SELECT id FROM employees WHERE id = ? AND status <> 'deleted'")
+    .bind(payload.employeeId)
+    .first<{ id: string }>();
+  if (!employee) return json(request, { error: "Employee was not found." }, 404);
+
+  for (const row of payload.rows) {
+    const dateKey = row.dateKey?.trim();
+    if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+
+    await db
+      .prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date = ? AND source = 'admin_report_edit'")
+      .bind(payload.employeeId, dateKey)
+      .run();
+
+    const segments = reportTimeSegments(dateKey, row);
+    let previousRegularMinutes = await getPreviousRegularMinutesExcludingSource(
+      db,
+      payload.employeeId,
+      dateKey,
+      "admin_report_edit",
+    );
+
+    for (const segment of segments) {
+      const schedule = await db
+        .prepare(
+          "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = 'wh-main' AND day_of_week = ?",
+        )
+        .bind(localDayOfWeek(`${dateKey}T12:00:00+08:00`, "Asia/Kuala_Lumpur"))
+        .first();
+      const totals = calculateAttendanceTotals(segment.clockInAt, segment.clockOutAt, schedule, "Asia/Kuala_Lumpur", {
+        previousRegularMinutes,
+      });
+      previousRegularMinutes += Math.max(0, totals.totalMinutes - totals.overtimeMinutes);
+      const status = totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+      await db
+        .prepare(
+          `INSERT INTO attendance
+           (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at,
+            total_minutes, late_minutes, early_leave_minutes, overtime_minutes,
+            status, source, updated_at)
+           VALUES (?, ?, 'wh-main', ?, ?, ?, ?, ?, ?, ?, ?, 'admin_report_edit', CURRENT_TIMESTAMP)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          payload.employeeId,
+          dateKey,
+          segment.clockInAt,
+          segment.clockOutAt,
+          totals.totalMinutes,
+          totals.lateMinutes,
+          totals.earlyLeaveMinutes,
+          totals.overtimeMinutes,
+          status,
+        )
+        .run();
+    }
+
+    await db
+      .prepare(
+        "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        crypto.randomUUID(),
+        adminUserId,
+        "monthly_report_time_edit",
+        "attendance",
+        payload.employeeId,
+        null,
+        JSON.stringify({ dateKey, ...row, segments }),
+      )
+      .run();
+  }
+
+  return json(request, { ok: true });
+}
+
+async function restoreReportAttendanceTimes(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "restore_report_attendance_times" }>,
+  adminUserId: string,
+) {
+  if (!payload.employeeId || !payload.monthKey || !/^\d{4}-\d{2}$/.test(payload.monthKey)) {
+    return json(request, { error: "Employee and report month are required." }, 400);
+  }
+
+  await db
+    .prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date LIKE ? AND source = 'admin_report_edit'")
+    .bind(payload.employeeId, `${payload.monthKey}-%`)
+    .run();
+
+  await db
+    .prepare(
+      "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(
+      crypto.randomUUID(),
+      adminUserId,
+      "monthly_report_time_restore",
+      "attendance",
+      payload.employeeId,
+      null,
+      JSON.stringify({ monthKey: payload.monthKey }),
+    )
+    .run();
+
+  return json(request, { ok: true });
+}
+
+function reportTimeSegments(
+  dateKey: string,
+  row: { in?: string; break?: string; resume?: string; out?: string },
+) {
+  const inMs = reportTimeToMs(dateKey, row.in);
+  const breakMs = reportTimeToMs(dateKey, row.break, inMs);
+  const resumeMs = reportTimeToMs(dateKey, row.resume, breakMs ?? inMs);
+  const outMs = reportTimeToMs(dateKey, row.out, resumeMs ?? breakMs ?? inMs);
+  const segments: Array<{ clockInAt: string; clockOutAt: string }> = [];
+  if (inMs != null && breakMs != null && breakMs > inMs) {
+    segments.push({ clockInAt: new Date(inMs).toISOString(), clockOutAt: new Date(breakMs).toISOString() });
+  }
+  if (resumeMs != null && outMs != null && outMs > resumeMs) {
+    segments.push({ clockInAt: new Date(resumeMs).toISOString(), clockOutAt: new Date(outMs).toISOString() });
+  }
+  if (!segments.length && inMs != null && outMs != null && outMs > inMs) {
+    segments.push({ clockInAt: new Date(inMs).toISOString(), clockOutAt: new Date(outMs).toISOString() });
+  }
+  return segments;
+}
+
+function reportTimeToMs(dateKey: string, value?: string, afterMs: number | null = null) {
+  const normalized = normalizeReportTime(value);
+  if (!normalized) return null;
+  let ms = Date.parse(`${dateKey}T${normalized}:00+08:00`);
+  if (afterMs != null && ms <= afterMs) ms += 24 * 60 * 60000;
+  return ms;
+}
+
+function normalizeReportTime(value?: string) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const digits = text.replace(/[^\d]/g, "");
+  let hour: number;
+  let minute: number;
+  if (/^\d{1,2}:\d{1,2}$/.test(text)) {
+    const parts = text.split(":");
+    hour = Number(parts[0]);
+    minute = Number(parts[1]);
+  } else if (digits.length <= 2) {
+    hour = Number(digits);
+    minute = 0;
+  } else {
+    hour = Number(digits.slice(0, -2));
+    minute = Number(digits.slice(-2));
+  }
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return "";
+  }
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 function normalizeLeaveDays(value: number | string) {
   const days = Number(value);
   if (!Number.isFinite(days) || days < 0) return 0;
@@ -590,6 +774,25 @@ async function getPreviousRegularMinutes(
        WHERE employee_id = ? AND work_date = ? AND id <> ?`,
     )
     .bind(employeeId, workDate, currentAttendanceId)
+    .all<{ total_minutes: number | null; overtime_minutes: number | null }>();
+  return (rows.results ?? []).reduce((total, row) => {
+    return total + Math.max(0, Number(row.total_minutes || 0) - Number(row.overtime_minutes || 0));
+  }, 0);
+}
+
+async function getPreviousRegularMinutesExcludingSource(
+  db: D1Database,
+  employeeId: string,
+  workDate: string,
+  excludedSource: string,
+) {
+  const rows = await db
+    .prepare(
+      `SELECT total_minutes, overtime_minutes
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND source <> ?`,
+    )
+    .bind(employeeId, workDate, excludedSource)
     .all<{ total_minutes: number | null; overtime_minutes: number | null }>();
   return (rows.results ?? []).reduce((total, row) => {
     return total + Math.max(0, Number(row.total_minutes || 0) - Number(row.overtime_minutes || 0));

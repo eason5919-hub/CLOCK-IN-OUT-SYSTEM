@@ -1127,7 +1127,9 @@
     }
 
     function employeeAttendanceByDate(employeeId, dateKey) {
-      const rows = attendance.filter(row => row.employee_id === employeeId && row.work_date === dateKey);
+      const dayRows = attendance.filter(row => row.employee_id === employeeId && row.work_date === dateKey);
+      const reportRows = dayRows.filter(row => row.source === "admin_report_edit");
+      const rows = reportRows.length ? reportRows : dayRows;
       const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
       if (!rows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
       const firstIn = approvedTimes.clockIn || rows.map(row => row.clock_in_at).filter(Boolean).sort()[0] || "";
@@ -1517,38 +1519,78 @@
       });
     }
 
-    function saveEmployeeMonthlyReport(employeeId) {
+    async function saveEmployeeMonthlyReport(employeeId) {
       const cells = monthlyReportArea.querySelectorAll(`[data-report-employee="${employeeId}"][data-report-field]`);
       const rows = monthlyReportArea.querySelectorAll(`[data-report-employee="${employeeId}"]`);
       new Set([...rows].map(cell => cell.closest("tr")).filter(Boolean)).forEach(row => refreshReportRow(row, true));
+      const nextEdits = { ...monthlyReportEdits };
+      const reportRows = new Map();
       cells.forEach(cell => {
         const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
         if (REPORT_TIME_FIELDS.has(cell.dataset.reportField) || cell.dataset.reportField === "leaveTaken" || cell.dataset.reportField === "remark") {
           const value = cell.textContent.trim();
           const original = originalReportValue(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
           if (value === original) {
-            delete monthlyReportEdits[key];
+            delete nextEdits[key];
           } else {
-            monthlyReportEdits[key] = value;
+            nextEdits[key] = value;
+          }
+          if (REPORT_TIME_FIELDS.has(cell.dataset.reportField)) {
+            const row = cell.closest("tr");
+            const dateKey = cell.dataset.reportDate;
+            if (row && dateKey) reportRows.set(dateKey, row);
           }
         } else {
-          delete monthlyReportEdits[key];
+          delete nextEdits[key];
         }
       });
+      const timeRows = [...reportRows.entries()]
+        .filter(([dateKey]) => ["in", "break", "resume", "out"].some(field => {
+          const key = reportEditKey(employeeId, dateKey, field);
+          return Object.prototype.hasOwnProperty.call(nextEdits, key);
+        }))
+        .map(([dateKey, row]) => ({
+          dateKey,
+          in: reportRowText(row, "in"),
+          break: reportRowText(row, "break"),
+          resume: reportRowText(row, "resume"),
+          out: reportRowText(row, "out"),
+        }));
+      if (timeRows.length) {
+        setStatus(monthlyReportStatus, "Saving report times to employee history...", "");
+        await api("/api/admin/live", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "save_report_attendance_times",
+            employeeId,
+            rows: timeRows,
+          }),
+        });
+      }
+      monthlyReportEdits = nextEdits;
       saveReportEdits();
       editingReportEmployeeId = "";
-      renderMonthlyReport();
+      if (timeRows.length) await loadLiveData(true);
+      else renderMonthlyReport();
       setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
     }
 
-    function restoreEmployeeMonthlyReport(employeeId) {
+    async function restoreEmployeeMonthlyReport(employeeId) {
       const prefix = `${selectedReportMonth}|${employeeId}|`;
       Object.keys(monthlyReportEdits).forEach(key => {
         if (key.startsWith(prefix)) delete monthlyReportEdits[key];
       });
+      await api("/api/admin/live", {
+        method: "POST",
+        body: JSON.stringify({
+          action: "restore_report_attendance_times",
+          employeeId,
+          monthKey: selectedReportMonth,
+        }),
+      });
       saveReportEdits();
       if (editingReportEmployeeId === employeeId) editingReportEmployeeId = "";
-      renderMonthlyReport();
+      await loadLiveData(true);
       setStatus(monthlyReportStatus, `Restored original data | ${monthLabel(selectedReportMonth)}`, "ok");
     }
 
@@ -1771,7 +1813,9 @@
       if (restoreButton) {
         const ok = confirm("Restore this employee monthly report to original clock in/out, leave, and remark data?");
         if (!ok) return;
-        restoreEmployeeMonthlyReport(restoreButton.dataset.restoreReport);
+        restoreEmployeeMonthlyReport(restoreButton.dataset.restoreReport).catch(error => {
+          setStatus(monthlyReportStatus, error.message || "Unable to restore report", "error");
+        });
         return;
       }
       const editButton = event.target.closest("[data-edit-report]");
@@ -1787,7 +1831,9 @@
       }
       const saveButton = event.target.closest("[data-save-report]");
       if (saveButton) {
-        saveEmployeeMonthlyReport(saveButton.dataset.saveReport);
+        saveEmployeeMonthlyReport(saveButton.dataset.saveReport).catch(error => {
+          setStatus(monthlyReportStatus, error.message || "Unable to save report times", "error");
+        });
       }
     });
     monthlyReportArea.addEventListener("input", event => {

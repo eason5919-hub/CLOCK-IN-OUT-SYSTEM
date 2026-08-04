@@ -18,6 +18,9 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(employeeRoute, /ORDER BY clock_in_at DESC, updated_at DESC/);
   assert.doesNotMatch(employeeRoute, /SELECT \* FROM attendance WHERE employee_id = \? AND work_date = \?"/);
   assert.match(employeeSummaryRoute, /source, created_at, updated_at/);
+  assert.match(employeeSummaryRoute, /WITH report_days AS/);
+  assert.match(employeeSummaryRoute, /source = 'admin_report_edit'/);
+  assert.match(employeeSummaryRoute, /work_date NOT IN \(SELECT work_date FROM report_days\)/);
   assert.match(employeeSummaryRoute, /ORDER BY work_date DESC, updated_at DESC/);
   assert.match(employeeSummaryRoute, /created_at, reviewed_at/);
   assert.match(script, /sort\(compareAttendanceLatest\)/);
@@ -27,6 +30,11 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(css, /\.time-mark\.edited/);
   assert.match(css, /\.time-mark\.corrected/);
   assert.match(adminRoute, /const existingRecord = await findTargetAttendanceForCorrection\(db, correction\)/);
+  assert.match(adminRoute, /action: "save_report_attendance_times"/);
+  assert.match(adminRoute, /source = 'admin_report_edit'/);
+  assert.match(adminRoute, /function reportTimeSegments/);
+  assert.match(adminRoute, /monthly_report_time_edit/);
+  assert.match(adminRoute, /monthly_report_time_restore/);
   assert.match(adminRoute, /SET attendance_id = \?, status = \?/);
   assert.match(adminRoute, /let reviewedAttendanceId = correction\.attendance_id/);
   assert.match(adminHtml, /function approvedCorrectionTimes/);
@@ -38,6 +46,9 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function reportPaidWorkMinutes/);
   assert.match(adminHtml, /function normalizeReportTime/);
   assert.match(adminHtml, /function calculatedReportValues/);
+  assert.match(adminHtml, /action: "save_report_attendance_times"/);
+  assert.match(adminHtml, /action: "restore_report_attendance_times"/);
+  assert.match(adminHtml, /row\.source === "admin_report_edit"/);
   assert.match(adminHtml, /REPORT_TIME_FIELDS = new Set\(\["in", "break", "resume", "out"\]\)/);
   assert.match(adminHtml, /contenteditable="\$\{editable \? "true" : "false"\}"/);
   assert.match(adminHtml, /refreshReportRow\(cell\.closest\("tr"\), false\)/);
