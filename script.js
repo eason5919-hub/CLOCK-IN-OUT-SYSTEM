@@ -864,10 +864,10 @@ function calendarRecordSummary(records, date, today) {
     return { label: "OT", tone: "present" };
   }
   if (records.some((row) => row.clockIn && !row.clockOut)) {
-    return { label: "Clocked in", tone: "present" };
+    return { label: "In", tone: "present" };
   }
   if (records.some((row) => row.clockIn || row.clockOut)) {
-    return { label: "Present", tone: "present" };
+    return { label: "OK", tone: "present" };
   }
   return { label: "-", tone: "" };
 }

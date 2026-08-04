@@ -465,6 +465,9 @@ h3 {
 .month-day small {
   color: var(--muted);
   line-height: 1.15;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .month-day.present {
@@ -974,15 +977,16 @@ small,
 
   .month-day,
   .month-empty {
-    min-height: 48px;
+    min-height: 54px;
   }
 
   .month-day {
-    padding: 6px;
+    padding: 6px 5px;
   }
 
   .month-day small {
-    font-size: 10px;
+    font-size: 9px;
+    line-height: 1.05;
   }
 
   .employee-row,
