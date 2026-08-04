@@ -1007,21 +1007,33 @@ function leaveRangeField(value) {
 
 function leaveWhatsAppMessage({ leaveType, startDate, endDate, duration, reason, leaveDates }) {
   const typeLabel = leaveTypeLabel(leaveType);
-  const dateLabel = startDate === endDate ? startDate : `${startDate} to ${endDate}`;
-  const saturdayNote = leaveDates.some((date) => leaveDateDayOfWeek(date) === 6) ? "Saturday in range is half day." : "";
   return [
-    "New Annual Leave/MC request",
+    "Annual Leave/MC request",
     `Employee: ${state.currentUser.label} - ${state.currentUser.name}`,
     `Type: ${typeLabel}`,
-    `Date: ${dateLabel}`,
-    `Working days submitted: ${leaveDates.length}`,
-    `Duration: ${statusLabel(duration)}`,
-    saturdayNote,
-    reason ? `Reason: ${reason}` : "",
-    "Status: Pending approval",
+    leaveWhatsAppDateLines(leaveDates, duration),
+    `Working days submitted: ${formatLeaveSubmittedDays(leaveDates, duration)}`,
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function leaveWhatsAppDateLines(leaveDates, duration) {
+  return leaveDates
+    .map((date, index) => {
+      const line = `${date} (${statusLabel(leaveDurationForDate(date, duration))})`;
+      return index === 0 ? `Date: ${line}` : `         ${line}`;
+    })
+    .join("\n");
+}
+
+function formatLeaveSubmittedDays(leaveDates, duration) {
+  const total = leaveDates.reduce((sum, date) => sum + leaveSubmittedDayValue(date, duration), 0);
+  return Number.isInteger(total) ? String(total) : total.toFixed(1);
+}
+
+function leaveSubmittedDayValue(date, duration) {
+  return leaveDurationForDate(date, duration) === "half_day" ? 0.5 : 1;
 }
 
 function whatsappUrl(phone, message) {

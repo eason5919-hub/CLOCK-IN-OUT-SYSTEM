@@ -136,14 +136,11 @@ function leaveRequestMessage(
   payload: LeavePayload,
 ) {
   return [
-    "New Annual Leave/MC request",
+    "Annual Leave/MC request",
     `Employee: ${employee.employee_code} - ${employee.full_name}`,
-    employee.phone ? `Phone: ${employee.phone}` : "",
     `Type: ${payload.leaveType === "mc" ? "MC" : "Annual Leave"}`,
-    `Date: ${payload.leaveDate}`,
-    `Duration: ${label(payload.duration)}`,
-    payload.reason?.trim() ? `Reason: ${payload.reason.trim()}` : "",
-    "Status: Pending approval",
+    `Date: ${payload.leaveDate} (${label(payload.duration)})`,
+    `Working days submitted: ${payload.duration === "half_day" ? "0.5" : "1"}`,
   ]
     .filter(Boolean)
     .join("\n");

@@ -12,6 +12,8 @@ test("leave requests notify WhatsApp recipients from the Worker", async () => {
   assert.match(route, /messaging_product: "whatsapp"/);
   assert.match(route, /type: "text"/);
   assert.match(route, /notifyWhatsApp === false/);
+  assert.match(route, /Annual Leave\/MC request/);
+  assert.match(route, /Working days submitted/);
 });
 
 test("employee app falls back to WhatsApp buttons when API is not configured", async () => {
@@ -22,6 +24,11 @@ test("employee app falls back to WhatsApp buttons when API is not configured", a
 
   assert.match(script, /WHATSAPP_NOTIFY_NUMBERS = \["60122159225", "60177395919"\]/);
   assert.match(script, /function leaveWhatsAppMessage/);
+  assert.match(script, /Annual Leave\/MC request/);
+  assert.match(script, /leaveWhatsAppDateLines/);
+  assert.match(script, /Working days submitted: \$\{formatLeaveSubmittedDays/);
+  assert.match(script, /return index === 0 \? `Date: \$\{line\}` : `         \$\{line\}`/);
+  assert.match(script, /leaveSubmittedDayValue\(date, duration\)/);
   assert.match(script, /notifyWhatsApp: !whatsappAttempted/);
   assert.match(script, /data-whatsapp-notify/);
   assert.match(script, /https:\/\/wa\.me\/\$\{phone\}/);
