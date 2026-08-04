@@ -47,6 +47,7 @@ type AttendanceRow = {
 type ScheduleRow = AttendanceSchedule;
 
 const MAX_GPS_ACCURACY_METERS = 30;
+const GPS_SAMPLE_MAX_AGE_MS = 15000;
 const HALF_DAY_REQUIRED_MINUTES = 240;
 
 export async function POST(request: Request) {
@@ -81,7 +82,11 @@ export async function POST(request: Request) {
       return json(request, { error: "Invalid warehouse QR code." }, 403);
     }
 
-    const bestSample = pickBestSample(payload.samples!);
+    const freshSamples = freshGpsSamples(payload.samples!);
+    if (freshSamples.length < 5) {
+      return json(request, { error: "Unable to verify fresh GPS location. Please enable phone GPS and try again." }, 400);
+    }
+    const bestSample = pickBestSample(freshSamples);
     const distance = distanceMeters(
       bestSample.latitude,
       bestSample.longitude,
@@ -235,6 +240,20 @@ function validatePayload(payload: ClockPayload) {
     return "Minimum 5 GPS samples are required.";
   }
   return null;
+}
+
+function freshGpsSamples(samples: GpsSample[]) {
+  const now = Date.now();
+  return samples.filter((sample) => {
+    const timestamp = typeof sample.timestamp === "number" ? sample.timestamp : Date.parse(String(sample.timestamp || ""));
+    return (
+      Number.isFinite(sample.latitude) &&
+      Number.isFinite(sample.longitude) &&
+      Number.isFinite(sample.accuracy) &&
+      Number.isFinite(timestamp) &&
+      now - timestamp <= GPS_SAMPLE_MAX_AGE_MS
+    );
+  });
 }
 
 async function resolveDevice(db: D1Database, payload: ClockPayload) {

@@ -4,7 +4,7 @@ export type GpsSample = {
   latitude: number;
   longitude: number;
   accuracy: number;
-  timestamp?: string;
+  timestamp?: number | string;
 };
 
 export type AppSession = {

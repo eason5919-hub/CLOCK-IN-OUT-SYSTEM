@@ -45,3 +45,13 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(css, /\.month-calendar[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(css, /\.calendar[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
 });
+
+test("employee GPS display shows warehouse distance and does not fake fallback samples", async () => {
+  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+
+  assert.match(script, /function gpsReadyMessage/);
+  assert.match(script, /Distance \$\{distance\}m/);
+  assert.match(script, /maximumAge: 0/);
+  assert.doesNotMatch(script, /function fallbackGps/);
+  assert.doesNotMatch(script, /source: "fallback"/);
+});

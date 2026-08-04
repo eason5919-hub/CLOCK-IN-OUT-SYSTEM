@@ -16,6 +16,7 @@ const WAREHOUSE = {
   qr: "WAREHOUSE-MAIN-QR",
 };
 const MAX_GPS_ACCURACY_METERS = 30;
+const GPS_SAMPLE_MAX_AGE_MS = 15000;
 
 const defaultState = {
   currentUser: null,
@@ -770,7 +771,14 @@ async function clock(action, qr) {
     return;
   }
   message.textContent = "Verifying warehouse GPS location...";
-  const samples = await collectGpsSamples();
+  let samples = [];
+  try {
+    samples = await collectGpsSamples();
+  } catch (error) {
+    scanner.className = "scanner rejected";
+    message.textContent = error.message || "Unable to read phone GPS. Please enable Location Services.";
+    return;
+  }
   const sample = samples.sort((a, b) => a.accuracy - b.accuracy)[0];
   const distance = Math.round(distanceMeters(sample.latitude, sample.longitude, WAREHOUSE.lat, WAREHOUSE.lng));
   const allowedDistance = WAREHOUSE.radius;
@@ -1097,19 +1105,24 @@ async function collectGpsSamples() {
   startLocationWatch();
   const samples = recentGpsSamples();
   for (let i = samples.length; i < 5; i += 1) {
-    samples.push(await getGpsSample(i));
+    const sample = await getGpsSample();
+    if (sample) samples.push(sample);
     await wait(250);
   }
-  return samples.sort((a, b) => a.accuracy - b.accuracy).slice(0, 5);
+  const freshBrowserSamples = samples.filter((sample) => sample.source === "browser" && Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS);
+  if (freshBrowserSamples.length < 5) {
+    throw new Error("Unable to read fresh phone GPS. Please enable Location Services and try again.");
+  }
+  return freshBrowserSamples.sort((a, b) => a.accuracy - b.accuracy).slice(0, 5);
 }
 
-function getGpsSample(index) {
+function getGpsSample() {
   return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve(fallbackGps(index));
+    if (!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
       (position) => resolve(saveGpsSample(position)),
-      () => resolve(fallbackGps(index)),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
     );
   });
 }
@@ -1122,11 +1135,11 @@ function startLocationWatch() {
       const message = document.querySelector("#gps-message");
       if (message && !pendingScanAction) {
         const sample = latestGpsSamples[latestGpsSamples.length - 1];
-        message.textContent = `GPS ready. Accuracy ${Math.round(sample.accuracy)}m.`;
+        message.textContent = gpsReadyMessage(sample);
       }
     },
     () => {},
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
   );
 }
 
@@ -1139,11 +1152,12 @@ function stopLocationWatch() {
 }
 
 function saveGpsSample(position) {
+  const timestamp = position.timestamp || Date.now();
   const sample = {
     latitude: position.coords.latitude,
     longitude: position.coords.longitude,
     accuracy: Math.round(position.coords.accuracy),
-    timestamp: Date.now(),
+    timestamp,
     source: "browser",
   };
   latestGpsSamples.push(sample);
@@ -1152,16 +1166,16 @@ function saveGpsSample(position) {
 }
 
 function recentGpsSamples() {
-  return latestGpsSamples.filter((sample) => Date.now() - sample.timestamp < 30000);
+  return latestGpsSamples.filter((sample) => Date.now() - sample.timestamp < GPS_SAMPLE_MAX_AGE_MS);
 }
 
-function fallbackGps(index) {
-  return {
-    latitude: WAREHOUSE.lat + index * 0.00001,
-    longitude: WAREHOUSE.lng + index * 0.00001,
-    accuracy: [24, 18, 12, 16, 9][index] || 18,
-    source: "fallback",
-  };
+function gpsReadyMessage(sample) {
+  const distance = Math.round(distanceMeters(sample.latitude, sample.longitude, WAREHOUSE.lat, WAREHOUSE.lng));
+  const accuracy = Math.round(sample.accuracy);
+  if (distance > WAREHOUSE.radius) {
+    return `GPS ready, but outside warehouse. Distance ${distance}m, accuracy ${accuracy}m, allowed ${WAREHOUSE.radius}m.`;
+  }
+  return `GPS ready. Distance ${distance}m from warehouse, accuracy ${accuracy}m.`;
 }
 
 function exportCsv() {
