@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { ensureDatabase, getD1, getSessionFromRequest } from "../../../db/runtime";
 
 type LeavePayload = {
@@ -8,7 +9,11 @@ type LeavePayload = {
   leaveDate?: string;
   duration?: "half_day" | "full_day";
   reason?: string;
+  notifyWhatsApp?: boolean;
+  whatsappMessage?: string;
 };
+
+const DEFAULT_WHATSAPP_RECIPIENTS = ["60122159225", "60177395919"];
 
 export async function POST(request: Request) {
   try {
@@ -29,9 +34,9 @@ export async function POST(request: Request) {
     }
 
     const employee = await db
-      .prepare("SELECT id FROM employees WHERE id = ? AND status = 'active'")
+      .prepare("SELECT id, employee_code, full_name, phone FROM employees WHERE id = ? AND status = 'active'")
       .bind(session.employee_id)
-      .first<{ id: string }>();
+      .first<{ id: string; employee_code: string; full_name: string; phone: string | null }>();
     if (!employee) return json(request, { error: "Employee account was deleted by HR." }, 401);
 
     const duplicate = await db
@@ -64,11 +69,106 @@ export async function POST(request: Request) {
       )
       .run();
 
-    return json(request, { ok: true, leaveRequestId: id }, 201);
+    const whatsapp =
+      payload.notifyWhatsApp === false
+        ? { attempted: false, configured: whatsappConfigured(), sent: 0, recipients: whatsappRecipients() }
+        : await sendLeaveWhatsAppNotification({
+            message: payload.whatsappMessage || leaveRequestMessage(employee, payload),
+          });
+
+    return json(request, { ok: true, leaveRequestId: id, whatsapp }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
     return json(request, { error: message }, 500);
   }
+}
+
+async function sendLeaveWhatsAppNotification({ message }: { message: string }) {
+  const recipients = whatsappRecipients();
+  const accessToken = stringEnv("WHATSAPP_ACCESS_TOKEN");
+  const phoneNumberId = stringEnv("WHATSAPP_PHONE_NUMBER_ID");
+  const version = stringEnv("WHATSAPP_GRAPH_VERSION") || "v20.0";
+
+  if (!accessToken || !phoneNumberId) {
+    return { attempted: false, configured: false, sent: 0, recipients };
+  }
+
+  const endpoint = `https://graph.facebook.com/${version}/${phoneNumberId}/messages`;
+  const results = await Promise.allSettled(
+    recipients.map(async (recipient) => {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          recipient_type: "individual",
+          to: recipient,
+          type: "text",
+          text: {
+            preview_url: false,
+            body: message.slice(0, 4000),
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || `WhatsApp failed for ${recipient}`);
+      }
+      return response.json();
+    }),
+  );
+
+  return {
+    attempted: true,
+    configured: true,
+    sent: results.filter((result) => result.status === "fulfilled").length,
+    failed: results.filter((result) => result.status === "rejected").length,
+    recipients,
+  };
+}
+
+function leaveRequestMessage(
+  employee: { employee_code: string; full_name: string; phone: string | null },
+  payload: LeavePayload,
+) {
+  return [
+    "New Annual Leave/MC request",
+    `Employee: ${employee.employee_code} - ${employee.full_name}`,
+    employee.phone ? `Phone: ${employee.phone}` : "",
+    `Type: ${payload.leaveType === "mc" ? "MC" : "Annual Leave"}`,
+    `Date: ${payload.leaveDate}`,
+    `Duration: ${label(payload.duration)}`,
+    payload.reason?.trim() ? `Reason: ${payload.reason.trim()}` : "",
+    "Status: Pending approval",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function whatsappRecipients() {
+  const configured = stringEnv("WHATSAPP_NOTIFY_NUMBERS");
+  return (configured ? configured.split(",") : DEFAULT_WHATSAPP_RECIPIENTS)
+    .map((value) => value.replace(/\D/g, ""))
+    .filter(Boolean);
+}
+
+function whatsappConfigured() {
+  return Boolean(stringEnv("WHATSAPP_ACCESS_TOKEN") && stringEnv("WHATSAPP_PHONE_NUMBER_ID"));
+}
+
+function stringEnv(key: string) {
+  const value = (env as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function label(value?: string) {
+  return String(value || "-")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 async function cancelLeaveRequest(request: Request, payload: LeavePayload) {
