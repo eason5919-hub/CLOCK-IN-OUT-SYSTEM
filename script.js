@@ -35,6 +35,7 @@ let liveRefreshInFlight = false;
 let gpsWatchId = null;
 let latestGpsSamples = [];
 let selectedHistoryDate = malaysiaDateKey(new Date());
+let selectedEmployeeMonthKey = employeeMonthKey(malaysiaToday());
 let optimisticLeaveSubmitInFlight = false;
 
 window.addEventListener("hashchange", () => {
@@ -171,8 +172,8 @@ function employeeScreen() {
   const visibleLeaveRequests = visibleEmployeeLeaveRequests(leaveRequests);
   const leaveRemaining = formatLeaveDays(state.currentUser.leaveRemainingDays || 0);
   const leaveDefaultDate = defaultLeaveDate();
-  const todayDate = malaysiaToday();
-  const currentMonthDate = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), 1));
+  selectedEmployeeMonthKey = normalizedEmployeeMonthKey(selectedEmployeeMonthKey);
+  const currentMonthDate = monthDateFromKey(selectedEmployeeMonthKey);
   const monthLabel = currentMonthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
   const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
   const historyRecords = records.filter((row) => row.date === historyDate);
@@ -210,7 +211,13 @@ function employeeScreen() {
         ])}
       </section>
       <section class="panel" id="month">
-        <div class="heading"><div><p class="eyebrow">Current month</p><h3>${monthLabel}</h3></div></div>
+        <div class="heading">
+          <div><p class="eyebrow">Monthly view</p><h3>${monthLabel}</h3></div>
+          <div class="actions month-actions">
+            <button class="secondary" type="button" data-employee-month="${previousEmployeeMonthKey()}">Previous</button>
+            <button class="secondary" type="button" data-employee-month="${currentEmployeeMonthKey()}">Current</button>
+          </div>
+        </div>
         <div class="month-calendar">${monthCalendar(records, leaveRequests, historyDate, currentMonthDate)}</div>
       </section>
       <section class="panel wide" id="history">
@@ -490,6 +497,16 @@ function bindEmployee() {
   document.querySelectorAll("[data-history-date]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedHistoryDate = button.dataset.historyDate;
+      render();
+    });
+  });
+  document.querySelectorAll("[data-employee-month]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedEmployeeMonthKey = normalizedEmployeeMonthKey(button.dataset.employeeMonth);
+      selectedHistoryDate =
+        selectedEmployeeMonthKey === currentEmployeeMonthKey()
+          ? malaysiaDateKey(new Date())
+          : `${selectedEmployeeMonthKey}-01`;
       render();
     });
   });
@@ -889,7 +906,15 @@ function calendarLeaveForDate(leaveRequests, date) {
     return item.date === date && status !== "rejected" && status !== "cancelled";
   });
   if (!request) return null;
-  return { label: request.type || "Leave/MC", tone: "leave-note" };
+  return { label: calendarLeaveLabel(request), tone: "leave-note" };
+}
+
+function calendarLeaveLabel(request) {
+  const duration = String(request.duration || "").toLowerCase();
+  const type = String(request.type || "").toLowerCase();
+  const durationLabel = duration.includes("half") ? "Half" : "Full";
+  const typeLabel = type.includes("mc") ? "MC" : "AL";
+  return `${durationLabel} ${typeLabel}`;
 }
 
 function calendarRecordSummary(records, date, today) {
@@ -1623,6 +1648,28 @@ function malaysiaDateKey(date) {
 function malaysiaToday() {
   const [year, month, day] = malaysiaDateKey(new Date()).split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day));
+}
+
+function employeeMonthKey(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function currentEmployeeMonthKey() {
+  return employeeMonthKey(malaysiaToday());
+}
+
+function previousEmployeeMonthKey() {
+  return employeeMonthKey(addCalendarMonths(malaysiaToday(), -1));
+}
+
+function normalizedEmployeeMonthKey(value) {
+  const allowedMonths = [previousEmployeeMonthKey(), currentEmployeeMonthKey()];
+  return allowedMonths.includes(value) ? value : currentEmployeeMonthKey();
+}
+
+function monthDateFromKey(value) {
+  const [year, month] = normalizedEmployeeMonthKey(value).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, 1));
 }
 
 function malaysiaMinutesSinceMidnight(date) {

@@ -263,6 +263,15 @@ h3 {
   flex-wrap: wrap;
 }
 
+.month-actions {
+  flex-wrap: nowrap;
+}
+
+.month-actions button {
+  min-height: 38px;
+  padding: 0 12px;
+}
+
 .clock-actions {
   display: flex;
   margin-top: 12px;

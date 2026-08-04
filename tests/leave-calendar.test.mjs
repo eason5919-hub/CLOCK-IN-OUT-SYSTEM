@@ -34,7 +34,7 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
 
   assert.match(script, /function monthCalendar/);
   assert.match(script, /\["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"\]/);
-  assert.match(script, /new Date\(Date\.UTC\(todayDate\.getUTCFullYear\(\), todayDate\.getUTCMonth\(\), 1\)\)/);
+  assert.match(script, /monthDateFromKey\(selectedEmployeeMonthKey\)/);
   assert.match(script, /data-history-date/);
   assert.match(script, /attendanceTable\(historyRecords, true, historyDate\)/);
   assert.match(script, /labels\.join\(" "\)/);
@@ -44,6 +44,27 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /hasOt\) labels\.push\("OT"\)/);
   assert.match(css, /\.month-calendar[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(css, /\.calendar[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
+});
+
+test("employee month dashboard can show current and previous month only", async () => {
+  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+
+  assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
+  assert.match(script, /data-employee-month/);
+  assert.match(script, /function currentEmployeeMonthKey/);
+  assert.match(script, /function previousEmployeeMonthKey/);
+  assert.match(script, /normalizedEmployeeMonthKey/);
+  assert.match(script, /selectedHistoryDate =/);
+});
+
+test("employee month dashboard uses short AL and MC labels", async () => {
+  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+
+  assert.match(script, /function calendarLeaveLabel/);
+  assert.match(script, /"AL"/);
+  assert.match(script, /"MC"/);
+  assert.match(script, /`\$\{durationLabel\} \$\{typeLabel\}`/);
+  assert.doesNotMatch(script, /label: request\.type \|\| "Leave\/MC"/);
 });
 
 test("employee GPS display shows warehouse distance and does not fake fallback samples", async () => {
