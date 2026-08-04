@@ -643,7 +643,7 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260804-report-span-short";
+    const REPORT_CALC_VERSION = "20260804-report-work-short";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "in", "out", "work", "overtime", "diffOt", "short", "leaveTaken"]);
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
@@ -934,17 +934,14 @@
     function reportShortMinutes(attendanceRow, day) {
       if (!attendanceRow?.clockIn || day === 0) return 0;
       const inMinutes = malaysiaClockMinutes(attendanceRow.clockIn);
-      const outMinutes = malaysiaClockMinutes(attendanceRow.clockOut);
       if (inMinutes == null) return 0;
       const start = 9 * 60;
-      const end = day === 6 ? 13 * 60 : 18 * 60;
       const requiredMinutes = day === 6 ? 240 : 480;
       let lateShort = Math.max(0, inMinutes - start);
       if (day !== 6 && lateShort > 60) lateShort -= 60;
       if (inMinutes <= start + 15) lateShort = 0;
       const workShort = Math.max(0, requiredMinutes - Number(attendanceRow.actualMinutes || 0));
-      const earlyOut = outMinutes == null ? 0 : Math.max(0, end - outMinutes);
-      return Math.max(lateShort, workShort, earlyOut);
+      return Math.max(lateShort, workShort);
     }
 
     function reportEditKey(employeeId, dateKey, field) {
