@@ -494,7 +494,6 @@ function bindEmployee() {
     button.addEventListener("click", () => {
       selectedHistoryDate = button.dataset.historyDate;
       render();
-      document.querySelector("#history")?.scrollIntoView({ block: "start" });
     });
   });
   document.querySelectorAll("[data-cancel-leave]").forEach((button) => {
