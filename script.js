@@ -179,7 +179,7 @@ function employeeScreen() {
   const currentMonthDate = monthDateFromKey(selectedEmployeeMonthKey);
   const monthLabel = currentMonthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
   const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
-  const historyRecords = records.filter((row) => row.date === historyDate);
+  const historyRecords = records.filter((row) => row.date === historyDate).sort(compareAttendanceLatest);
   const openRecord = currentOpenRecord(records);
   const clockAction = openRecord ? "out" : "in";
   const clockLabel = openRecord ? "Clock out" : "Clock in";
@@ -225,7 +225,7 @@ function employeeScreen() {
       </section>
       <section class="panel wide" id="history">
         <div class="heading"><div><p class="eyebrow">Clock history</p><h3>My attendance - ${formatLeaveDateDisplay(historyDate)}</h3></div></div>
-        ${attendanceTable(historyRecords, true, historyDate)}
+        ${attendanceTable(historyRecords, true, historyDate, corrections)}
       </section>
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
@@ -466,6 +466,9 @@ function mapLiveAttendance(row) {
     earlyLeaveMinutes: Number(row.early_leave_minutes || 0),
     overtimeMinutes: Number(row.overtime_minutes || 0),
     status: statusLabel(row.status),
+    source: row.source || "",
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
     gps: liveGpsLabel(row),
   };
 }
@@ -477,10 +480,15 @@ function mapLiveCorrection(row) {
     employeeCode: state.currentUser?.label,
     employeeName: state.currentUser?.name,
     date: row.requested_date,
+    missingType: row.missing_type,
     missing: statusLabel(row.missing_type),
+    requestedClockIn: formatLiveTime(row.requested_clock_in_at),
+    requestedClockOut: formatLiveTime(row.requested_clock_out_at),
     requestedTime: formatLiveTime(row.requested_clock_out_at || row.requested_clock_in_at),
     reason: row.reason,
     status: statusLabel(row.status),
+    createdAt: row.created_at || "",
+    reviewedAt: row.reviewed_at || "",
   };
 }
 
@@ -982,7 +990,30 @@ function calendarRecordSummary(records, date, today) {
   };
 }
 
-function attendanceTable(records, employeeOnly, emptyDate = "") {
+function compareAttendanceLatest(a, b) {
+  const left = Date.parse(b.updatedAt || b.createdAt || `${b.date || ""}T00:00:00+08:00`) || 0;
+  const right = Date.parse(a.updatedAt || a.createdAt || `${a.date || ""}T00:00:00+08:00`) || 0;
+  return left - right;
+}
+
+function attendanceEditMarks(row, corrections = []) {
+  const approved = corrections.filter((correction) => correction.date === row.date && correction.status === "Approved");
+  const correctedIn = approved.some((correction) => correction.requestedClockIn && correction.requestedClockIn === row.clockIn);
+  const correctedOut = approved.some((correction) => correction.requestedClockOut && correction.requestedClockOut === row.clockOut);
+  const adminEdited = row.source === "admin_adjustment" && !approved.length;
+  return {
+    clockIn: correctedIn ? "corrected" : adminEdited ? "edited" : "",
+    clockOut: correctedOut ? "corrected" : adminEdited ? "edited" : "",
+  };
+}
+
+function timeCell(value, mark = "") {
+  const text = value || "-";
+  if (!mark || text === "-") return escapeHtml(text);
+  return `<span class="time-mark ${mark}">${escapeHtml(text)}</span>`;
+}
+
+function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []) {
   if (!records.length) {
     return `<div class="empty-state">
       <strong>No attendance records${emptyDate ? ` on ${escapeHtml(formatLeaveDateDisplay(emptyDate))}` : " yet"}.</strong>
@@ -996,7 +1027,8 @@ function attendanceTable(records, employeeOnly, emptyDate = "") {
         <thead><tr>${employeeOnly ? "" : "<th>Employee</th>"}<th>Date</th><th>Clock In</th><th>Clock Out</th><th>Working Hours</th><th>OT</th><th>Status</th><th>GPS</th></tr></thead>
         <tbody>${records
           .map((row) => {
-            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employeeLabel(row))}</td>`}<td>${row.date}</td><td>${row.clockIn || "-"}</td><td>${row.clockOut || "-"}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatOtMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
+            const marks = attendanceEditMarks(row, corrections);
+            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employeeLabel(row))}</td>`}<td>${row.date}</td><td>${timeCell(row.clockIn, marks.clockIn)}</td><td>${timeCell(row.clockOut, marks.clockOut)}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatOtMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
           })
           .join("")}</tbody>
       </table>
@@ -1008,7 +1040,7 @@ function employeeCard(employee) {
 }
 
 function correctionCard(correction) {
-  const requested = correction.requestedTime ? `Requested: ${escapeHtml(correction.requestedTime)}` : "Requested: -";
+  const requested = correction.requestedTime ? `Requested: <span class="time-mark corrected">${escapeHtml(correction.requestedTime)}</span>` : "Requested: -";
   const reason = correction.reason ? ` | ${escapeHtml(correction.reason)}` : "";
   return `<div class="list-item"><strong>${correction.date} - ${correction.missing}</strong><span>${requested}${reason}</span><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span></div>`;
 }

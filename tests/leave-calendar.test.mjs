@@ -36,7 +36,7 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /\["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"\]/);
   assert.match(script, /monthDateFromKey\(selectedEmployeeMonthKey\)/);
   assert.match(script, /data-history-date/);
-  assert.match(script, /attendanceTable\(historyRecords, true, historyDate\)/);
+  assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
   assert.match(script, /labels\.join\(" "\)/);
   assert.match(script, /hasLate\) labels\.push\("Late"\)/);
   assert.match(script, /hasOpenToday\) labels\.push\("In"\)/);
@@ -113,5 +113,5 @@ test("employee correction form records one missing time and shows requested time
   assert.match(script, /missingType: missing === "Clock In" \? "clock_in" : "clock_out"/);
   assert.match(script, /requestedClockInAt: missing === "Clock In"/);
   assert.match(script, /requestedClockOutAt: missing === "Clock Out"/);
-  assert.match(script, /Requested: \$\{escapeHtml\(correction\.requestedTime\)\}/);
+  assert.match(script, /Requested: <span class="time-mark corrected">\$\{escapeHtml\(correction\.requestedTime\)\}<\/span>/);
 });

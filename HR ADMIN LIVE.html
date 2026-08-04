@@ -325,6 +325,18 @@
       background: #fff;
     }
 
+    .editableCell.manualEdit {
+      background: #e9f2ff;
+      box-shadow: inset 0 0 0 1px #7aa7d9;
+      font-weight: 800;
+    }
+
+    .editableCell.correctedTime {
+      background: #fff2bf;
+      box-shadow: inset 0 0 0 1px #d2a310;
+      font-weight: 800;
+    }
+
     .editableCell[contenteditable="true"] {
       background: #fffdf2;
       cursor: text;
@@ -337,6 +349,15 @@
     .editableCell[contenteditable="true"]:focus {
       background: #fff9cf;
       box-shadow: inset 0 0 0 2px #d7ad1f;
+    }
+
+    .highlightTime {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: #fff2bf;
+      color: #5f4700;
+      font-weight: 800;
     }
 
     .leaveControl {
@@ -1012,8 +1033,11 @@
 
     function editableReportCell(employeeId, dateKey, field, fallback = "", className = "") {
       const editing = editingReportEmployeeId === employeeId;
+      const key = reportEditKey(employeeId, dateKey, field);
+      const manualEdit = Object.prototype.hasOwnProperty.call(monthlyReportEdits, key);
       const value = reportValue(employeeId, dateKey, field, fallback);
-      return `<td class="editableCell ${className}" contenteditable="${editing ? "true" : "false"}" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
+      const classes = ["editableCell", className, manualEdit ? "manualEdit" : ""].filter(Boolean).join(" ");
+      return `<td class="${classes}" contenteditable="${editing ? "true" : "false"}" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
     }
 
     function approvedCorrectionTimes(employeeId, dateKey) {
@@ -1037,6 +1061,8 @@
         dateKey,
         clockIn: firstIn,
         clockOut: lastOut,
+        correctedClockIn: Boolean(approvedTimes.clockIn),
+        correctedClockOut: Boolean(approvedTimes.clockOut),
         actualMinutes: reportPaidWorkMinutes(firstIn, lastOut, dateKey, dateParts(dateKey).getUTCDay()),
         totalMinutes: rows.reduce((sum, row) => sum + Number(row.total_minutes || 0), 0),
         lateMinutes: rows.reduce((sum, row) => sum + Number(row.late_minutes || 0), 0),
@@ -1189,7 +1215,7 @@
       correctionBody.innerHTML = rows.map((request, index) => {
         const clockIn = request.requested_clock_in_at ? formatDateTime(request.requested_clock_in_at) : "";
         const clockOut = request.requested_clock_out_at ? formatDateTime(request.requested_clock_out_at) : "";
-        const requested = [clockIn && `In: ${clockIn}`, clockOut && `Out: ${clockOut}`].filter(Boolean).join(" | ") || "-";
+        const requested = [clockIn && `In: <span class="highlightTime">${escapeHtml(clockIn)}</span>`, clockOut && `Out: <span class="highlightTime">${escapeHtml(clockOut)}</span>`].filter(Boolean).join(" | ") || "-";
         return `
           <tr>
             <td>${index + 1}</td>
@@ -1199,7 +1225,7 @@
               <small>${escapeHtml(request.employee_code || "-")}</small>
             </td>
             <td>${escapeHtml(labelText(request.missing_type))}</td>
-            <td>${escapeHtml(requested)}</td>
+            <td>${requested}</td>
             <td>${escapeHtml(request.reason || "-")}</td>
             <td><span class="pill warn">${escapeHtml(labelText(request.status))}</span></td>
             <td>
@@ -1274,10 +1300,10 @@
             <td>${escapeHtml(reportDateLabel(dateKey))}</td>
             ${editableReportCell(employee.id, dateKey, "dayType", dayType)}
             ${editableReportCell(employee.id, dateKey, "schedule", "1")}
-            ${editableReportCell(employee.id, dateKey, "in", reportTime(attendanceRow?.clockIn))}
+            ${editableReportCell(employee.id, dateKey, "in", reportTime(attendanceRow?.clockIn), attendanceRow?.correctedClockIn ? "correctedTime" : "")}
             ${editableReportCell(employee.id, dateKey, "break", "")}
             ${editableReportCell(employee.id, dateKey, "resume", "")}
-            ${editableReportCell(employee.id, dateKey, "out", reportTime(attendanceRow?.clockOut))}
+            ${editableReportCell(employee.id, dateKey, "out", reportTime(attendanceRow?.clockOut), attendanceRow?.correctedClockOut ? "correctedTime" : "")}
             ${editableReportCell(employee.id, dateKey, "work", work)}
             ${editableReportCell(employee.id, dateKey, "overtime", overtime)}
             ${editableReportCell(employee.id, dateKey, "diffOt", diffOt)}
