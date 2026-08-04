@@ -643,7 +643,7 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260804-report-work-short";
+    const REPORT_CALC_VERSION = "20260804-report-min-one-minute";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "in", "out", "work", "overtime", "diffOt", "short", "leaveTaken"]);
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
@@ -919,7 +919,9 @@
       const startDate = new Date(start);
       const endDate = new Date(end);
       if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
-      return Math.max(0, Math.round((endDate - startDate) / 60000));
+      const diffMs = endDate - startDate;
+      if (diffMs <= 0) return 0;
+      return Math.max(1, Math.round(diffMs / 60000));
     }
 
     function reportOvertimeMinutes(attendanceRow, day) {
