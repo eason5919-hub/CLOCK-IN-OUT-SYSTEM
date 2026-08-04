@@ -27,7 +27,7 @@ test("employee app falls back to WhatsApp buttons when API is not configured", a
   assert.match(script, /Annual Leave\/MC request/);
   assert.match(script, /leaveWhatsAppDateLines/);
   assert.match(script, /Working days submitted: \$\{formatLeaveSubmittedDays/);
-  assert.match(script, /return index === 0 \? `Date: \$\{line\}` : `         \$\{line\}`/);
+  assert.match(script, /return index === 0 \? `Date: \$\{line\}` : `      \$\{line\}`/);
   assert.match(script, /leaveSubmittedDayValue\(date, duration\)/);
   assert.match(script, /notifyWhatsApp: !whatsappAttempted/);
   assert.match(script, /data-whatsapp-notify/);
