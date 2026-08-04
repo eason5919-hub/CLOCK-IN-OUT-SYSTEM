@@ -1161,6 +1161,7 @@
             </div>
             <div class="actions">
               <button class="secondary" type="button" data-print-report="${escapeHtml(employee.id)}">Print A4</button>
+              <button class="secondary" type="button" data-restore-report="${escapeHtml(employee.id)}">Restore</button>
               <button class="${isEditing ? "blue" : "secondary"}" type="button" ${isEditing ? `data-save-report="${escapeHtml(employee.id)}"` : `data-edit-report="${escapeHtml(employee.id)}"`}>${isEditing ? "Save" : "Edit"}</button>
             </div>
           </div>
@@ -1241,6 +1242,17 @@
       editingReportEmployeeId = "";
       renderMonthlyReport();
       setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
+    }
+
+    function restoreEmployeeMonthlyReport(employeeId) {
+      const prefix = `${selectedReportMonth}|${employeeId}|`;
+      Object.keys(monthlyReportEdits).forEach(key => {
+        if (key.startsWith(prefix)) delete monthlyReportEdits[key];
+      });
+      saveReportEdits();
+      if (editingReportEmployeeId === employeeId) editingReportEmployeeId = "";
+      renderMonthlyReport();
+      setStatus(monthlyReportStatus, `Restored original data | ${monthLabel(selectedReportMonth)}`, "ok");
     }
 
     function renderAll() {
@@ -1450,6 +1462,13 @@
       const printButton = event.target.closest("[data-print-report]");
       if (printButton) {
         printEmployeeMonthlyReport(printButton.dataset.printReport);
+        return;
+      }
+      const restoreButton = event.target.closest("[data-restore-report]");
+      if (restoreButton) {
+        const ok = confirm("Restore this employee monthly report to original clock in/out, leave, and remark data?");
+        if (!ok) return;
+        restoreEmployeeMonthlyReport(restoreButton.dataset.restoreReport);
         return;
       }
       const editButton = event.target.closest("[data-edit-report]");
