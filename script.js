@@ -186,7 +186,7 @@ function employeeScreen() {
     present: formatDayCount(calculatePresentDays(records, leaveRequests)),
     late: records.filter((row) => row.lateMinutes > 0).length,
     ot: records.reduce((total, row) => total + row.overtimeMinutes, 0),
-    corrections: corrections.length,
+    corrections: pendingCorrectionCount(corrections),
   };
 
   return `
@@ -1530,6 +1530,10 @@ function calculatePresentDays(records, leaveRequests) {
     });
 
   return [...dayValues.values()].reduce((total, value) => total + value, 0);
+}
+
+function pendingCorrectionCount(corrections) {
+  return (corrections || []).filter((correction) => correction.status === "Pending").length;
 }
 
 function localDateTimeToIso(date, time) {

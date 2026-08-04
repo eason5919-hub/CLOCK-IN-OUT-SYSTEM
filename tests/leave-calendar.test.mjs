@@ -70,3 +70,11 @@ test("employee leave requests use date range and only limit cancelled cards", as
   assert.match(script, /activeRequests\.push\(request\)/);
   assert.match(css, /\.date-range-fields/);
 });
+
+test("employee correction metric counts pending requests only", async () => {
+  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+
+  assert.match(script, /corrections: pendingCorrectionCount\(corrections\)/);
+  assert.match(script, /function pendingCorrectionCount/);
+  assert.match(script, /correction\.status === "Pending"/);
+});
