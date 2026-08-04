@@ -997,10 +997,16 @@ function compareAttendanceLatest(a, b) {
 }
 
 function attendanceEditMarks(row, corrections = []) {
+  if (row.source === "admin_report_edit") {
+    return {
+      clockIn: row.clockIn ? "edited" : "",
+      clockOut: row.clockOut ? "edited" : "",
+    };
+  }
   const approved = corrections.filter((correction) => correction.date === row.date && correction.status === "Approved");
   const correctedIn = approved.some((correction) => correction.requestedClockIn && correction.requestedClockIn === row.clockIn);
   const correctedOut = approved.some((correction) => correction.requestedClockOut && correction.requestedClockOut === row.clockOut);
-  const adminEdited = row.source === "admin_adjustment" || row.source === "admin_report_edit";
+  const adminEdited = row.source === "admin_adjustment" && !approved.length;
   return {
     clockIn: correctedIn ? "corrected" : adminEdited ? "edited" : "",
     clockOut: correctedOut ? "corrected" : adminEdited ? "edited" : "",

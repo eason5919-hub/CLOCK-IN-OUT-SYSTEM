@@ -337,6 +337,13 @@
       font-weight: 800;
     }
 
+    .editableCell.correctedTime.manualEdit,
+    .editableCell.manualEdit {
+      background: #e9f2ff;
+      box-shadow: inset 0 0 0 1px #7aa7d9;
+      font-weight: 800;
+    }
+
     .editableCell[contenteditable="true"] {
       background: #fffdf2;
       cursor: text;
@@ -1095,6 +1102,10 @@
       return `${selectedReportMonth}|${employeeId}|${dateKey}|${field}`;
     }
 
+    function reportHasTimeEdit(edits, employeeId, dateKey) {
+      return [...REPORT_TIME_FIELDS].some(field => Object.prototype.hasOwnProperty.call(edits, reportEditKey(employeeId, dateKey, field)));
+    }
+
     function reportValue(employeeId, dateKey, field, fallback = "") {
       if (!isEditableReportField(field)) return fallback;
       const key = reportEditKey(employeeId, dateKey, field);
@@ -1567,21 +1578,25 @@
           resume: reportRowText(row, "resume"),
           out: reportRowText(row, "out"),
         }));
-      if (timeRows.length) {
+      const restoreRows = [...reportRows.keys()]
+        .filter(dateKey => reportHasTimeEdit(monthlyReportEdits, employeeId, dateKey) && !reportHasTimeEdit(nextEdits, employeeId, dateKey))
+        .map(dateKey => ({ dateKey, in: "", break: "", resume: "", out: "" }));
+      const liveRows = [...timeRows, ...restoreRows];
+      if (liveRows.length) {
         setStatus(monthlyReportStatus, "Saving report times to employee history...", "");
         await api("/api/admin/live", {
           method: "POST",
           body: JSON.stringify({
             action: "save_report_attendance_times",
             employeeId,
-            rows: timeRows,
+            rows: liveRows,
           }),
         });
       }
       monthlyReportEdits = nextEdits;
       saveReportEdits();
       editingReportEmployeeId = "";
-      if (timeRows.length) await loadLiveData(true);
+      if (liveRows.length) await loadLiveData(true);
       else renderMonthlyReport();
       setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
     }
