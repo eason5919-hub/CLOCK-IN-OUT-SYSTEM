@@ -897,13 +897,51 @@ async function clock(action, qr) {
     });
     scanner.className = "scanner accepted";
     message.textContent = `Attendance accepted. GPS ${Math.round(result.accuracy)}m accuracy, ${Math.round(result.distance)}m from warehouse.`;
-    await loadEmployeeLive(true);
-    await wait(900);
+    applyClockResult(action, result);
     render();
+    loadEmployeeLive(true).then(render).catch(() => {});
   } catch (error) {
     scanner.className = "scanner rejected";
     message.textContent = error.message || "Unable to save attendance.";
   }
+}
+
+function applyClockResult(action, result) {
+  const timestamp = result.timestamp || new Date().toISOString();
+  const time = formatLiveTime(timestamp);
+  if (action === "in") {
+    const workDate = clockWorkDate(timestamp);
+    state.attendance = [
+      {
+        id: `pending-${timestamp}`,
+        employeeId: state.currentUser.employeeId,
+        employeeCode: state.currentUser.label,
+        employeeName: state.currentUser.name,
+        date: workDate,
+        clockIn: time,
+        clockOut: null,
+        workingMinutes: 0,
+        lateMinutes: 0,
+        earlyLeaveMinutes: 0,
+        overtimeMinutes: 0,
+        status: "Present",
+        gps: `${Math.round(result.accuracy || 0)}m accuracy / ${Math.round(result.distance || 0)}m from warehouse`,
+      },
+      ...(state.attendance || []),
+    ];
+  } else {
+    const openRecord = currentOpenRecord(state.attendance);
+    if (openRecord) {
+      openRecord.clockOut = time;
+      openRecord.workingMinutes = Number(result.totals?.totalMinutes || openRecord.workingMinutes || 0);
+      openRecord.lateMinutes = Number(result.totals?.lateMinutes || openRecord.lateMinutes || 0);
+      openRecord.earlyLeaveMinutes = Number(result.totals?.earlyLeaveMinutes || openRecord.earlyLeaveMinutes || 0);
+      openRecord.overtimeMinutes = Number(result.totals?.overtimeMinutes || openRecord.overtimeMinutes || 0);
+      openRecord.status = openRecord.lateMinutes > 0 ? "Late" : "Present";
+      openRecord.gps = `${Math.round(result.accuracy || 0)}m accuracy / ${Math.round(result.distance || 0)}m from warehouse`;
+    }
+  }
+  saveState();
 }
 
 function metrics(items) {
@@ -1695,6 +1733,11 @@ function isOpenRecordStillActive(workDate) {
 
 function malaysiaDateKey(date) {
   return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+}
+
+function clockWorkDate(timestamp) {
+  const dateKey = malaysiaDateKey(new Date(timestamp));
+  return malaysiaMinutesSinceMidnight(new Date(timestamp)) < toMinutes("08:00") ? previousDateKey(dateKey) : dateKey;
 }
 
 function malaysiaToday() {
