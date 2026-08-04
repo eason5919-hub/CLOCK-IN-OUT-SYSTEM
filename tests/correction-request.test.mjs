@@ -46,6 +46,10 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function reportPaidWorkMinutes/);
   assert.match(adminHtml, /function normalizeReportTime/);
   assert.match(adminHtml, /function calculatedReportValues/);
+  assert.match(adminHtml, /function isEditableReportField/);
+  assert.match(adminHtml, /if \(!isEditableReportField\(field\)\) return fallback/);
+  assert.match(adminHtml, /const manualEdit = editableField && Object\.prototype\.hasOwnProperty\.call\(monthlyReportEdits, key\)/);
+  assert.match(adminHtml, /if \(!isEditableReportField\(field\)\)/);
   assert.match(adminHtml, /action: "save_report_attendance_times"/);
   assert.match(adminHtml, /action: "restore_report_attendance_times"/);
   assert.match(adminHtml, /row\.source === "admin_report_edit"/);
@@ -61,7 +65,7 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /const outMs = Date\.parse\(attendanceRow\.clockOut \|\| ""\)/);
   assert.match(adminHtml, /Math\.round\(\(endMs - outMs\) \/ 60000\)/);
   assert.doesNotMatch(adminHtml, /Math\.max\(0, end - outMinutes\)/);
-  assert.match(adminHtml, /20260804-overnight-short-report/);
+  assert.match(adminHtml, /20260804-no-stale-calculated-report/);
   assert.doesNotMatch(adminHtml, /<th>Sche<\/th>/);
   assert.doesNotMatch(adminHtml, /<th>Diff OT<\/th>/);
   assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "schedule"/);

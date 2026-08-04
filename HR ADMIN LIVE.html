@@ -664,7 +664,7 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260804-overnight-short-report";
+    const REPORT_CALC_VERSION = "20260804-no-stale-calculated-report";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "work", "overtime", "diffOt", "short"]);
     const REPORT_TIME_FIELDS = new Set(["in", "break", "resume", "out"]);
     const loginSection = document.getElementById("loginSection");
@@ -840,14 +840,23 @@
       localStorage.setItem(REPORT_EDIT_KEY, JSON.stringify(monthlyReportEdits));
     }
 
+    function isEditableReportField(field) {
+      return REPORT_TIME_FIELDS.has(field) || field === "leaveTaken" || field === "remark";
+    }
+
     function migrateReportEdits(edits) {
-      if (localStorage.getItem(REPORT_CALC_VERSION_KEY) === REPORT_CALC_VERSION) return edits;
+      let changed = localStorage.getItem(REPORT_CALC_VERSION_KEY) !== REPORT_CALC_VERSION;
       Object.keys(edits).forEach(key => {
         const field = key.split("|").pop();
-        if (REPORT_CALCULATED_FIELDS.has(field)) delete edits[key];
+        if (!isEditableReportField(field)) {
+          delete edits[key];
+          changed = true;
+        }
       });
-      localStorage.setItem(REPORT_EDIT_KEY, JSON.stringify(edits));
-      localStorage.setItem(REPORT_CALC_VERSION_KEY, REPORT_CALC_VERSION);
+      if (changed) {
+        localStorage.setItem(REPORT_EDIT_KEY, JSON.stringify(edits));
+        localStorage.setItem(REPORT_CALC_VERSION_KEY, REPORT_CALC_VERSION);
+      }
       return edits;
     }
 
@@ -1087,6 +1096,7 @@
     }
 
     function reportValue(employeeId, dateKey, field, fallback = "") {
+      if (!isEditableReportField(field)) return fallback;
       const key = reportEditKey(employeeId, dateKey, field);
       return Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) ? monthlyReportEdits[key] : fallback;
     }
@@ -1109,9 +1119,10 @@
     function editableReportCell(employeeId, dateKey, field, fallback = "", className = "") {
       const editing = editingReportEmployeeId === employeeId;
       const key = reportEditKey(employeeId, dateKey, field);
-      const manualEdit = Object.prototype.hasOwnProperty.call(monthlyReportEdits, key);
+      const editableField = isEditableReportField(field);
+      const manualEdit = editableField && Object.prototype.hasOwnProperty.call(monthlyReportEdits, key);
       const value = reportValue(employeeId, dateKey, field, fallback);
-      const editable = editing && (REPORT_TIME_FIELDS.has(field) || field === "leaveTaken" || field === "remark");
+      const editable = editing && editableField;
       const classes = ["editableCell", className, manualEdit ? "manualEdit" : ""].filter(Boolean).join(" ");
       return `<td class="${classes}" contenteditable="${editable ? "true" : "false"}" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
     }
@@ -1527,7 +1538,7 @@
       const reportRows = new Map();
       cells.forEach(cell => {
         const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
-        if (REPORT_TIME_FIELDS.has(cell.dataset.reportField) || cell.dataset.reportField === "leaveTaken" || cell.dataset.reportField === "remark") {
+        if (isEditableReportField(cell.dataset.reportField)) {
           const value = cell.textContent.trim();
           const original = originalReportValue(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
           if (value === original) {
