@@ -426,37 +426,79 @@ h3 {
   padding: 10px;
 }
 
-.calendar {
+.month-calendar {
   display: grid;
-  grid-template-columns: repeat(7, minmax(42px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
 }
 
-.day {
+.month-weekday {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.month-empty {
+  min-height: 62px;
+}
+
+.month-day {
   min-height: 62px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px;
   background: #fff;
+  color: var(--ink);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  align-items: flex-start;
+  text-align: left;
+  touch-action: manipulation;
 }
 
-.day.present,
-.day.ot {
+.month-day span {
+  font-weight: 900;
+}
+
+.month-day small {
+  color: var(--muted);
+  line-height: 1.15;
+}
+
+.month-day.present {
   background: rgba(28, 124, 84, 0.09);
   border-color: rgba(28, 124, 84, 0.35);
 }
 
-.day.late {
+.month-day.late {
   background: rgba(173, 107, 0, 0.1);
   border-color: rgba(173, 107, 0, 0.35);
 }
 
-.day.absent {
+.month-day.missed {
   background: rgba(180, 54, 54, 0.08);
-  border-color: rgba(180, 54, 54, 0.35);
+  border-color: rgba(180, 54, 54, 0.42);
+}
+
+.month-day.missed small {
+  color: var(--red);
+  font-weight: 900;
+}
+
+.month-day.leave-note {
+  background: #fff;
+  border-color: var(--line);
+}
+
+.month-day.leave-note small {
+  color: var(--blue);
+  font-weight: 900;
+}
+
+.month-day.selected {
+  box-shadow: 0 0 0 2px var(--blue);
 }
 
 .table-wrap {
@@ -922,8 +964,25 @@ small,
     min-width: 96px;
   }
 
-  .calendar {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .month-calendar {
+    gap: 5px;
+  }
+
+  .month-weekday {
+    font-size: 10px;
+  }
+
+  .month-day,
+  .month-empty {
+    min-height: 48px;
+  }
+
+  .month-day {
+    padding: 6px;
+  }
+
+  .month-day small {
+    font-size: 10px;
   }
 
   .employee-row,

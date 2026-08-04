@@ -33,6 +33,7 @@ let qrScanController = null;
 let liveRefreshInFlight = false;
 let gpsWatchId = null;
 let latestGpsSamples = [];
+let selectedHistoryDate = malaysiaDateKey(new Date());
 
 window.addEventListener("hashchange", () => {
   if (window.location.hash.toLowerCase() === "#admin") {
@@ -167,6 +168,11 @@ function employeeScreen() {
   const leaveRequests = state.leaveRequests || [];
   const leaveRemaining = formatLeaveDays(state.currentUser.leaveRemainingDays || 0);
   const leaveDefaultDate = defaultLeaveDate();
+  const todayDate = malaysiaToday();
+  const currentMonthDate = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), 1));
+  const monthLabel = currentMonthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
+  const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
+  const historyRecords = records.filter((row) => row.date === historyDate);
   const openRecord = currentOpenRecord(records);
   const clockAction = openRecord ? "out" : "in";
   const clockLabel = openRecord ? "Clock out" : "Clock in";
@@ -201,12 +207,12 @@ function employeeScreen() {
         ])}
       </section>
       <section class="panel" id="month">
-        <div class="heading"><div><p class="eyebrow">Current month</p><h3>August 2026</h3></div></div>
-        <div class="calendar">${calendar(records)}</div>
+        <div class="heading"><div><p class="eyebrow">Current month</p><h3>${monthLabel}</h3></div></div>
+        <div class="month-calendar">${monthCalendar(records, leaveRequests, historyDate, currentMonthDate)}</div>
       </section>
       <section class="panel wide" id="history">
-        <div class="heading"><div><p class="eyebrow">Clock history</p><h3>My attendance</h3></div></div>
-        ${attendanceTable(records, true)}
+        <div class="heading"><div><p class="eyebrow">Clock history</p><h3>My attendance - ${formatLeaveDateDisplay(historyDate)}</h3></div></div>
+        ${attendanceTable(historyRecords, true, historyDate)}
       </section>
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
@@ -483,6 +489,13 @@ function bindEmployee() {
   bindShell();
   document.querySelectorAll("[data-clock]").forEach((button) => {
     button.addEventListener("click", () => openQrScanner(button.dataset.clock));
+  });
+  document.querySelectorAll("[data-history-date]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedHistoryDate = button.dataset.historyDate;
+      render();
+      document.querySelector("#history")?.scrollIntoView({ block: "start" });
+    });
   });
   document.querySelectorAll("[data-cancel-leave]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -798,20 +811,72 @@ function metrics(items) {
     .join("")}</section>`;
 }
 
-function calendar(records) {
-  return Array.from({ length: 31 }, (_, index) => {
-    const day = index + 1;
-    const date = `2026-08-${String(day).padStart(2, "0")}`;
-    const record = records.find((row) => row.date === date);
-    return `<div class="day ${(record?.status || "").toLowerCase()}"><span>${day}</span><small>${record?.status || "-"}</small></div>`;
-  }).join("");
+function monthCalendar(records, leaveRequests, selectedDate, monthDate) {
+  const today = malaysiaDateKey(new Date());
+  const monthKey = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, "0")}`;
+  const firstDay = monthDate.getUTCDay();
+  const daysInMonth = new Date(Date.UTC(monthDate.getUTCFullYear(), monthDate.getUTCMonth() + 1, 0)).getUTCDate();
+  const cells = [];
+
+  ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((day) => {
+    cells.push(`<div class="month-weekday">${day}</div>`);
+  });
+  for (let index = 0; index < firstDay; index += 1) {
+    cells.push(`<div class="month-empty" aria-hidden="true"></div>`);
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = `${monthKey}-${String(day).padStart(2, "0")}`;
+    const dayRecords = records.filter((row) => row.date === date);
+    const leave = calendarLeaveForDate(leaveRequests, date);
+    const summary = leave || calendarRecordSummary(dayRecords, date, today);
+    const classes = ["month-day", summary.tone, date === selectedDate ? "selected" : ""].filter(Boolean).join(" ");
+    cells.push(`
+      <button class="${classes}" type="button" data-history-date="${date}">
+        <span>${day}</span>
+        <small>${escapeHtml(summary.label)}</small>
+      </button>
+    `);
+  }
+  return cells.join("");
 }
 
-function attendanceTable(records, employeeOnly) {
+function calendarLeaveForDate(leaveRequests, date) {
+  const request = leaveRequests.find((item) => {
+    const status = String(item.status || "").toLowerCase();
+    return item.date === date && status !== "rejected" && status !== "cancelled";
+  });
+  if (!request) return null;
+  return { label: request.type || "Leave/MC", tone: "leave-note" };
+}
+
+function calendarRecordSummary(records, date, today) {
+  if (!records.length) return { label: "-", tone: "" };
+
+  const hasMissing = records.some((row) => {
+    const missingClock = !row.clockIn || !row.clockOut;
+    return missingClock && (date < today || !row.clockIn);
+  });
+  if (hasMissing) return { label: "Missed", tone: "missed" };
+  if (records.some((row) => Number(row.lateMinutes || 0) > 0 || row.status === "Late")) {
+    return { label: "Late", tone: "late" };
+  }
+  if (records.some((row) => Number(row.overtimeMinutes || 0) > 0 || row.status === "OT")) {
+    return { label: "OT", tone: "present" };
+  }
+  if (records.some((row) => row.clockIn && !row.clockOut)) {
+    return { label: "Clocked in", tone: "present" };
+  }
+  if (records.some((row) => row.clockIn || row.clockOut)) {
+    return { label: "Present", tone: "present" };
+  }
+  return { label: "-", tone: "" };
+}
+
+function attendanceTable(records, employeeOnly, emptyDate = "") {
   if (!records.length) {
     return `<div class="empty-state">
-      <strong>No attendance records yet.</strong>
-      <small>${employeeOnly ? "Clock in/out first, then records will appear here." : "GitHub Pages stores attendance inside each phone/browser. Records from employee phones will not appear on this HR browser unless this app uses an online database."}</small>
+      <strong>No attendance records${emptyDate ? ` on ${escapeHtml(formatLeaveDateDisplay(emptyDate))}` : " yet"}.</strong>
+      <small>${employeeOnly ? "Tap another date in Current Month to view that day." : "GitHub Pages stores attendance inside each phone/browser. Records from employee phones will not appear on this HR browser unless this app uses an online database."}</small>
     </div>`;
   }
 
@@ -1341,6 +1406,11 @@ function isOpenRecordStillActive(workDate) {
 
 function malaysiaDateKey(date) {
   return date.toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+}
+
+function malaysiaToday() {
+  const [year, month, day] = malaysiaDateKey(new Date()).split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function malaysiaMinutesSinceMidnight(date) {

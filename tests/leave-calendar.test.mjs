@@ -25,3 +25,18 @@ test("leave calendar aligns August 2026 and disables Sundays only", async () => 
   assert.deepEqual(augustCells.slice(7, 14), [2, 3, 4, 5, 6, 7, 8], "Second row must start with Sunday date 2");
   assert.deepEqual(sundays, [2, 9, 16, 23, 30], "Only August 2026 Sundays should be disabled for Sunday rule");
 });
+
+test("employee month dashboard stays Sunday to Saturday and filters history by selected day", async () => {
+  const [script, css] = await Promise.all([
+    readFile(new URL("../script.js", import.meta.url), "utf8"),
+    readFile(new URL("../style.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(script, /function monthCalendar/);
+  assert.match(script, /\["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"\]/);
+  assert.match(script, /new Date\(Date\.UTC\(todayDate\.getUTCFullYear\(\), todayDate\.getUTCMonth\(\), 1\)\)/);
+  assert.match(script, /data-history-date/);
+  assert.match(script, /attendanceTable\(historyRecords, true, historyDate\)/);
+  assert.match(css, /\.month-calendar[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(css, /\.calendar[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
+});
