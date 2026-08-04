@@ -16,13 +16,12 @@ test("leave requests notify WhatsApp recipients from the Worker", async () => {
   assert.match(route, /Working days submitted/);
 });
 
-test("employee app falls back to WhatsApp buttons when API is not configured", async () => {
+test("employee app uses backend WhatsApp API only without manual buttons", async () => {
   const [script, css] = await Promise.all([
     readFile(new URL("../script.js", import.meta.url), "utf8"),
     readFile(new URL("../style.css", import.meta.url), "utf8"),
   ]);
 
-  assert.match(script, /WHATSAPP_NOTIFY_NUMBERS = \["60122159225", "60177395919"\]/);
   assert.match(script, /function leaveWhatsAppMessage/);
   assert.match(script, /Annual Leave\/MC request/);
   assert.match(script, /leaveWhatsAppDateLines/);
@@ -30,7 +29,8 @@ test("employee app falls back to WhatsApp buttons when API is not configured", a
   assert.match(script, /return index === 0 \? `Date: \$\{line\}` : `      \$\{line\}`/);
   assert.match(script, /leaveSubmittedDayValue\(date, duration\)/);
   assert.match(script, /notifyWhatsApp: !whatsappAttempted/);
-  assert.match(script, /data-whatsapp-notify/);
-  assert.match(script, /https:\/\/wa\.me\/\$\{phone\}/);
-  assert.match(css, /\.whatsapp-notice/);
+  assert.match(script, /WhatsApp sent to both numbers/);
+  assert.doesNotMatch(script, /data-whatsapp-notify/);
+  assert.doesNotMatch(script, /https:\/\/wa\.me/);
+  assert.doesNotMatch(css, /\.whatsapp-notice/);
 });
