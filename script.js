@@ -852,25 +852,25 @@ function calendarLeaveForDate(leaveRequests, date) {
 function calendarRecordSummary(records, date, today) {
   if (!records.length) return { label: "-", tone: "" };
 
-  if (records.some((row) => !row.clockIn && row.clockOut)) {
-    return { label: "Out", tone: "missed" };
-  }
-  if (records.some((row) => row.clockIn && !row.clockOut && date < today)) {
-    return { label: "Missed", tone: "missed" };
-  }
-  if (records.some((row) => Number(row.lateMinutes || 0) > 0 || row.status === "Late")) {
-    return { label: "Late", tone: "late" };
-  }
-  if (records.some((row) => Number(row.overtimeMinutes || 0) > 0 || row.status === "OT")) {
-    return { label: "OT", tone: "present" };
-  }
-  if (records.some((row) => row.clockIn && !row.clockOut)) {
-    return { label: "In", tone: "present" };
-  }
-  if (records.some((row) => row.clockIn || row.clockOut)) {
-    return { label: "OK", tone: "present" };
-  }
-  return { label: "-", tone: "" };
+  const labels = [];
+  const hasMissingIn = records.some((row) => !row.clockIn && row.clockOut);
+  const hasMissingOut = records.some((row) => row.clockIn && !row.clockOut && date < today);
+  const hasLate = records.some((row) => Number(row.lateMinutes || 0) > 0 || row.status === "Late");
+  const hasOt = records.some((row) => Number(row.overtimeMinutes || 0) > 0 || row.status === "OT");
+  const hasOpenToday = records.some((row) => row.clockIn && !row.clockOut && date >= today);
+  const hasComplete = records.some((row) => row.clockIn && row.clockOut);
+
+  if (hasLate) labels.push("Late");
+  if (hasOpenToday) labels.push("In");
+  if (hasMissingIn) labels.push("Out");
+  if (hasMissingOut) labels.push("Missed");
+  if (hasOt) labels.push("OT");
+  if (!labels.length && hasComplete) labels.push("OK");
+
+  return {
+    label: labels.join(" "),
+    tone: hasMissingIn || hasMissingOut ? "missed" : hasLate ? "late" : labels.length ? "present" : "",
+  };
 }
 
 function attendanceTable(records, employeeOnly, emptyDate = "") {
