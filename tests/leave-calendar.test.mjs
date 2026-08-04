@@ -56,19 +56,23 @@ test("employee GPS display shows warehouse distance and does not fake fallback s
   assert.doesNotMatch(script, /source: "fallback"/);
 });
 
-test("employee leave requests use date range and only limit cancelled cards", async () => {
+test("employee leave requests use one date-range calendar and only limit cancelled cards", async () => {
   const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
   const css = await readFile(new URL("../style.css", import.meta.url), "utf8");
 
   assert.match(script, /name="startDate"/);
   assert.match(script, /name="endDate"/);
+  assert.match(script, /Date range/);
+  assert.match(script, /formatLeaveRangeDisplay/);
+  assert.match(script, /calendar\.dataset\.rangeStep = "end"/);
   assert.match(script, /function leaveDatesInRange/);
   assert.match(script, /Sundays are skipped\./);
   assert.match(script, /Saturday in this range will be submitted as half day\./);
   assert.match(script, /function visibleEmployeeLeaveRequests/);
   assert.match(script, /cancelledRequests\.slice\(0, 3\)/);
   assert.match(script, /activeRequests\.push\(request\)/);
-  assert.match(css, /\.date-range-fields/);
+  assert.match(css, /\.calendar-day\.is-in-range/);
+  assert.doesNotMatch(css, /\.date-range-fields/);
 });
 
 test("employee correction metric counts pending requests only", async () => {

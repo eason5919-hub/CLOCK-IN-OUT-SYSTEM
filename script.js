@@ -234,10 +234,7 @@ function employeeScreen() {
         </div>
         <form class="form" id="leave-form">
           <label>Type<select name="leaveType"><option value="leave">Annual Leave</option><option value="mc">MC</option></select></label>
-          <div class="date-range-fields">
-            ${leaveDateField("Start date", "startDate", leaveDefaultDate)}
-            ${leaveDateField("End date", "endDate", leaveDefaultDate)}
-          </div>
+          ${leaveRangeField(leaveDefaultDate)}
           <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select><small class="muted" data-leave-rule></small></label>
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
           <button>Submit Annual Leave/MC</button>
@@ -951,13 +948,14 @@ function leaveRequestCard(request) {
   return `<div class="list-item leave-card"><div><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div><div class="actions"><span class="badge ${request.status.toLowerCase()}">${request.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div></div>`;
 }
 
-function leaveDateField(label, name, value) {
+function leaveRangeField(value) {
   return `
     <div class="field leave-date-field" data-leave-date-field>
-      <span>${label}</span>
-      <input name="${name}" type="hidden" value="${value}" required data-leave-date-input />
+      <span>Date range</span>
+      <input name="startDate" type="hidden" value="${value}" required />
+      <input name="endDate" type="hidden" value="${value}" required />
       <button class="date-picker-button" type="button" data-open-leave-calendar>
-        <span data-selected-leave-date>${formatLeaveDateDisplay(value)}</span>
+        <span data-selected-leave-date>${formatLeaveRangeDisplay(value, value)}</span>
       </button>
       <div class="leave-calendar" data-leave-calendar hidden></div>
     </div>
@@ -986,58 +984,62 @@ function updateLeaveDurationRule(form) {
 }
 
 function setupLeaveCalendar(form) {
-  const fields = Array.from(form.querySelectorAll("[data-leave-date-field]"));
-  if (!fields.length) return;
+  const field = form.querySelector("[data-leave-date-field]");
+  const startInput = form.querySelector('input[name="startDate"]');
+  const endInput = form.querySelector('input[name="endDate"]');
+  const button = field?.querySelector("[data-open-leave-calendar]");
+  const label = field?.querySelector("[data-selected-leave-date]");
+  const calendar = field?.querySelector("[data-leave-calendar]");
+  if (!field || !startInput || !endInput || !button || !label || !calendar) return;
 
-  const refreshAll = () => {
-    fields.forEach((field) => {
-      const dateInput = field.querySelector("[data-leave-date-input]");
-      const label = field.querySelector("[data-selected-leave-date]");
-      const calendar = field.querySelector("[data-leave-calendar]");
-      if (!dateInput || !label || !calendar) return;
-      label.textContent = formatLeaveDateDisplay(dateInput.value);
-      calendar.innerHTML = leaveCalendarMarkup(dateInput.value, calendar.dataset.month || dateInput.value);
-    });
+  const refresh = () => {
+    label.textContent = formatLeaveRangeDisplay(startInput.value, endInput.value);
+    calendar.innerHTML = leaveCalendarMarkup(startInput.value, calendar.dataset.month || startInput.value, endInput.value);
     updateLeaveDurationRule(form);
   };
 
-  fields.forEach((field) => {
-    const dateInput = field.querySelector("[data-leave-date-input]");
-    const button = field.querySelector("[data-open-leave-calendar]");
-    const calendar = field.querySelector("[data-leave-calendar]");
-    if (!dateInput || !button || !calendar) return;
-
-    button.addEventListener("click", () => {
-      fields.forEach((otherField) => {
-        const otherCalendar = otherField.querySelector("[data-leave-calendar]");
-        if (otherCalendar && otherCalendar !== calendar) otherCalendar.hidden = true;
-      });
-      calendar.hidden = !calendar.hidden;
-      if (!calendar.hidden) refreshAll();
-    });
-
-    calendar.addEventListener("click", (event) => {
-      const target = event.target instanceof Element ? event.target : null;
-      if (!target) return;
-
-      const monthButton = target.closest("[data-calendar-month]");
-      if (monthButton) {
-        calendar.dataset.month = monthButton.dataset.calendarMonth;
-        refreshAll();
-        return;
-      }
-
-      const dayButton = target.closest("[data-calendar-date]");
-      if (!dayButton || dayButton.disabled) return;
-      dateInput.value = dayButton.dataset.calendarDate;
-      calendar.dataset.month = dateInput.value;
-      syncLeaveDateRange(form, dateInput);
-      calendar.hidden = true;
-      refreshAll();
-    });
+  button.addEventListener("click", () => {
+    calendar.hidden = !calendar.hidden;
+    calendar.dataset.rangeStep = "start";
+    if (!calendar.hidden) refresh();
   });
 
-  refreshAll();
+  calendar.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+
+    const monthButton = target.closest("[data-calendar-month]");
+    if (monthButton) {
+      calendar.dataset.month = monthButton.dataset.calendarMonth;
+      refresh();
+      return;
+    }
+
+    const dayButton = target.closest("[data-calendar-date]");
+    if (!dayButton || dayButton.disabled) return;
+    const selectedDate = dayButton.dataset.calendarDate;
+    if (calendar.dataset.rangeStep !== "end") {
+      startInput.value = selectedDate;
+      endInput.value = selectedDate;
+      calendar.dataset.month = selectedDate;
+      calendar.dataset.rangeStep = "end";
+      refresh();
+      return;
+    }
+
+    if (selectedDate < startInput.value) {
+      endInput.value = startInput.value;
+      startInput.value = selectedDate;
+    } else {
+      endInput.value = selectedDate;
+    }
+    calendar.dataset.month = selectedDate;
+    calendar.dataset.rangeStep = "start";
+    calendar.hidden = true;
+    refresh();
+  });
+
+  refresh();
 }
 
 function validateLeaveDateAndDuration(date, duration) {
@@ -1130,7 +1132,7 @@ function nextLeaveDate(value) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
-function leaveCalendarMarkup(selectedDate, monthValue) {
+function leaveCalendarMarkup(selectedDate, monthValue, rangeEndDate = selectedDate) {
   const today = malaysiaDateKey(new Date());
   const monthDate = leaveCalendarMonth(monthValue);
   const monthLabel = monthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
@@ -1151,7 +1153,17 @@ function leaveCalendarMarkup(selectedDate, monthValue) {
     const isPast = dateKey < today;
     const isSunday = dayOfWeek === 0;
     const isDisabled = isPast || isSunday;
-    const classes = ["calendar-day", isSunday ? "is-sunday" : "", isPast ? "is-past" : "", isDisabled ? "is-disabled" : "", dateKey === selectedDate ? "is-selected" : ""]
+    const isSelectedStart = dateKey === selectedDate;
+    const isSelectedEnd = dateKey === rangeEndDate;
+    const isRangeMiddle = dateKey > selectedDate && dateKey < rangeEndDate && !isSunday;
+    const classes = [
+      "calendar-day",
+      isSunday ? "is-sunday" : "",
+      isPast ? "is-past" : "",
+      isDisabled ? "is-disabled" : "",
+      isSelectedStart || isSelectedEnd ? "is-selected" : "",
+      isRangeMiddle ? "is-in-range" : "",
+    ]
       .filter(Boolean)
       .join(" ");
     cells.push(`<button class="${classes}" type="button" data-calendar-date="${dateKey}" ${isDisabled ? "disabled" : ""}>${day}</button>`);
@@ -1191,6 +1203,11 @@ function formatLeaveDateDisplay(value) {
     month: "short",
     year: "numeric",
   });
+}
+
+function formatLeaveRangeDisplay(startDate, endDate) {
+  if (!startDate || !endDate || startDate === endDate) return formatLeaveDateDisplay(startDate || endDate);
+  return `${formatLeaveDateDisplay(startDate)} to ${formatLeaveDateDisplay(endDate)}`;
 }
 
 function adminCorrectionCard(correction) {
