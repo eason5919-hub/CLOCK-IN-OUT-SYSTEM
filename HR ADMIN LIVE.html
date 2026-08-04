@@ -642,6 +642,9 @@
     const TOKEN_KEY = "warehouseHrLiveToken";
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
+    const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
+    const REPORT_CALC_VERSION = "20260804-report-hhmm";
+    const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "in", "out", "work", "overtime", "diffOt", "short", "leaveTaken"]);
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
     const loginForm = document.getElementById("loginForm");
@@ -686,7 +689,7 @@
     let editingEmployeeId = "";
     let selectedAttendanceDate = todayKey();
     let selectedReportMonth = todayKey().slice(0, 7);
-    let monthlyReportEdits = loadReportEdits();
+    let monthlyReportEdits = migrateReportEdits(loadReportEdits());
     let editingReportEmployeeId = "";
 
     emailInput.value = "d1_racing@yahoo.com";
@@ -813,6 +816,17 @@
 
     function saveReportEdits() {
       localStorage.setItem(REPORT_EDIT_KEY, JSON.stringify(monthlyReportEdits));
+    }
+
+    function migrateReportEdits(edits) {
+      if (localStorage.getItem(REPORT_CALC_VERSION_KEY) === REPORT_CALC_VERSION) return edits;
+      Object.keys(edits).forEach(key => {
+        const field = key.split("|").pop();
+        if (REPORT_CALCULATED_FIELDS.has(field)) delete edits[key];
+      });
+      localStorage.setItem(REPORT_EDIT_KEY, JSON.stringify(edits));
+      localStorage.setItem(REPORT_CALC_VERSION_KEY, REPORT_CALC_VERSION);
+      return edits;
     }
 
     function setupReportMonthOptions() {
