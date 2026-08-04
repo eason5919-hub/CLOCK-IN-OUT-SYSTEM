@@ -1000,7 +1000,7 @@ function attendanceEditMarks(row, corrections = []) {
   const approved = corrections.filter((correction) => correction.date === row.date && correction.status === "Approved");
   const correctedIn = approved.some((correction) => correction.requestedClockIn && correction.requestedClockIn === row.clockIn);
   const correctedOut = approved.some((correction) => correction.requestedClockOut && correction.requestedClockOut === row.clockOut);
-  const adminEdited = row.source === "admin_adjustment" && !approved.length;
+  const adminEdited = row.source === "admin_adjustment" || row.source === "admin_report_edit";
   return {
     clockIn: correctedIn ? "corrected" : adminEdited ? "edited" : "",
     clockOut: correctedOut ? "corrected" : adminEdited ? "edited" : "",
