@@ -325,7 +325,16 @@
       background: #fff;
     }
 
-    .editableCell:focus {
+    .editableCell[contenteditable="true"] {
+      background: #fffdf2;
+      cursor: text;
+    }
+
+    .editableCell[contenteditable="false"] {
+      color: var(--ink);
+    }
+
+    .editableCell[contenteditable="true"]:focus {
       background: #fff9cf;
       box-shadow: inset 0 0 0 2px #d7ad1f;
     }
@@ -678,6 +687,7 @@
     let selectedAttendanceDate = todayKey();
     let selectedReportMonth = todayKey().slice(0, 7);
     let monthlyReportEdits = loadReportEdits();
+    let editingReportEmployeeId = "";
 
     emailInput.value = "d1_racing@yahoo.com";
     attendanceDateInput.value = selectedAttendanceDate;
@@ -877,8 +887,9 @@
     }
 
     function editableReportCell(employeeId, dateKey, field, fallback = "", className = "") {
+      const editing = editingReportEmployeeId === employeeId;
       const value = reportValue(employeeId, dateKey, field, fallback);
-      return `<td class="editableCell ${className}" contenteditable="true" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
+      return `<td class="editableCell ${className}" contenteditable="${editing ? "true" : "false"}" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
     }
 
     function employeeAttendanceByDate(employeeId, dateKey) {
@@ -1101,6 +1112,7 @@
     }
 
     function employeeMonthlyReport(employee, dates) {
+      const isEditing = editingReportEmployeeId === employee.id;
       let totalWork = 0;
       let totalOt = 0;
       let totalDiffOt = 0;
@@ -1147,7 +1159,10 @@
               <span>Name: ${escapeHtml(employee.full_name || "-")}</span>
               <span>${escapeHtml(monthLabel(selectedReportMonth))}</span>
             </div>
-            <button class="secondary" type="button" data-print-report="${escapeHtml(employee.id)}">Print A4</button>
+            <div class="actions">
+              <button class="secondary" type="button" data-print-report="${escapeHtml(employee.id)}">Print A4</button>
+              <button class="${isEditing ? "blue" : "secondary"}" type="button" ${isEditing ? `data-save-report="${escapeHtml(employee.id)}"` : `data-edit-report="${escapeHtml(employee.id)}"`}>${isEditing ? "Save" : "Edit"}</button>
+            </div>
           </div>
           <div class="tableWrap">
             <table class="reportTable">
@@ -1216,13 +1231,25 @@
       popup.document.close();
     }
 
+    function saveEmployeeMonthlyReport(employeeId) {
+      const cells = monthlyReportArea.querySelectorAll(`[data-report-employee="${employeeId}"][data-report-field]`);
+      cells.forEach(cell => {
+        const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
+        monthlyReportEdits[key] = cell.textContent.trim();
+      });
+      saveReportEdits();
+      editingReportEmployeeId = "";
+      renderMonthlyReport();
+      setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
+    }
+
     function renderAll() {
       renderMetrics();
       renderEmployees();
       renderLeaveRequests();
       renderCorrections();
       renderAttendance();
-      renderMonthlyReport();
+      if (!editingReportEmployeeId) renderMonthlyReport();
     }
 
     function setEditMode(employee) {
@@ -1409,26 +1436,37 @@
       renderMonthlyReport();
     });
     closeMonthlyReportButton.addEventListener("click", () => {
+      editingReportEmployeeId = "";
       monthlyReportArea.hidden = true;
       closeMonthlyReportButton.hidden = true;
       monthlyReportStatus.textContent = "";
     });
     reportMonthSelect.addEventListener("change", () => {
       selectedReportMonth = reportMonthSelect.value || selectedReportMonth;
+      editingReportEmployeeId = "";
       if (!monthlyReportArea.hidden) renderMonthlyReport();
     });
     monthlyReportArea.addEventListener("click", event => {
-      const button = event.target.closest("[data-print-report]");
-      if (!button) return;
-      printEmployeeMonthlyReport(button.dataset.printReport);
-    });
-    monthlyReportArea.addEventListener("input", event => {
-      const cell = event.target.closest("[data-report-field]");
-      if (!cell) return;
-      const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
-      monthlyReportEdits[key] = cell.textContent.trim();
-      saveReportEdits();
-      setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
+      const printButton = event.target.closest("[data-print-report]");
+      if (printButton) {
+        printEmployeeMonthlyReport(printButton.dataset.printReport);
+        return;
+      }
+      const editButton = event.target.closest("[data-edit-report]");
+      if (editButton) {
+        if (editingReportEmployeeId && editingReportEmployeeId !== editButton.dataset.editReport) {
+          const ok = confirm("Discard unsaved monthly report edits?");
+          if (!ok) return;
+        }
+        editingReportEmployeeId = editButton.dataset.editReport;
+        renderMonthlyReport();
+        setStatus(monthlyReportStatus, "Editing. Click Save when finished.", "ok");
+        return;
+      }
+      const saveButton = event.target.closest("[data-save-report]");
+      if (saveButton) {
+        saveEmployeeMonthlyReport(saveButton.dataset.saveReport);
+      }
     });
     refreshButton.addEventListener("click", () => loadLiveData(true));
     window.addEventListener("focus", () => token() && loadLiveData(true));
