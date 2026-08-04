@@ -370,11 +370,11 @@ async function reviewCorrectionRequest(
   if (!correction) return json(request, { error: "Pending correction was not found." }, 404);
 
   let newRecordJson: string | null = null;
+  let reviewedAttendanceId = correction.attendance_id;
   if (payload.status === "approved") {
-    const attendanceId = correction.attendance_id ?? crypto.randomUUID();
-    const existingRecord = correction.attendance_id
-      ? await db.prepare("SELECT id FROM attendance WHERE id = ?").bind(correction.attendance_id).first()
-      : null;
+    const existingRecord = await findTargetAttendanceForCorrection(db, correction);
+    const attendanceId = String(existingRecord?.id ?? correction.attendance_id ?? crypto.randomUUID());
+    reviewedAttendanceId = attendanceId;
 
     if (existingRecord) {
       await db
@@ -461,11 +461,11 @@ async function reviewCorrectionRequest(
     db
       .prepare(
         `UPDATE attendance_corrections
-         SET status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
+         SET attendance_id = ?, status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
              admin_note = ?, new_record_json = ?
          WHERE id = ?`,
       )
-      .bind(payload.status, adminUserId, payload.adminNote?.trim() || null, newRecordJson, payload.requestId),
+      .bind(reviewedAttendanceId, payload.status, adminUserId, payload.adminNote?.trim() || null, newRecordJson, payload.requestId),
     db
       .prepare(
         "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -482,6 +482,57 @@ async function reviewCorrectionRequest(
   ]);
 
   return json(request, { ok: true });
+}
+
+async function findTargetAttendanceForCorrection(db: D1Database, correction: Record<string, string | null>) {
+  if ((correction.missing_type === "clock_out" || correction.missing_type === "both") && correction.requested_clock_out_at) {
+    const openRecord = await db
+      .prepare(
+        `SELECT *
+         FROM attendance
+         WHERE employee_id = ? AND work_date = ?
+           AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
+         ORDER BY clock_in_at DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(correction.employee_id, correction.requested_date)
+      .first<Record<string, string | number | null>>();
+    if (openRecord) return openRecord;
+  }
+
+  if ((correction.missing_type === "clock_in" || correction.missing_type === "both") && correction.requested_clock_in_at) {
+    const missingInRecord = await db
+      .prepare(
+        `SELECT *
+         FROM attendance
+         WHERE employee_id = ? AND work_date = ?
+           AND clock_in_at IS NULL AND clock_out_at IS NOT NULL
+         ORDER BY clock_out_at DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(correction.employee_id, correction.requested_date)
+      .first<Record<string, string | number | null>>();
+    if (missingInRecord) return missingInRecord;
+  }
+
+  if (correction.attendance_id) {
+    const linkedRecord = await db
+      .prepare("SELECT * FROM attendance WHERE id = ?")
+      .bind(correction.attendance_id)
+      .first<Record<string, string | number | null>>();
+    if (linkedRecord) return linkedRecord;
+  }
+
+  return db
+    .prepare(
+      `SELECT *
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ?
+       ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
+       LIMIT 1`,
+    )
+    .bind(correction.employee_id, correction.requested_date)
+    .first<Record<string, string | number | null>>();
 }
 
 function normalizeLeaveDays(value: number | string) {

@@ -643,7 +643,7 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260804-report-early-out-short";
+    const REPORT_CALC_VERSION = "20260804-approved-correction-times";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "in", "out", "work", "overtime", "diffOt", "short", "leaveTaken"]);
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
@@ -979,12 +979,23 @@
       return `<td class="editableCell ${className}" contenteditable="${editing ? "true" : "false"}" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
     }
 
+    function approvedCorrectionTimes(employeeId, dateKey) {
+      const approved = corrections
+        .filter(item => item.employee_id === employeeId && item.requested_date === dateKey && String(item.status || "").toLowerCase() === "approved")
+        .sort((a, b) => Date.parse(b.reviewed_at || b.created_at || "") - Date.parse(a.reviewed_at || a.created_at || ""));
+      return {
+        clockIn: approved.find(item => item.requested_clock_in_at)?.requested_clock_in_at || "",
+        clockOut: approved.find(item => item.requested_clock_out_at)?.requested_clock_out_at || ""
+      };
+    }
+
     function employeeAttendanceByDate(employeeId, dateKey) {
       const rows = attendance.filter(row => row.employee_id === employeeId && row.work_date === dateKey);
-      if (!rows.length) return null;
-      const firstIn = rows.map(row => row.clock_in_at).filter(Boolean).sort()[0] || "";
+      const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
+      if (!rows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
+      const firstIn = approvedTimes.clockIn || rows.map(row => row.clock_in_at).filter(Boolean).sort()[0] || "";
       const outTimes = rows.map(row => row.clock_out_at).filter(Boolean).sort();
-      const lastOut = outTimes[outTimes.length - 1] || "";
+      const lastOut = approvedTimes.clockOut || outTimes[outTimes.length - 1] || "";
       return {
         clockIn: firstIn,
         clockOut: lastOut,

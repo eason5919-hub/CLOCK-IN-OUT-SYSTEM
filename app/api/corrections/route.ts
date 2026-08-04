@@ -6,7 +6,7 @@ export async function POST(request: Request) {
     const payload = (await request.json()) as {
       employeeId?: string;
       requestedDate?: string;
-      missingType?: "clock_in" | "clock_out" | "both";
+      missingType?: CorrectionMissingType;
       requestedClockInAt?: string;
       requestedClockOutAt?: string;
       reason?: string;
@@ -25,10 +25,12 @@ export async function POST(request: Request) {
     if (payload.employeeId !== session.employee_id) {
       return json(request, { error: "Employees can only submit their own corrections." }, 403);
     }
-    const existing = await db
-      .prepare("SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?")
-      .bind(payload.employeeId, payload.requestedDate)
-      .first<Record<string, unknown>>();
+    const existing = await findTargetAttendanceForCorrection(
+      db,
+      payload.employeeId,
+      payload.requestedDate,
+      payload.missingType,
+    );
     const id = crypto.randomUUID();
 
     await db
@@ -209,6 +211,56 @@ export async function PATCH(request: Request) {
     const message = error instanceof Error ? error.message : "Unexpected error";
     return json(request, { error: message }, 500);
   }
+}
+
+type CorrectionMissingType = "clock_in" | "clock_out" | "both";
+
+async function findTargetAttendanceForCorrection(
+  db: D1Database,
+  employeeId: string,
+  requestedDate: string,
+  missingType: CorrectionMissingType,
+) {
+  if (missingType === "clock_out" || missingType === "both") {
+    const openRecord = await db
+      .prepare(
+        `SELECT *
+         FROM attendance
+         WHERE employee_id = ? AND work_date = ?
+           AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
+         ORDER BY clock_in_at DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(employeeId, requestedDate)
+      .first<Record<string, unknown>>();
+    if (openRecord) return openRecord;
+  }
+
+  if (missingType === "clock_in" || missingType === "both") {
+    const missingInRecord = await db
+      .prepare(
+        `SELECT *
+         FROM attendance
+         WHERE employee_id = ? AND work_date = ?
+           AND clock_in_at IS NULL AND clock_out_at IS NOT NULL
+         ORDER BY clock_out_at DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(employeeId, requestedDate)
+      .first<Record<string, unknown>>();
+    if (missingInRecord) return missingInRecord;
+  }
+
+  return db
+    .prepare(
+      `SELECT *
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ?
+       ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
+       LIMIT 1`,
+    )
+    .bind(employeeId, requestedDate)
+    .first<Record<string, unknown>>();
 }
 
 function json(request: Request, data: unknown, status = 200) {

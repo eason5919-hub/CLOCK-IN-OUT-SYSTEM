@@ -1681,7 +1681,7 @@ function pendingCorrectionCount(corrections) {
 }
 
 function localDateTimeToIso(date, time) {
-  return new Date(`${date}T${time}:00`).toISOString();
+  return new Date(`${date}T${time}:00+08:00`).toISOString();
 }
 
 function currentOpenRecord(records) {
