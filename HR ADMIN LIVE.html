@@ -234,6 +234,91 @@
       border-bottom: 1px solid var(--line);
     }
 
+    .reportControls {
+      display: flex;
+      align-items: end;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .reportControls label {
+      display: grid;
+      gap: 6px;
+      min-width: 220px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .reportControls select {
+      min-height: 42px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    .monthlyReportArea {
+      display: grid;
+      gap: 18px;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .employeeReport {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .employeeReportHead {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      background: #f7faf8;
+      font-weight: 800;
+    }
+
+    .reportTable {
+      min-width: 1160px;
+      font-size: 12px;
+    }
+
+    .reportTable th,
+    .reportTable td {
+      padding: 6px 7px;
+      border: 1px dotted #dce5e1;
+      vertical-align: middle;
+    }
+
+    .reportTable th {
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .reportTable tfoot td {
+      border-top: 2px solid var(--green-dark);
+      background: #fff;
+      font-weight: 800;
+    }
+
+    .editableCell {
+      min-width: 48px;
+      min-height: 18px;
+      outline: 0;
+      background: #fff;
+    }
+
+    .editableCell:focus {
+      background: #fff9cf;
+      box-shadow: inset 0 0 0 2px #d7ad1f;
+    }
+
     .leaveControl {
       display: grid;
       gap: 4px;
@@ -401,6 +486,21 @@
       </div>
     </section>
 
+    <section class="panel" id="monthlyReportPanel">
+      <div class="panelHead">
+        <h2>Monthly Report</h2>
+        <span id="monthlyReportStatus" class="status"></span>
+      </div>
+      <div class="reportControls">
+        <label>Month
+          <select id="reportMonthSelect"></select>
+        </label>
+        <button id="openMonthlyReportButton" type="button">Monthly Report</button>
+        <button id="closeMonthlyReportButton" class="secondary" type="button" hidden>Close Report</button>
+      </div>
+      <div id="monthlyReportArea" class="monthlyReportArea" hidden></div>
+    </section>
+
     <section class="panel">
       <div class="panelHead">
         <h2>Add Employee</h2>
@@ -521,6 +621,7 @@
     const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
     const TOKEN_KEY = "warehouseHrLiveToken";
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
+    const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
     const loginForm = document.getElementById("loginForm");
@@ -551,6 +652,11 @@
     const qrImage = document.getElementById("qrImage");
     const downloadQrLink = document.getElementById("downloadQrLink");
     const printQrButton = document.getElementById("printQrButton");
+    const reportMonthSelect = document.getElementById("reportMonthSelect");
+    const openMonthlyReportButton = document.getElementById("openMonthlyReportButton");
+    const closeMonthlyReportButton = document.getElementById("closeMonthlyReportButton");
+    const monthlyReportArea = document.getElementById("monthlyReportArea");
+    const monthlyReportStatus = document.getElementById("monthlyReportStatus");
 
     let employees = [];
     let attendance = [];
@@ -559,9 +665,12 @@
     let loading = false;
     let editingEmployeeId = "";
     let selectedAttendanceDate = todayKey();
+    let selectedReportMonth = todayKey().slice(0, 7);
+    let monthlyReportEdits = loadReportEdits();
 
     emailInput.value = "d1_racing@yahoo.com";
     attendanceDateInput.value = selectedAttendanceDate;
+    setupReportMonthOptions();
     qrImage.src = `${API_BASE}/warehouse-qr.png`;
     downloadQrLink.href = `${API_BASE}/warehouse-qr.png`;
 
@@ -671,6 +780,120 @@
 
     function todayKey() {
       return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kuala_Lumpur" });
+    }
+
+    function loadReportEdits() {
+      try {
+        return JSON.parse(localStorage.getItem(REPORT_EDIT_KEY) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function saveReportEdits() {
+      localStorage.setItem(REPORT_EDIT_KEY, JSON.stringify(monthlyReportEdits));
+    }
+
+    function setupReportMonthOptions() {
+      const start = new Date(Date.UTC(2026, 6, 1));
+      const currentParts = todayKey().split("-").map(Number);
+      const current = new Date(Date.UTC(currentParts[0], currentParts[1] - 1, 1));
+      const end = new Date(Date.UTC(Math.max(current.getUTCFullYear(), 2026) + 3, 11, 1));
+      const options = [];
+      for (let date = new Date(start); date <= end; date.setUTCMonth(date.getUTCMonth() + 1)) {
+        const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+        options.push(`<option value="${monthKey}">${escapeHtml(monthLabel(monthKey))}</option>`);
+      }
+      reportMonthSelect.innerHTML = options.join("");
+      if ([...reportMonthSelect.options].some(option => option.value === selectedReportMonth)) {
+        reportMonthSelect.value = selectedReportMonth;
+      }
+    }
+
+    function monthLabel(monthKey) {
+      const [year, month] = monthKey.split("-").map(Number);
+      return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-MY", {
+        timeZone: "UTC",
+        month: "long",
+        year: "numeric"
+      });
+    }
+
+    function monthDates(monthKey) {
+      const [year, month] = monthKey.split("-").map(Number);
+      const total = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      return Array.from({ length: total }, (_, index) => `${monthKey}-${String(index + 1).padStart(2, "0")}`);
+    }
+
+    function dateParts(dateKey) {
+      const [year, month, day] = dateKey.split("-").map(Number);
+      return new Date(Date.UTC(year, month - 1, day));
+    }
+
+    function reportDateLabel(dateKey) {
+      const date = dateParts(dateKey);
+      const day = String(date.getUTCDate()).padStart(2, "0");
+      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const year = date.getUTCFullYear();
+      const weekday = date.toLocaleDateString("en-MY", { timeZone: "UTC", weekday: "short" });
+      return `${day}-${month}-${year} ${weekday}`;
+    }
+
+    function reportTime(value) {
+      if (!value) return "";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      return date.toLocaleTimeString("en-MY", {
+        timeZone: "Asia/Kuala_Lumpur",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      }).replace(/\s/g, "");
+    }
+
+    function reportHours(minutes) {
+      const value = Number(minutes || 0);
+      return value ? (value / 60).toFixed(2) : "";
+    }
+
+    function reportEditKey(employeeId, dateKey, field) {
+      return `${selectedReportMonth}|${employeeId}|${dateKey}|${field}`;
+    }
+
+    function reportValue(employeeId, dateKey, field, fallback = "") {
+      const key = reportEditKey(employeeId, dateKey, field);
+      return Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) ? monthlyReportEdits[key] : fallback;
+    }
+
+    function editableReportCell(employeeId, dateKey, field, fallback = "", className = "") {
+      const value = reportValue(employeeId, dateKey, field, fallback);
+      return `<td class="editableCell ${className}" contenteditable="true" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
+    }
+
+    function employeeAttendanceByDate(employeeId, dateKey) {
+      const rows = attendance.filter(row => row.employee_id === employeeId && row.work_date === dateKey);
+      if (!rows.length) return null;
+      const firstIn = rows.map(row => row.clock_in_at).filter(Boolean).sort()[0] || "";
+      const outTimes = rows.map(row => row.clock_out_at).filter(Boolean).sort();
+      const lastOut = outTimes[outTimes.length - 1] || "";
+      return {
+        clockIn: firstIn,
+        clockOut: lastOut,
+        totalMinutes: rows.reduce((sum, row) => sum + Number(row.total_minutes || 0), 0),
+        lateMinutes: rows.reduce((sum, row) => sum + Number(row.late_minutes || 0), 0),
+        overtimeMinutes: rows.reduce((sum, row) => sum + Number(row.overtime_minutes || 0), 0),
+        earlyLeaveMinutes: rows.reduce((sum, row) => sum + Number(row.early_leave_minutes || 0), 0),
+      };
+    }
+
+    function employeeLeaveForDate(employeeId, dateKey) {
+      const request = leaveRequests.find(item => {
+        const status = String(item.status || "").toLowerCase();
+        return item.employee_id === employeeId && item.leave_date === dateKey && status === "approved";
+      });
+      if (!request) return "";
+      const half = request.duration === "half_day" ? "HALF " : "";
+      return `${half}${leaveTypeText(request.leave_type).toUpperCase()}`;
     }
 
     function searchable(row) {
@@ -856,12 +1079,104 @@
       attendanceCountText.textContent = `${rows.length} shown / ${dayTotal} records on ${selectedAttendanceDate}`;
     }
 
+    function renderMonthlyReport() {
+      if (monthlyReportArea.hidden) return;
+      const dates = monthDates(selectedReportMonth);
+      const employeeRows = employees.filter(employee => employee.status !== "deleted");
+      monthlyReportStatus.textContent = `${monthLabel(selectedReportMonth)} | ${employeeRows.length} employee table${employeeRows.length === 1 ? "" : "s"}`;
+
+      monthlyReportArea.innerHTML = employeeRows.map(employee => employeeMonthlyReport(employee, dates)).join("") ||
+        `<div class="empty">No employees for this monthly report.</div>`;
+    }
+
+    function employeeMonthlyReport(employee, dates) {
+      let totalWork = 0;
+      let totalOt = 0;
+      let totalDiffOt = 0;
+      let totalShort = 0;
+      const body = dates.map(dateKey => {
+        const attendanceRow = employeeAttendanceByDate(employee.id, dateKey);
+        const day = dateParts(dateKey).getUTCDay();
+        const leaveTaken = employeeLeaveForDate(employee.id, dateKey);
+        const dayType = day === 0 ? "Restday" : "Workday";
+        const work = reportValue(employee.id, dateKey, "work", reportHours(attendanceRow?.totalMinutes));
+        const overtime = reportValue(employee.id, dateKey, "overtime", reportHours(attendanceRow?.overtimeMinutes));
+        const diffOt = reportValue(employee.id, dateKey, "diffOt", "");
+        const short = reportValue(employee.id, dateKey, "short", reportHours(Number(attendanceRow?.lateMinutes || 0) + Number(attendanceRow?.earlyLeaveMinutes || 0)));
+
+        totalWork += Number.parseFloat(work) || 0;
+        totalOt += Number.parseFloat(overtime) || 0;
+        totalDiffOt += Number.parseFloat(diffOt) || 0;
+        totalShort += Number.parseFloat(short) || 0;
+
+        return `
+          <tr>
+            <td>${escapeHtml(reportDateLabel(dateKey))}</td>
+            ${editableReportCell(employee.id, dateKey, "dayType", dayType)}
+            ${editableReportCell(employee.id, dateKey, "schedule", "1")}
+            ${editableReportCell(employee.id, dateKey, "in", reportTime(attendanceRow?.clockIn))}
+            ${editableReportCell(employee.id, dateKey, "break", "")}
+            ${editableReportCell(employee.id, dateKey, "resume", "")}
+            ${editableReportCell(employee.id, dateKey, "out", reportTime(attendanceRow?.clockOut))}
+            ${editableReportCell(employee.id, dateKey, "work", work)}
+            ${editableReportCell(employee.id, dateKey, "overtime", overtime)}
+            ${editableReportCell(employee.id, dateKey, "diffOt", diffOt)}
+            ${editableReportCell(employee.id, dateKey, "short", short)}
+            ${editableReportCell(employee.id, dateKey, "leaveTaken", leaveTaken)}
+            ${editableReportCell(employee.id, dateKey, "remark", "")}
+          </tr>
+        `;
+      }).join("");
+
+      return `
+        <article class="employeeReport">
+          <div class="employeeReportHead">
+            <span>User ID: ${escapeHtml(employee.employee_code || employee.id)}</span>
+            <span>Name: ${escapeHtml(employee.full_name || "-")}</span>
+          </div>
+          <div class="tableWrap">
+            <table class="reportTable">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Day Type</th>
+                  <th>Sche</th>
+                  <th>In</th>
+                  <th>Break</th>
+                  <th>Resume</th>
+                  <th>Out</th>
+                  <th>Work</th>
+                  <th>Overtime</th>
+                  <th>Diff OT</th>
+                  <th>Short</th>
+                  <th>Leave Taken</th>
+                  <th>Remark</th>
+                </tr>
+              </thead>
+              <tbody>${body}</tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="7">Total</td>
+                  <td>${totalWork.toFixed(2)}</td>
+                  <td>${totalOt.toFixed(2)}</td>
+                  <td>${totalDiffOt.toFixed(2)}</td>
+                  <td>${totalShort.toFixed(2)}</td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </article>
+      `;
+    }
+
     function renderAll() {
       renderMetrics();
       renderEmployees();
       renderLeaveRequests();
       renderCorrections();
       renderAttendance();
+      renderMonthlyReport();
     }
 
     function setEditMode(employee) {
@@ -1040,6 +1355,30 @@
     attendanceDateInput.addEventListener("change", () => {
       selectedAttendanceDate = attendanceDateInput.value || todayKey();
       renderAll();
+    });
+    openMonthlyReportButton.addEventListener("click", () => {
+      selectedReportMonth = reportMonthSelect.value || selectedReportMonth;
+      monthlyReportArea.hidden = false;
+      closeMonthlyReportButton.hidden = false;
+      renderMonthlyReport();
+      monthlyReportArea.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    closeMonthlyReportButton.addEventListener("click", () => {
+      monthlyReportArea.hidden = true;
+      closeMonthlyReportButton.hidden = true;
+      monthlyReportStatus.textContent = "";
+    });
+    reportMonthSelect.addEventListener("change", () => {
+      selectedReportMonth = reportMonthSelect.value || selectedReportMonth;
+      if (!monthlyReportArea.hidden) renderMonthlyReport();
+    });
+    monthlyReportArea.addEventListener("input", event => {
+      const cell = event.target.closest("[data-report-field]");
+      if (!cell) return;
+      const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
+      monthlyReportEdits[key] = cell.textContent.trim();
+      saveReportEdits();
+      setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
     });
     refreshButton.addEventListener("click", () => loadLiveData(true));
     window.addEventListener("focus", () => token() && loadLiveData(true));
