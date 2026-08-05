@@ -86,7 +86,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.doesNotMatch(clockRoute, /Clock out is required before the next clock in/);
   assert.match(script, /const fieldUpdatedAt = field === "clockIn" \? row\.clockInUpdatedAt : row\.clockOutUpdatedAt/);
   assert.match(script, /parseLiveTimestamp\(b\.reviewedAt \|\| b\.createdAt \|\| ""\)/);
-  assert.match(script, /sameClockValue\(correction\[key\], row\[field\]\) \|\| isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, fieldUpdatedAt \|\| row\.updatedAt \|\| row\.createdAt\)/);
+  assert.match(script, /sameClockValue\(correction\[key\], row\[field\]\) && isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, fieldUpdatedAt \|\| row\.updatedAt \|\| row\.createdAt\)/);
+  assert.match(employeeSummaryRoute, /sameLiveInstant\(correctionTime, rowTime\) && isSameOrNewer\(correctionReviewedAt, fieldUpdatedAt\)/);
   assert.doesNotMatch(script, /return correction\[key\] === row\[field\]/);
   assert.match(employeeSummaryRoute, /r\.clock_in_at IS NOT NULL OR COALESCE\(o\.has_clock_in_override, 0\) = 1/);
   assert.match(employeeSummaryRoute, /r\.clock_out_at IS NOT NULL OR COALESCE\(o\.has_clock_out_override, 0\) = 1/);

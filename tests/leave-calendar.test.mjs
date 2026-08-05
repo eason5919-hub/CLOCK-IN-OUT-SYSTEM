@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-fast-qr-scan/);
+  assert.match(indexHtml, /script\.js\?v=20260805-neutral-rescan/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);

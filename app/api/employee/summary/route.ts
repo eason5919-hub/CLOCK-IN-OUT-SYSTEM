@@ -272,7 +272,7 @@ function reportClockMark(row: Record<string, unknown>, field: "clock_in" | "cloc
     const rowTime = String(row[valueKey] || "");
     const correctionReviewedAt = String(correction.reviewed_at || correction.created_at || "");
     const fieldUpdatedAt = String(row[updatedKey] || row.updated_at || row.created_at || "");
-    if (sameLiveInstant(correctionTime, rowTime) || isSameOrNewer(correctionReviewedAt, fieldUpdatedAt)) {
+    if (sameLiveInstant(correctionTime, rowTime) && isSameOrNewer(correctionReviewedAt, fieldUpdatedAt)) {
       return "corrected";
     }
   }
