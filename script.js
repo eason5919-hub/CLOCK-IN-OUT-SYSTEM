@@ -493,6 +493,9 @@ function mapLiveAttendance(row) {
     clockOutUpdatedAt: row.clock_out_updated_at || row.updated_at || "",
     reportEditedClockIn: Boolean(Number(row.report_edited_clock_in || 0)),
     reportEditedClockOut: Boolean(Number(row.report_edited_clock_out || 0)),
+    hasReportMarks: Object.prototype.hasOwnProperty.call(row, "report_clock_in_mark") || Object.prototype.hasOwnProperty.call(row, "report_clock_out_mark"),
+    clockInMark: row.report_clock_in_mark || "",
+    clockOutMark: row.report_clock_out_mark || "",
     gps: liveGpsLabel(row),
   };
 }
@@ -1064,6 +1067,12 @@ function attendanceDisplayTimes(row, corrections = []) {
 }
 
 function attendanceEditMarks(row, corrections = []) {
+  if (row.hasReportMarks) {
+    return {
+      clockIn: row.clockInMark || "",
+      clockOut: row.clockOutMark || "",
+    };
+  }
   const correctedIn = approvedCorrectionForField(row, "clockIn", corrections);
   const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
   return {

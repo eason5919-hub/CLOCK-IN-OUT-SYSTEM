@@ -195,6 +195,13 @@ export async function GET(request: Request) {
     .bind(session.employee_id)
     .all();
 
+  const correctionRows = (corrections.results || []) as Array<Record<string, unknown>>;
+  const attendanceRows = ((attendance.results || []) as Array<Record<string, unknown>>).map((row) => ({
+    ...row,
+    report_clock_in_mark: reportClockMark(row, "clock_in", correctionRows),
+    report_clock_out_mark: reportClockMark(row, "clock_out", correctionRows),
+  }));
+
   const leaveRequests = await db
     .prepare(
       `SELECT id, leave_type, leave_date, duration, reason, status, admin_note, created_at
@@ -207,7 +214,7 @@ export async function GET(request: Request) {
 
   return json(request, {
     employee,
-    attendance: attendance.results,
+    attendance: attendanceRows,
     corrections: corrections.results,
     leaveRequests: leaveRequests.results,
   });
@@ -219,6 +226,52 @@ export async function OPTIONS(request: Request) {
 
 function json(request: Request, data: unknown, status = 200) {
   return Response.json(data, { status, headers: corsHeaders(request) });
+}
+
+function reportClockMark(row: Record<string, unknown>, field: "clock_in" | "clock_out", corrections: Array<Record<string, unknown>>) {
+  const dateKey = String(row.work_date || "");
+  const valueKey = field === "clock_in" ? "clock_in_at" : "clock_out_at";
+  const editedKey = field === "clock_in" ? "report_edited_clock_in" : "report_edited_clock_out";
+  const updatedKey = field === "clock_in" ? "clock_in_updated_at" : "clock_out_updated_at";
+  const requestKey = field === "clock_in" ? "requested_clock_in_at" : "requested_clock_out_at";
+  const correction = corrections
+    .filter((item) => (
+      String(item.requested_date || "") === dateKey &&
+      String(item.status || "").toLowerCase() === "approved" &&
+      Boolean(item[requestKey])
+    ))
+    .sort((a, b) => parseLiveTimestamp(String(b.reviewed_at || b.created_at || "")) - parseLiveTimestamp(String(a.reviewed_at || a.created_at || "")))[0];
+  if (correction) {
+    const correctionTime = String(correction[requestKey] || "");
+    const rowTime = String(row[valueKey] || "");
+    const correctionReviewedAt = String(correction.reviewed_at || correction.created_at || "");
+    const fieldUpdatedAt = String(row[updatedKey] || row.updated_at || row.created_at || "");
+    if (sameLiveInstant(correctionTime, rowTime) || isSameOrNewer(correctionReviewedAt, fieldUpdatedAt)) {
+      return "corrected";
+    }
+  }
+  return Number(row[editedKey] || 0) && row[valueKey] ? "edited" : "";
+}
+
+function parseLiveTimestamp(value: string) {
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+function isSameOrNewer(left: string, right: string) {
+  const leftMs = parseLiveTimestamp(left);
+  const rightMs = parseLiveTimestamp(right);
+  if (!leftMs) return false;
+  if (!rightMs) return true;
+  return leftMs >= rightMs;
+}
+
+function sameLiveInstant(left: string, right: string) {
+  if (!left || !right) return false;
+  const leftMs = Date.parse(left);
+  const rightMs = Date.parse(right);
+  if (Number.isNaN(leftMs) || Number.isNaN(rightMs)) return left === right;
+  return leftMs === rightMs;
 }
 
 function corsHeaders(request: Request) {
