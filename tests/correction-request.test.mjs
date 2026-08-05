@@ -58,7 +58,10 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminRoute, /const existingRecord = await findTargetAttendanceForCorrection\(db, correction\)/);
   assert.match(adminRoute, /action: "save_report_attendance_times"/);
   assert.match(adminRoute, /source = 'admin_report_edit'/);
-  assert.match(adminRoute, /source LIKE 'admin_report_edit%'/);
+  assert.match(adminRoute, /source = 'admin_report_edit_archived'/);
+  assert.match(adminRoute, /source <> 'admin_report_edit_archived'/);
+  assert.match(adminRoute, /function archiveReportAttendanceRows/);
+  assert.match(adminRoute, /let previousRegularMinutes = 0/);
   assert.match(adminRoute, /function reportFieldOverrides/);
   assert.match(adminRoute, /admin_report_edit_in/);
   assert.match(adminRoute, /admin_report_edit_out/);

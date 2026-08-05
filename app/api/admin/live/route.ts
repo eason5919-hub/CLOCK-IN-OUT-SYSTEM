@@ -131,6 +131,7 @@ async function liveData(db: D1Database, request: Request) {
         `SELECT a.*, e.employee_code, e.full_name
          FROM attendance a
          JOIN employees e ON e.id = a.employee_id
+         WHERE a.source <> 'admin_report_edit_archived'
          ORDER BY a.work_date DESC, a.clock_in_at DESC, a.updated_at DESC, e.employee_code`,
       )
       .all(),
@@ -576,18 +577,10 @@ async function saveReportAttendanceTimes(
     const dateKey = row.dateKey?.trim();
     if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
 
-    await db
-      .prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date = ? AND source LIKE 'admin_report_edit%'")
-      .bind(payload.employeeId, dateKey)
-      .run();
+    await archiveReportAttendanceRows(db, payload.employeeId, dateKey);
 
     const segments = reportTimeSegments(dateKey, row);
-    let previousRegularMinutes = await getPreviousRegularMinutesExcludingSource(
-      db,
-      payload.employeeId,
-      dateKey,
-      "admin_report_edit",
-    );
+    let previousRegularMinutes = 0;
 
     for (const segment of segments) {
       const schedule = await db
@@ -675,7 +668,13 @@ async function restoreReportAttendanceTimes(
   }
 
   await db
-    .prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date LIKE ? AND source LIKE 'admin_report_edit%'")
+    .prepare(
+      `UPDATE attendance
+       SET source = 'admin_report_edit_archived', updated_at = CURRENT_TIMESTAMP
+       WHERE employee_id = ?
+         AND work_date LIKE ?
+         AND source IN ('admin_report_edit', 'admin_report_edit_in', 'admin_report_edit_out')`,
+    )
     .bind(payload.employeeId, `${payload.monthKey}-%`)
     .run();
 
@@ -695,6 +694,19 @@ async function restoreReportAttendanceTimes(
     .run();
 
   return json(request, { ok: true });
+}
+
+async function archiveReportAttendanceRows(db: D1Database, employeeId: string, dateKey: string) {
+  await db
+    .prepare(
+      `UPDATE attendance
+       SET source = 'admin_report_edit_archived', updated_at = CURRENT_TIMESTAMP
+       WHERE employee_id = ?
+         AND work_date = ?
+         AND source IN ('admin_report_edit', 'admin_report_edit_in', 'admin_report_edit_out')`,
+    )
+    .bind(employeeId, dateKey)
+    .run();
 }
 
 function reportTimeSegments(
