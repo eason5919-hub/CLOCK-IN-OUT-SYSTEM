@@ -1229,10 +1229,14 @@
       const outRows = rows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
       const inRow = inRows[0] || null;
       const outRow = outRows[outRows.length - 1] || null;
-      const rowFirstIn = inMarker ? inMarker.clock_in_at || "" : inRow?.clock_in_at || "";
-      const rowLastOut = outMarker ? outMarker.clock_out_at || "" : outRow?.clock_out_at || "";
-      const inUpdatedAt = inMarker?.updated_at || inMarker?.created_at || inRow?.updated_at || inRow?.created_at || "";
-      const outUpdatedAt = outMarker?.updated_at || outMarker?.created_at || outRow?.updated_at || outRow?.created_at || "";
+      const inMarkerUpdatedAt = inMarker?.updated_at || inMarker?.created_at || "";
+      const outMarkerUpdatedAt = outMarker?.updated_at || outMarker?.created_at || "";
+      const inRowUpdatedAt = inRow?.updated_at || inRow?.created_at || "";
+      const outRowUpdatedAt = outRow?.updated_at || outRow?.created_at || "";
+      const rowFirstIn = inMarker && !isSameOrNewer(inRowUpdatedAt, inMarkerUpdatedAt) ? inMarker.clock_in_at || "" : inRow?.clock_in_at || "";
+      const rowLastOut = outMarker && !isSameOrNewer(outRowUpdatedAt, outMarkerUpdatedAt) ? outMarker.clock_out_at || "" : outRow?.clock_out_at || "";
+      const inUpdatedAt = isSameOrNewer(inRowUpdatedAt, inMarkerUpdatedAt) ? inRowUpdatedAt : inMarkerUpdatedAt;
+      const outUpdatedAt = isSameOrNewer(outRowUpdatedAt, outMarkerUpdatedAt) ? outRowUpdatedAt : outMarkerUpdatedAt;
       const correctionInWins = Boolean(approvedTimes.clockIn) && (sameReportInstant(approvedTimes.clockIn, rowFirstIn) || isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt));
       const correctionOutWins = Boolean(approvedTimes.clockOut) && (sameReportInstant(approvedTimes.clockOut, rowLastOut) || isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt));
       const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;

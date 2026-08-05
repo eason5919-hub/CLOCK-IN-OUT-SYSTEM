@@ -154,7 +154,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /const inRow = inRows\[0\] \|\| null/);
   assert.match(adminHtml, /const outRow = outRows\[outRows\.length - 1\] \|\| null/);
   assert.match(adminHtml, /function isReportFieldMarker/);
-  assert.match(adminHtml, /const rowLastOut = outMarker \? outMarker\.clock_out_at \|\| "" : outRow\?\.clock_out_at \|\| ""/);
+  assert.match(adminHtml, /const rowFirstIn = inMarker && !isSameOrNewer\(inRowUpdatedAt, inMarkerUpdatedAt\) \? inMarker\.clock_in_at \|\| "" : inRow\?\.clock_in_at \|\| ""/);
+  assert.match(adminHtml, /const rowLastOut = outMarker && !isSameOrNewer\(outRowUpdatedAt, outMarkerUpdatedAt\) \? outMarker\.clock_out_at \|\| "" : outRow\?\.clock_out_at \|\| ""/);
   assert.match(adminHtml, /const lastOut = correctionOutWins \? approvedTimes\.clockOut : rowLastOut/);
   assert.match(adminHtml, /manualEdit/);
   assert.match(adminHtml, /correctedTime/);
