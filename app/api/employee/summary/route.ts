@@ -47,10 +47,31 @@ export async function GET(request: Request) {
 
   const attendance = await db
     .prepare(
-      `WITH report_days AS (
-         SELECT DISTINCT work_date
+      `WITH base_rows AS (
+         SELECT MIN(id) AS id,
+                work_date,
+                MIN(clock_in_at) AS clock_in_at,
+                MAX(clock_out_at) AS clock_out_at,
+                SUM(COALESCE(total_minutes, 0)) AS total_minutes,
+                MAX(COALESCE(late_minutes, 0)) AS late_minutes,
+                MAX(COALESCE(early_leave_minutes, 0)) AS early_leave_minutes,
+                SUM(COALESCE(overtime_minutes, 0)) AS overtime_minutes,
+                CASE
+                  WHEN MAX(COALESCE(late_minutes, 0)) > 0 THEN 'late'
+                  WHEN MAX(COALESCE(early_leave_minutes, 0)) > 0 THEN 'early_leave'
+                  WHEN SUM(COALESCE(overtime_minutes, 0)) > 0 THEN 'ot'
+                  ELSE 'present'
+                END AS status,
+                MAX(clock_in_accuracy) AS clock_in_accuracy,
+                MAX(clock_in_distance_meters) AS clock_in_distance_meters,
+                MAX(clock_out_accuracy) AS clock_out_accuracy,
+                MAX(clock_out_distance_meters) AS clock_out_distance_meters,
+                MAX(source) AS source,
+                MIN(created_at) AS created_at,
+                MAX(updated_at) AS updated_at
          FROM attendance
-         WHERE employee_id = ? AND source = 'admin_report_edit'
+         WHERE employee_id = ? AND source <> 'admin_report_edit'
+         GROUP BY work_date
        ),
        report_rows AS (
          SELECT MIN(id) AS id,
@@ -79,26 +100,42 @@ export async function GET(request: Request) {
          FROM attendance
          WHERE employee_id = ? AND source = 'admin_report_edit'
          GROUP BY work_date
+       ),
+       day_keys AS (
+         SELECT work_date FROM base_rows
+         UNION
+         SELECT work_date FROM report_rows
        )
        SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
               early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
-              source, created_at, updated_at,
-              updated_at AS clock_in_updated_at,
-              updated_at AS clock_out_updated_at
-       FROM attendance
-       WHERE employee_id = ?
-         AND source <> 'admin_report_edit'
-         AND work_date NOT IN (SELECT work_date FROM report_days)
-       UNION ALL
-       SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
-              early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
-              clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
               source, created_at, updated_at, clock_in_updated_at, clock_out_updated_at
-       FROM report_rows
+       FROM (
+         SELECT COALESCE(r.id, b.id) AS id,
+                d.work_date,
+                COALESCE(r.clock_in_at, b.clock_in_at) AS clock_in_at,
+                COALESCE(r.clock_out_at, b.clock_out_at) AS clock_out_at,
+                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.total_minutes ELSE b.total_minutes END AS total_minutes,
+                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.late_minutes ELSE b.late_minutes END AS late_minutes,
+                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.early_leave_minutes ELSE b.early_leave_minutes END AS early_leave_minutes,
+                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.overtime_minutes ELSE b.overtime_minutes END AS overtime_minutes,
+                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.status ELSE b.status END AS status,
+                COALESCE(r.clock_in_accuracy, b.clock_in_accuracy) AS clock_in_accuracy,
+                COALESCE(r.clock_in_distance_meters, b.clock_in_distance_meters) AS clock_in_distance_meters,
+                COALESCE(r.clock_out_accuracy, b.clock_out_accuracy) AS clock_out_accuracy,
+                COALESCE(r.clock_out_distance_meters, b.clock_out_distance_meters) AS clock_out_distance_meters,
+                CASE WHEN r.work_date IS NOT NULL THEN 'admin_report_edit' ELSE b.source END AS source,
+                COALESCE(r.created_at, b.created_at) AS created_at,
+                COALESCE(r.updated_at, b.updated_at) AS updated_at,
+                COALESCE(r.clock_in_updated_at, b.updated_at) AS clock_in_updated_at,
+                COALESCE(r.clock_out_updated_at, b.updated_at) AS clock_out_updated_at
+         FROM day_keys d
+         LEFT JOIN base_rows b ON b.work_date = d.work_date
+         LEFT JOIN report_rows r ON r.work_date = d.work_date
+       )
        ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC, created_at DESC`,
     )
-    .bind(session.employee_id, session.employee_id, session.employee_id)
+    .bind(session.employee_id, session.employee_id)
     .all();
 
   const corrections = await db
