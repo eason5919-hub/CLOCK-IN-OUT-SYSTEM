@@ -48,8 +48,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(script, /clockInUpdatedAt: row\.clock_in_updated_at \|\| row\.updated_at \|\| ""/);
   assert.match(script, /clockOutUpdatedAt: row\.clock_out_updated_at \|\| row\.updated_at \|\| ""/);
   assert.match(script, /const fieldUpdatedAt = field === "clockIn" \? row\.clockInUpdatedAt : row\.clockOutUpdatedAt/);
-  assert.match(script, /sameClockValue\(correction\[key\], row\[field\]\) \|\| isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, fieldUpdatedAt \|\| row\.createdAt\)/);
-  assert.match(script, /if \(row\.source === "admin_report_edit"\)/);
+  assert.match(script, /sameClockValue\(correction\[key\], row\[field\]\) \|\| isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, fieldUpdatedAt \|\| row\.updatedAt \|\| row\.createdAt\)/);
+  assert.doesNotMatch(script, /return correction\[key\] === row\[field\]/);
   assert.match(script, /clockOut: correctedOut \? "corrected" : row\.clockOut \? "edited" : ""/);
   assert.match(script, /const display = attendanceDisplayTimes\(row, corrections\)/);
   assert.match(script, /class="time-mark corrected"/);

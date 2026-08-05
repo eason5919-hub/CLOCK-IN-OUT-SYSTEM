@@ -1007,12 +1007,7 @@ function approvedCorrectionForField(row, field, corrections = []) {
   return corrections
     .filter((correction) => correction.date === row.date && correction.status === "Approved" && correction[key])
     .sort((a, b) => Date.parse(b.reviewedAt || b.createdAt || "") - Date.parse(a.reviewedAt || a.createdAt || ""))
-    .find((correction) => {
-      if (row.source === "admin_report_edit") {
-        return sameClockValue(correction[key], row[field]) || isSameOrNewer(correction.reviewedAt || correction.createdAt, fieldUpdatedAt || row.createdAt);
-      }
-      return correction[key] === row[field];
-    });
+    .find((correction) => sameClockValue(correction[key], row[field]) || isSameOrNewer(correction.reviewedAt || correction.createdAt, fieldUpdatedAt || row.updatedAt || row.createdAt));
 }
 
 function attendanceDisplayTimes(row, corrections = []) {
