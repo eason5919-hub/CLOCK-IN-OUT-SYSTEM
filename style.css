@@ -526,6 +526,9 @@ h3 {
 .month-day.leave-note small {
   color: var(--blue);
   font-weight: 900;
+  overflow-wrap: normal;
+  white-space: pre-line;
+  word-break: normal;
 }
 
 .month-day.selected {

@@ -965,7 +965,7 @@ function calendarLeaveLabel(request) {
   const type = String(request.type || "").toLowerCase();
   const durationLabel = duration.includes("half") ? "Half" : "Full";
   const typeLabel = type.includes("mc") ? "MC" : "AL";
-  return `${durationLabel} ${typeLabel}`;
+  return `${durationLabel}\n${typeLabel}`;
 }
 
 function calendarRecordSummary(records, date, today, corrections = []) {
@@ -978,7 +978,7 @@ function calendarRecordSummary(records, date, today, corrections = []) {
   const present = displayRecords.some((row) => row.clockIn && row.clockOut);
 
   return {
-    label: missed ? "Missed" : present ? "Present" : "-",
+    label: missed ? "Missed" : present ? "OK" : "-",
     tone: missed ? "missed" : present ? "present" : "",
   };
 }

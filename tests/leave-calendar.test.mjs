@@ -40,7 +40,7 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
   assert.match(script, /const displayRecords = records\.map\(\(row\) => attendanceDisplayTimes\(row, corrections\)\)/);
   assert.match(script, /const present = displayRecords\.some\(\(row\) => row\.clockIn && row\.clockOut\)/);
-  assert.match(script, /label: missed \? "Missed" : present \? "Present" : "-"/);
+  assert.match(script, /label: missed \? "Missed" : present \? "OK" : "-"/);
   assert.match(script, /tone: missed \? "missed" : present \? "present" : ""/);
   assert.doesNotMatch(script, /labels\.push\("Late"\)/);
   assert.doesNotMatch(script, /labels\.push\("In"\)/);
@@ -62,13 +62,17 @@ test("employee month dashboard can show current and previous month only", async 
 });
 
 test("employee month dashboard uses short AL and MC labels", async () => {
-  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+  const [script, css] = await Promise.all([
+    readFile(new URL("../script.js", import.meta.url), "utf8"),
+    readFile(new URL("../style.css", import.meta.url), "utf8"),
+  ]);
 
   assert.match(script, /function calendarLeaveLabel/);
   assert.match(script, /"AL"/);
   assert.match(script, /"MC"/);
-  assert.match(script, /`\$\{durationLabel\} \$\{typeLabel\}`/);
+  assert.match(script, /`\$\{durationLabel\}\\n\$\{typeLabel\}`/);
   assert.doesNotMatch(script, /label: request\.type \|\| "Leave\/MC"/);
+  assert.match(css, /\.month-day\.leave-note small[\s\S]*white-space: pre-line/);
 });
 
 test("employee GPS display shows warehouse distance and does not fake fallback samples", async () => {
