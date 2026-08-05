@@ -761,9 +761,12 @@
 
     async function api(path, options = {}) {
       const savedToken = token();
-      const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-      if (savedToken) {
-        headers.Authorization = `Bearer ${savedToken}`;
+      const headers = { ...(options.headers || {}) };
+      if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "text/plain;charset=UTF-8";
+      let body = options.body;
+      if (savedToken && body) {
+        const payload = JSON.parse(body);
+        body = JSON.stringify({ ...payload, hrToken: savedToken });
       }
 
       for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -771,6 +774,7 @@
           const response = await fetch(`${API_BASE}${path}`, {
             ...options,
             headers,
+            body,
             cache: "no-store"
           });
 
@@ -1724,7 +1728,10 @@
       }
       loading = true;
       try {
-        const data = await api(`/api/admin/live?refresh=${Date.now()}`);
+        const data = await api("/api/admin/live", {
+          method: "POST",
+          body: JSON.stringify({ action: "load_live_data", refresh: Date.now() })
+        });
         employees = Array.isArray(data.employees) ? data.employees : [];
         attendance = Array.isArray(data.attendance) ? data.attendance : [];
         leaveRequests = Array.isArray(data.leaveRequests) ? data.leaveRequests : [];

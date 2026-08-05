@@ -2,6 +2,7 @@ import { ensureDatabase, getD1, isAdminSession } from "../../../../db/runtime";
 import { calculateAttendanceTotals, localDayOfWeek } from "../../../../db/attendance-calculations";
 
 type AdminAction =
+  | { action: "load_live_data"; hrToken?: string; refresh?: number }
   | {
       action: "add_employee";
       employeeCode?: string;
@@ -45,74 +46,7 @@ export async function GET(request: Request) {
     const auth = await requireAdmin(db, request);
     if ("error" in auth) return json(request, { error: auth.error }, auth.status);
 
-    const [employees, attendance, corrections, leaveRequests, auditLogs] = await Promise.all([
-      db
-        .prepare(
-          `SELECT e.id, e.employee_code, e.full_name, e.department_id,
-                  COALESCE(dep.name, e.department_id) AS department_name,
-                  e.position, e.phone,
-                  e.leave_entitlement_days,
-                  COALESCE(leave_totals.taken_days, 0) AS leave_taken_days,
-                  MAX(e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0), 0) AS leave_remaining_days,
-                  e.email, e.status, e.created_at,
-                  d.id AS device_id, d.device_model, d.status AS device_status,
-                  d.registered_at, d.last_seen_at
-           FROM employees e
-           LEFT JOIN departments dep ON dep.id = e.department_id
-           LEFT JOIN devices d ON d.employee_id = e.id AND d.status = 'registered'
-           LEFT JOIN (
-             SELECT employee_id,
-                    SUM(CASE duration WHEN 'half_day' THEN 0.5 ELSE 1 END) AS taken_days
-             FROM leave_requests
-             WHERE status = 'approved' AND leave_type = 'leave'
-             GROUP BY employee_id
-           ) leave_totals ON leave_totals.employee_id = e.id
-           WHERE e.status <> 'deleted'
-           ORDER BY e.employee_code`,
-        )
-        .all(),
-      db
-        .prepare(
-          `SELECT a.*, e.employee_code, e.full_name
-           FROM attendance a
-           JOIN employees e ON e.id = a.employee_id
-           ORDER BY a.work_date DESC, a.clock_in_at DESC, a.updated_at DESC, e.employee_code`,
-        )
-        .all(),
-      db
-        .prepare(
-          `SELECT c.*, e.employee_code, e.full_name
-           FROM attendance_corrections c
-           JOIN employees e ON e.id = c.employee_id
-          ORDER BY c.created_at DESC`,
-        )
-        .all(),
-      db
-        .prepare(
-          `SELECT l.*, e.employee_code, e.full_name
-           FROM leave_requests l
-           JOIN employees e ON e.id = l.employee_id
-           WHERE e.status <> 'deleted'
-           ORDER BY l.created_at DESC`,
-        )
-        .all(),
-      db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 30").all(),
-    ]);
-
-    return json(request, {
-      employees: employees.results ?? [],
-      attendance: attendance.results ?? [],
-      corrections: corrections.results ?? [],
-      leaveRequests: leaveRequests.results ?? [],
-      auditLogs: auditLogs.results ?? [],
-      qrToken: "WAREHOUSE-MAIN-QR",
-      warehouse: {
-        latitude: 2.9850965,
-        longitude: 101.7700882,
-        radiusMeters: 100,
-      },
-      generatedAt: new Date().toISOString(),
-    });
+    return liveData(db, request);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
     return json(request, { error: message }, 500);
@@ -123,10 +57,13 @@ export async function POST(request: Request) {
   try {
     const db = getD1();
     await ensureDatabase(db);
-    const auth = await requireAdmin(db, request);
+    const payload = (await request.json()) as AdminAction;
+    const auth = await requireAdmin(db, request, "hrToken" in payload ? payload.hrToken : undefined);
     if ("error" in auth) return json(request, { error: auth.error }, auth.status);
 
-    const payload = (await request.json()) as AdminAction;
+    if (payload.action === "load_live_data") {
+      return liveData(db, request);
+    }
     if (payload.action === "add_employee") {
       return addEmployee(db, request, payload);
     }
@@ -160,6 +97,77 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : "Unexpected error";
     return json(request, { error: message }, 500);
   }
+}
+
+async function liveData(db: D1Database, request: Request) {
+  const [employees, attendance, corrections, leaveRequests, auditLogs] = await Promise.all([
+    db
+      .prepare(
+        `SELECT e.id, e.employee_code, e.full_name, e.department_id,
+                COALESCE(dep.name, e.department_id) AS department_name,
+                e.position, e.phone,
+                e.leave_entitlement_days,
+                COALESCE(leave_totals.taken_days, 0) AS leave_taken_days,
+                MAX(e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0), 0) AS leave_remaining_days,
+                e.email, e.status, e.created_at,
+                d.id AS device_id, d.device_model, d.status AS device_status,
+                d.registered_at, d.last_seen_at
+         FROM employees e
+         LEFT JOIN departments dep ON dep.id = e.department_id
+         LEFT JOIN devices d ON d.employee_id = e.id AND d.status = 'registered'
+         LEFT JOIN (
+           SELECT employee_id,
+                  SUM(CASE duration WHEN 'half_day' THEN 0.5 ELSE 1 END) AS taken_days
+           FROM leave_requests
+           WHERE status = 'approved' AND leave_type = 'leave'
+           GROUP BY employee_id
+         ) leave_totals ON leave_totals.employee_id = e.id
+         WHERE e.status <> 'deleted'
+         ORDER BY e.employee_code`,
+      )
+      .all(),
+    db
+      .prepare(
+        `SELECT a.*, e.employee_code, e.full_name
+         FROM attendance a
+         JOIN employees e ON e.id = a.employee_id
+         ORDER BY a.work_date DESC, a.clock_in_at DESC, a.updated_at DESC, e.employee_code`,
+      )
+      .all(),
+    db
+      .prepare(
+        `SELECT c.*, e.employee_code, e.full_name
+         FROM attendance_corrections c
+         JOIN employees e ON e.id = c.employee_id
+        ORDER BY c.created_at DESC`,
+      )
+      .all(),
+    db
+      .prepare(
+        `SELECT l.*, e.employee_code, e.full_name
+         FROM leave_requests l
+         JOIN employees e ON e.id = l.employee_id
+         WHERE e.status <> 'deleted'
+         ORDER BY l.created_at DESC`,
+      )
+      .all(),
+    db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 30").all(),
+  ]);
+
+  return json(request, {
+    employees: employees.results ?? [],
+    attendance: attendance.results ?? [],
+    corrections: corrections.results ?? [],
+    leaveRequests: leaveRequests.results ?? [],
+    auditLogs: auditLogs.results ?? [],
+    qrToken: "WAREHOUSE-MAIN-QR",
+    warehouse: {
+      latitude: 2.9850965,
+      longitude: 101.7700882,
+      radiusMeters: 100,
+    },
+    generatedAt: new Date().toISOString(),
+  });
 }
 
 async function addEmployee(db: D1Database, request: Request, payload: Extract<AdminAction, { action: "add_employee" }>) {
@@ -835,9 +843,9 @@ async function getPreviousRegularMinutesExcludingSource(
   }, 0);
 }
 
-async function requireAdmin(db: D1Database, request: Request) {
+async function requireAdmin(db: D1Database, request: Request, bodyToken = "") {
   const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : bodyToken.trim();
   if (!token) return { error: "Admin login is required.", status: 401 as const };
 
   const session = await db

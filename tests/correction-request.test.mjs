@@ -77,9 +77,17 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminRoute, /monthly_report_time_restore/);
   assert.match(adminRoute, /SET attendance_id = \?, status = \?/);
   assert.match(adminRoute, /let reviewedAttendanceId = correction\.attendance_id/);
+  assert.match(adminRoute, /action: "load_live_data"/);
+  assert.match(adminRoute, /requireAdmin\(db, request, "hrToken" in payload \? payload\.hrToken : undefined\)/);
+  assert.match(adminRoute, /bodyToken\.trim\(\)/);
+  assert.doesNotMatch(adminRoute, /searchParams\.get\("hrToken"\)/);
   assert.match(adminHtml, /function approvedCorrectionTimes/);
   assert.match(adminHtml, /function wait\(ms\)/);
   assert.match(adminHtml, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
+  assert.match(adminHtml, /body = JSON\.stringify\(\{ \.\.\.payload, hrToken: savedToken \}\)/);
+  assert.match(adminHtml, /action: "load_live_data"/);
+  assert.match(adminHtml, /text\/plain;charset=UTF-8/);
+  assert.doesNotMatch(adminHtml, /headers\.Authorization/);
   assert.match(adminHtml, /Cannot connect to live database\. Click Refresh again\./);
   assert.match(adminHtml, /async function loadLiveData\(force = false, showError = false\)/);
   assert.match(adminHtml, /if \(showError \|\| !hasExistingData\)/);
