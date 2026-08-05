@@ -1053,15 +1053,9 @@ function attendanceDisplayTimes(row, corrections = []) {
 function attendanceEditMarks(row, corrections = []) {
   const correctedIn = approvedCorrectionForField(row, "clockIn", corrections);
   const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
-  if (row.source === "admin_report_edit") {
-    return {
-      clockIn: correctedIn ? "corrected" : row.reportEditedClockIn && row.clockIn ? "edited" : "",
-      clockOut: correctedOut ? "corrected" : row.reportEditedClockOut && row.clockOut ? "edited" : "",
-    };
-  }
   return {
-    clockIn: correctedIn ? "corrected" : row.source === "admin_adjustment" ? "edited" : "",
-    clockOut: correctedOut ? "corrected" : row.source === "admin_adjustment" ? "edited" : "",
+    clockIn: correctedIn ? "corrected" : "",
+    clockOut: correctedOut ? "corrected" : "",
   };
 }
 
