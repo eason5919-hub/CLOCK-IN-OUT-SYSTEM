@@ -1881,7 +1881,7 @@ function normalizePhone(value) {
 
 function formatLiveTime(value) {
   if (!value) return null;
-  const date = new Date(value);
+  const date = new Date(parseLiveTimestamp(value));
   if (Number.isNaN(date.getTime())) return String(value).slice(11, 16);
   return date.toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false });
 }

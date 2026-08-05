@@ -231,7 +231,7 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.doesNotMatch(adminHtml, /lateShort > 60\) lateShort -= 60/);
   assert.match(adminHtml, /const regularCap = day === 6 \? 240 : 480/);
   assert.match(adminHtml, /Math\.min\(Math\.max\(0, regularSpan - breakDeduction\), regularCap\) \+ overtime/);
-  assert.match(adminHtml, /const outMs = Date\.parse\(attendanceRow\.clockOut \|\| ""\)/);
+  assert.match(adminHtml, /const outMs = parseLiveTimestamp\(attendanceRow\.clockOut\)/);
   assert.match(adminHtml, /Math\.round\(\(endMs - outMs\) \/ 60000\)/);
   assert.doesNotMatch(adminHtml, /Math\.max\(0, end - outMinutes\)/);
   assert.match(adminHtml, /20260805-zero-overtime-fallback/);

@@ -808,9 +808,18 @@
         .replaceAll("'", "&#039;");
     }
 
+    function parseLiveTimestamp(value) {
+      const text = String(value || "").trim();
+      if (!text) return Number.NaN;
+      if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) {
+        return Date.parse(`${text.replace(" ", "T")}Z`);
+      }
+      return Date.parse(text);
+    }
+
     function formatDateTime(value) {
       if (!value) return "-";
-      const date = new Date(value);
+      const date = new Date(parseLiveTimestamp(value));
       if (Number.isNaN(date.getTime())) return value;
       return date.toLocaleString("en-MY", {
         timeZone: "Asia/Kuala_Lumpur",
@@ -937,7 +946,7 @@
 
     function reportTime(value) {
       if (!value) return "";
-      const date = new Date(value);
+      const date = new Date(parseLiveTimestamp(value));
       if (Number.isNaN(date.getTime())) return "";
       return date.toLocaleTimeString("en-MY", {
         timeZone: "Asia/Kuala_Lumpur",
@@ -997,7 +1006,7 @@
 
     function malaysiaClockMinutes(value) {
       if (!value) return null;
-      const date = new Date(value);
+      const date = new Date(parseLiveTimestamp(value));
       if (Number.isNaN(date.getTime())) return null;
       const parts = new Intl.DateTimeFormat("en-GB", {
         timeZone: "Asia/Kuala_Lumpur",
@@ -1012,8 +1021,8 @@
 
     function elapsedMinutes(start, end) {
       if (!start || !end) return 0;
-      const startDate = new Date(start);
-      const endDate = new Date(end);
+      const startDate = new Date(parseLiveTimestamp(start));
+      const endDate = new Date(parseLiveTimestamp(end));
       if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 0;
       const diffMs = endDate - startDate;
       if (diffMs <= 0) return 0;
@@ -1030,8 +1039,8 @@
       if (!clockOut) return 0;
       const elapsed = elapsedMinutes(clockIn, clockOut);
       if (day === 0) return elapsed;
-      const clockInMs = Date.parse(clockIn || "");
-      const clockOutMs = Date.parse(clockOut);
+      const clockInMs = parseLiveTimestamp(clockIn);
+      const clockOutMs = parseLiveTimestamp(clockOut);
       if (Number.isNaN(clockOutMs)) return 0;
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
@@ -1047,8 +1056,8 @@
       const elapsed = elapsedMinutes(clockIn, clockOut);
       if (!elapsed) return 0;
       if (day === 0) return elapsed;
-      const clockInMs = Date.parse(clockIn || "");
-      const clockOutMs = Date.parse(clockOut || "");
+      const clockInMs = parseLiveTimestamp(clockIn);
+      const clockOutMs = parseLiveTimestamp(clockOut);
       if (Number.isNaN(clockInMs) || Number.isNaN(clockOutMs)) return 0;
       const overtime = reportOvertimeFromTimes(clockIn, clockOut, dateKey, day);
       const start = 9 * 60;
@@ -1115,8 +1124,8 @@
       if (!attendanceRow?.clockIn || !attendanceRow?.clockOut || day === 0) return 0;
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
-      const inMs = Date.parse(attendanceRow.clockIn);
-      const outMs = Date.parse(attendanceRow.clockOut);
+      const inMs = parseLiveTimestamp(attendanceRow.clockIn);
+      const outMs = parseLiveTimestamp(attendanceRow.clockOut);
       if (Number.isNaN(inMs) || Number.isNaN(outMs) || !attendanceRow.dateKey) return 0;
       const startMs = scheduledDateTimeMs(attendanceRow.dateKey, start);
       const endMs = scheduledDateTimeMs(attendanceRow.dateKey, end + 15);
@@ -1129,7 +1138,7 @@
       if (inMinutes == null) return 0;
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
-      const inMs = Date.parse(attendanceRow.clockIn || "");
+      const inMs = parseLiveTimestamp(attendanceRow.clockIn);
       const endMs = attendanceRow.dateKey ? scheduledDateTimeMs(attendanceRow.dateKey, end) : null;
       if (!Number.isNaN(inMs) && endMs != null && inMs >= endMs) return 0;
       let lateShort = Math.max(0, inMinutes - start);
@@ -1138,7 +1147,7 @@
         const workShort = Math.max(0, 240 - reportWorkingWindowMinutes(attendanceRow, day));
         return Math.max(lateShort, workShort);
       }
-      const outMs = Date.parse(attendanceRow.clockOut || "");
+      const outMs = parseLiveTimestamp(attendanceRow.clockOut);
       const earlyOut = Number.isNaN(outMs) || endMs == null ? 0 : Math.max(0, Math.round((endMs - outMs) / 60000));
       const requiredMinutes = day === 6 ? 240 : 480;
       const workShort = Math.max(0, requiredMinutes - Number(attendanceRow.actualMinutes || 0));
@@ -1171,7 +1180,7 @@
     function approvedCorrectionTimes(employeeId, dateKey) {
       const approved = corrections
         .filter(item => item.employee_id === employeeId && item.requested_date === dateKey && String(item.status || "").toLowerCase() === "approved")
-        .sort((a, b) => Date.parse(b.reviewed_at || b.created_at || "") - Date.parse(a.reviewed_at || a.created_at || ""));
+        .sort((a, b) => parseLiveTimestamp(b.reviewed_at || b.created_at) - parseLiveTimestamp(a.reviewed_at || a.created_at));
       const clockIn = approved.find(item => item.requested_clock_in_at);
       const clockOut = approved.find(item => item.requested_clock_out_at);
       return {
@@ -1183,8 +1192,8 @@
     }
 
     function isSameOrNewer(left, right) {
-      const leftMs = Date.parse(left || "");
-      const rightMs = Date.parse(right || "");
+      const leftMs = parseLiveTimestamp(left);
+      const rightMs = parseLiveTimestamp(right);
       if (Number.isNaN(leftMs)) return false;
       if (Number.isNaN(rightMs)) return true;
       return leftMs >= rightMs;
@@ -1192,8 +1201,8 @@
 
     function sameReportInstant(left, right) {
       if (!left || !right) return false;
-      const leftMs = Date.parse(left);
-      const rightMs = Date.parse(right);
+      const leftMs = parseLiveTimestamp(left);
+      const rightMs = parseLiveTimestamp(right);
       if (!Number.isNaN(leftMs) && !Number.isNaN(rightMs)) return leftMs === rightMs;
       return String(left) === String(right);
     }
