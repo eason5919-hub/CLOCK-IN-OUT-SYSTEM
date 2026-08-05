@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-live-clockout/);
+  assert.match(indexHtml, /script\.js\?v=20260805-clockin-recover/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -140,6 +140,8 @@ test("employee QR scanner trims reads and scans multiple frame areas", async () 
   assert.match(script, /\[0\.9, 0\.78, 0\.62\]\.map/);
   assert.match(script, /String\(window\.jsQR\(image\.data, image\.width, image\.height/);
   assert.match(script, /if \(String\(qr \|\| ""\)\.trim\(\) !== WAREHOUSE\.qr\)/);
+  assert.match(script, /result\.action === "clock_in_existing"/);
+  assert.match(script, /Already clocked in/);
 });
 
 test("employee leave requests use one date-range calendar and limit closed cards without reordering", async () => {

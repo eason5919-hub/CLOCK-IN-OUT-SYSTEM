@@ -1019,7 +1019,9 @@ async function clock(action, qr) {
       }),
     });
     scanner.className = "scanner accepted";
-    message.textContent = `Attendance accepted. GPS ${Math.round(result.accuracy)}m accuracy, ${Math.round(result.distance)}m from warehouse.`;
+    message.textContent = result.action === "clock_in_existing"
+      ? `Already clocked in. GPS ${Math.round(result.accuracy)}m accuracy, ${Math.round(result.distance)}m from warehouse.`
+      : `Attendance accepted. GPS ${Math.round(result.accuracy)}m accuracy, ${Math.round(result.distance)}m from warehouse.`;
     await loadEmployeeLive(true);
     await wait(900);
     render();

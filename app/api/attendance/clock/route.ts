@@ -133,7 +133,14 @@ export async function POST(request: Request) {
 
     if (payload.action === "clock_in") {
       if (activeOpenRecord) {
-        return json(request, { error: "Clock out is required before the next clock in." }, 409);
+        return json(request, {
+          ok: true,
+          action: "clock_in_existing",
+          timestamp,
+          clockInAt: activeOpenRecord.clock_in_at,
+          distance,
+          accuracy: bestSample.accuracy,
+        });
       }
 
       const previousSession = await findLastCompletedSession(db, payload.employeeId, workDate);
