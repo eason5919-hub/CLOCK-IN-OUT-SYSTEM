@@ -1102,21 +1102,6 @@
       return Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) ? monthlyReportEdits[key] : fallback;
     }
 
-    function clearCalculatedReportEdits(employeeId, dateKey) {
-      if (!employeeId || !dateKey) return;
-      const monthKey = dateKey.slice(0, 7);
-      const prefix = `${monthKey}|${employeeId}|${dateKey}|`;
-      let changed = false;
-      Object.keys(monthlyReportEdits).forEach(key => {
-        const field = key.slice(prefix.length);
-        if (key.startsWith(prefix) && REPORT_CALCULATED_FIELDS.has(field)) {
-          delete monthlyReportEdits[key];
-          changed = true;
-        }
-      });
-      if (changed) saveReportEdits();
-    }
-
     function editableReportCell(employeeId, dateKey, field, fallback = "", className = "") {
       const editing = editingReportEmployeeId === employeeId;
       const key = reportEditKey(employeeId, dateKey, field);
@@ -1182,12 +1167,16 @@
       const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
       if (!rows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
       const reportSegments = [...reportRows].sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
-      const reportUpdatedAt = rows.map(row => row.updated_at || row.created_at || "").filter(Boolean).sort().pop() || "";
-      const rowFirstIn = rows.map(row => row.clock_in_at).filter(Boolean).sort()[0] || "";
-      const outTimes = rows.map(row => row.clock_out_at).filter(Boolean).sort();
-      const rowLastOut = outTimes[outTimes.length - 1] || "";
-      const correctionInWins = Boolean(approvedTimes.clockIn) && (sameReportInstant(approvedTimes.clockIn, rowFirstIn) || isSameOrNewer(approvedTimes.clockInReviewedAt, reportUpdatedAt));
-      const correctionOutWins = Boolean(approvedTimes.clockOut) && (sameReportInstant(approvedTimes.clockOut, rowLastOut) || isSameOrNewer(approvedTimes.clockOutReviewedAt, reportUpdatedAt));
+      const inRows = rows.filter(row => row.clock_in_at).sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
+      const outRows = rows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
+      const inRow = inRows[0] || null;
+      const outRow = outRows[outRows.length - 1] || null;
+      const rowFirstIn = inRow?.clock_in_at || "";
+      const rowLastOut = outRow?.clock_out_at || "";
+      const inUpdatedAt = inRow?.updated_at || inRow?.created_at || "";
+      const outUpdatedAt = outRow?.updated_at || outRow?.created_at || "";
+      const correctionInWins = Boolean(approvedTimes.clockIn) && (sameReportInstant(approvedTimes.clockIn, rowFirstIn) || isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt));
+      const correctionOutWins = Boolean(approvedTimes.clockOut) && (sameReportInstant(approvedTimes.clockOut, rowLastOut) || isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt));
       const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;
       const lastOut = correctionOutWins ? approvedTimes.clockOut : rowLastOut;
       const breakTime = reportSegments.length > 1 ? reportSegments[0].clock_out_at || "" : "";
@@ -1694,17 +1683,11 @@
     }
 
     async function adminAction(payload, message) {
-      const approvedCorrection = payload.action === "review_correction" && payload.status === "approved"
-        ? corrections.find(item => item.id === payload.requestId)
-        : null;
       setStatus(employeeStatus, message || "Saving...", "");
       await api("/api/admin/live", {
         method: "POST",
         body: JSON.stringify(payload)
       });
-      if (approvedCorrection) {
-        clearCalculatedReportEdits(approvedCorrection.employee_id, approvedCorrection.requested_date);
-      }
       setStatus(employeeStatus, payload.action === "delete_employee" ? "Deleted" : "Saved", "ok");
       await loadLiveData(true);
     }

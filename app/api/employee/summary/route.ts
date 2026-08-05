@@ -73,7 +73,9 @@ export async function GET(request: Request) {
                 MAX(clock_out_distance_meters) AS clock_out_distance_meters,
                 'admin_report_edit' AS source,
                 MIN(created_at) AS created_at,
-                MAX(updated_at) AS updated_at
+                MAX(updated_at) AS updated_at,
+                MIN(CASE WHEN clock_in_at IS NOT NULL THEN updated_at END) AS clock_in_updated_at,
+                MAX(CASE WHEN clock_out_at IS NOT NULL THEN updated_at END) AS clock_out_updated_at
          FROM attendance
          WHERE employee_id = ? AND source = 'admin_report_edit'
          GROUP BY work_date
@@ -81,7 +83,9 @@ export async function GET(request: Request) {
        SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
               early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
-              source, created_at, updated_at
+              source, created_at, updated_at,
+              updated_at AS clock_in_updated_at,
+              updated_at AS clock_out_updated_at
        FROM attendance
        WHERE employee_id = ?
          AND source <> 'admin_report_edit'
@@ -90,7 +94,7 @@ export async function GET(request: Request) {
        SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
               early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
-              source, created_at, updated_at
+              source, created_at, updated_at, clock_in_updated_at, clock_out_updated_at
        FROM report_rows
        ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC, created_at DESC`,
     )
