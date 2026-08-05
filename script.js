@@ -181,7 +181,6 @@ function employeeScreen() {
   const currentMonthDate = monthDateFromKey(selectedEmployeeMonthKey);
   const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
   const monthRecords = recordsForMonth(records, selectedEmployeeMonthKey);
-  const monthLeaveRequests = leaveRequestsForMonth(leaveRequests, selectedEmployeeMonthKey);
   const visibleCorrections = correctionsForMonth(corrections, selectedEmployeeMonthKey);
   const displayedCorrections = showAllEmployeeCorrections ? visibleCorrections : visibleCorrections.slice(0, 3);
   const correctionMoreButton = visibleCorrections.length > 3
@@ -198,10 +197,10 @@ function employeeScreen() {
     ? `Clocked in at ${escapeHtml(openRecord.clockIn)}. Scan the QR again to clock out.`
     : "Scan the warehouse QR to clock in.";
   const stats = {
-    present: formatDayCount(calculatePresentDays(monthRecords, monthLeaveRequests)),
+    present: formatDayCount(calculatePresentDays(monthRecords, visibleCorrections)),
     late: monthRecords.filter((row) => row.lateMinutes > 0).length,
     ot: formatMetricDuration(monthRecords.reduce((total, row) => total + row.overtimeMinutes, 0)),
-    corrections: pendingCorrectionCount(visibleCorrections),
+    corrections: correctedReportBoxCount(monthRecords, visibleCorrections),
   };
 
   return `
@@ -1220,10 +1219,6 @@ function recordsForMonth(records, monthKey) {
   return (records || []).filter((record) => String(record.date || "").slice(0, 7) === monthKey);
 }
 
-function leaveRequestsForMonth(requests, monthKey) {
-  return (requests || []).filter((request) => String(request.date || "").slice(0, 7) === monthKey);
-}
-
 function monthDateRange(monthKey) {
   const [year, month] = monthKey.split("-").map(Number);
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -1978,16 +1973,22 @@ function formatMetricDuration(minutes) {
   return hours ? `${hours}hr ${remainder}min` : `${remainder}min`;
 }
 
-function calculatePresentDays(records, leaveRequests) {
-  const dayValues = new Map();
+function calculatePresentDays(records, corrections = []) {
+  const dates = new Set();
 
-  records
-    .filter((row) => row.date && row.status !== "Absent")
-    .forEach((row) => {
-      dayValues.set(row.date, Math.max(dayValues.get(row.date) || 0, 1));
-    });
+  records.forEach((row) => {
+    const display = attendanceDisplayTimes(row, corrections);
+    if (row.date && display.clockIn && display.clockOut) dates.add(row.date);
+  });
 
-  return [...dayValues.values()].reduce((total, value) => total + value, 0);
+  return dates.size;
+}
+
+function correctedReportBoxCount(records, corrections = []) {
+  return records.reduce((total, row) => {
+    const marks = attendanceEditMarks(row, corrections);
+    return total + (marks.clockIn === "corrected" ? 1 : 0) + (marks.clockOut === "corrected" ? 1 : 0);
+  }, 0);
 }
 
 function pendingCorrectionCount(corrections) {

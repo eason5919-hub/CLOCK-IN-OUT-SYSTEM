@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-month-metrics/);
+  assert.match(indexHtml, /script\.js\?v=20260805-report-metrics/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -151,20 +151,22 @@ test("employee leave requests use one date-range calendar and limit closed cards
   assert.doesNotMatch(css, /\.date-range-fields/);
 });
 
-test("employee correction metric counts pending requests only", async () => {
+test("employee metric cards use selected month report data", async () => {
   const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
 
   assert.match(script, /const monthRecords = recordsForMonth\(records, selectedEmployeeMonthKey\)/);
-  assert.match(script, /const monthLeaveRequests = leaveRequestsForMonth\(leaveRequests, selectedEmployeeMonthKey\)/);
-  assert.match(script, /present: formatDayCount\(calculatePresentDays\(monthRecords, monthLeaveRequests\)\)/);
+  assert.match(script, /present: formatDayCount\(calculatePresentDays\(monthRecords, visibleCorrections\)\)/);
   assert.match(script, /late: monthRecords\.filter\(\(row\) => row\.lateMinutes > 0\)\.length/);
   assert.match(script, /ot: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ row\.overtimeMinutes, 0\)\)/);
-  assert.match(script, /corrections: pendingCorrectionCount\(visibleCorrections\)/);
+  assert.match(script, /corrections: correctedReportBoxCount\(monthRecords, visibleCorrections\)/);
   assert.match(script, /function recordsForMonth/);
-  assert.match(script, /function leaveRequestsForMonth/);
   assert.match(script, /function formatMetricDuration/);
   assert.match(script, /`\$\{hours\}hr \$\{remainder\}min`/);
-  assert.match(script, /function pendingCorrectionCount/);
+  assert.match(script, /function calculatePresentDays\(records, corrections = \[\]\)/);
+  assert.match(script, /if \(row\.date && display\.clockIn && display\.clockOut\) dates\.add\(row\.date\)/);
+  assert.match(script, /function correctedReportBoxCount\(records, corrections = \[\]\)/);
+  assert.match(script, /marks\.clockIn === "corrected"/);
+  assert.match(script, /marks\.clockOut === "corrected"/);
   assert.match(script, /correction\.status === "Pending"/);
   assert.match(script, /const canCancel = correction\.status === "Pending"/);
   assert.match(script, /data-cancel-correction="\$\{correction\.id\}"/);
