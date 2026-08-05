@@ -1219,24 +1219,30 @@
       const reportRows = dayRows.filter(isReportEditSource);
       const reportSegmentRows = reportRows.filter(row => row.source === "admin_report_edit");
       const baseRows = dayRows.filter(row => !isReportEditSource(row));
-      const rows = reportSegmentRows.length ? reportSegmentRows : baseRows;
       const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
       if (!dayRows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
       const reportSegments = [...reportSegmentRows].sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
       const inMarker = reportRows.find(row => row.source === "admin_report_edit_in");
       const outMarker = reportRows.find(row => row.source === "admin_report_edit_out");
-      const inRows = rows.filter(row => row.clock_in_at).sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
-      const outRows = rows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
-      const inRow = inRows[0] || null;
-      const outRow = outRows[outRows.length - 1] || null;
-      const inMarkerUpdatedAt = inMarker?.updated_at || inMarker?.created_at || "";
-      const outMarkerUpdatedAt = outMarker?.updated_at || outMarker?.created_at || "";
-      const inRowUpdatedAt = inRow?.updated_at || inRow?.created_at || "";
-      const outRowUpdatedAt = outRow?.updated_at || outRow?.created_at || "";
-      const rowFirstIn = inMarker && !isSameOrNewer(inRowUpdatedAt, inMarkerUpdatedAt) ? inMarker.clock_in_at || "" : inRow?.clock_in_at || "";
-      const rowLastOut = outMarker && !isSameOrNewer(outRowUpdatedAt, outMarkerUpdatedAt) ? outMarker.clock_out_at || "" : outRow?.clock_out_at || "";
-      const inUpdatedAt = isSameOrNewer(inRowUpdatedAt, inMarkerUpdatedAt) ? inRowUpdatedAt : inMarkerUpdatedAt;
-      const outUpdatedAt = isSameOrNewer(outRowUpdatedAt, outMarkerUpdatedAt) ? outRowUpdatedAt : outMarkerUpdatedAt;
+      const reportInRows = reportSegmentRows.filter(row => row.clock_in_at).sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
+      const reportOutRows = reportSegmentRows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
+      const baseInRows = baseRows.filter(row => row.clock_in_at).sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
+      const baseOutRows = baseRows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
+      const inCandidate = newestReportTimeCandidate([
+        reportTimeCandidate(inMarker, "clock_in_at"),
+        reportTimeCandidate(reportInRows[0], "clock_in_at"),
+        reportTimeCandidate(baseInRows[0], "clock_in_at"),
+      ]);
+      const outCandidate = newestReportTimeCandidate([
+        reportTimeCandidate(outMarker, "clock_out_at"),
+        reportTimeCandidate(reportOutRows[reportOutRows.length - 1], "clock_out_at"),
+        reportTimeCandidate(baseOutRows[baseOutRows.length - 1], "clock_out_at"),
+      ]);
+      const rows = reportSegmentRows.length && !baseRows.some(row => isSameOrNewer(row.updated_at || row.created_at, reportSegments[0]?.updated_at || reportSegments[0]?.created_at)) ? reportSegmentRows : baseRows;
+      const rowFirstIn = inCandidate?.value || "";
+      const rowLastOut = outCandidate?.value || "";
+      const inUpdatedAt = inCandidate?.updatedAt || "";
+      const outUpdatedAt = outCandidate?.updatedAt || "";
       const correctionInWins = Boolean(approvedTimes.clockIn) && (sameReportInstant(approvedTimes.clockIn, rowFirstIn) || isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt));
       const correctionOutWins = Boolean(approvedTimes.clockOut) && (sameReportInstant(approvedTimes.clockOut, rowLastOut) || isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt));
       const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;
@@ -1261,6 +1267,21 @@
         overtimeMinutes: rows.reduce((sum, row) => sum + Number(row.overtime_minutes || 0), 0),
         earlyLeaveMinutes: rows.reduce((sum, row) => sum + Number(row.early_leave_minutes || 0), 0),
       };
+    }
+
+    function reportTimeCandidate(row, field) {
+      if (!row) return null;
+      return {
+        value: row[field] || "",
+        updatedAt: row.updated_at || row.created_at || "",
+      };
+    }
+
+    function newestReportTimeCandidate(candidates) {
+      return candidates.filter(Boolean).reduce((best, candidate) => {
+        if (!best) return candidate;
+        return isSameOrNewer(candidate.updatedAt, best.updatedAt) ? candidate : best;
+      }, null);
     }
 
     function employeeLeaveForDate(employeeId, dateKey) {
