@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-cancel-correction/);
+  assert.match(indexHtml, /script\.js\?v=20260805-correction-month-calendar/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -82,7 +82,13 @@ test("employee month dashboard can show current and previous month only", async 
   assert.match(script, /const visibleCorrections = correctionsForMonth\(corrections, selectedEmployeeMonthKey\)/);
   assert.match(script, /const correctionDateRange = monthDateRange\(selectedEmployeeMonthKey\)/);
   assert.match(script, /const correctionDateValue = correctionDateInMonth\(historyDate, selectedEmployeeMonthKey\)/);
-  assert.match(script, /min="\$\{correctionDateRange\.start\}" max="\$\{correctionDateRange\.end\}" value="\$\{correctionDateValue\}"/);
+  assert.match(script, /correctionDateField\(correctionDateValue, selectedEmployeeMonthKey, correctionDateRange\)/);
+  assert.match(script, /name="date" type="hidden" value="\$\{value\}" data-correction-date min="\$\{range\.start\}" max="\$\{range\.end\}"/);
+  assert.match(script, /function correctionCalendarMarkup/);
+  assert.match(script, /data-correction-calendar-date/);
+  assert.match(script, /function setupCorrectionCalendar/);
+  assert.match(script, /setupCorrectionCalendar\(document\.querySelector\("#correction-form"\)\)/);
+  assert.match(script, /calendar\.innerHTML = correctionCalendarMarkup\(input\.value, selectedEmployeeMonthKey\)/);
   assert.match(script, /const displayedCorrections = showAllEmployeeCorrections \? visibleCorrections : visibleCorrections\.slice\(0, 3\)/);
   assert.match(script, /displayedCorrections\.map\(correctionCard\)/);
   assert.match(script, /View more/);

@@ -239,7 +239,7 @@ function employeeScreen() {
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
         <form class="form" id="correction-form">
-          <label>Date<input name="date" type="date" min="${correctionDateRange.start}" max="${correctionDateRange.end}" value="${correctionDateValue}" required /></label>
+          ${correctionDateField(correctionDateValue, selectedEmployeeMonthKey, correctionDateRange)}
           <label>Missing<select name="missing"><option>Clock In</option><option selected>Clock Out</option></select></label>
           <label>Requested time<input name="time" type="time" required /></label>
           <label>Reason<textarea name="reason" rows="3" required></textarea></label>
@@ -643,6 +643,7 @@ function bindEmployee() {
     if (qr) completeQrScan(qr.trim());
   });
   if (pendingScanAction) startQrScanner();
+  setupCorrectionCalendar(document.querySelector("#correction-form"));
   document.querySelector("#correction-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -1217,6 +1218,41 @@ function correctionDateInMonth(dateKey, monthKey) {
   return String(dateKey || "").startsWith(`${monthKey}-`) ? dateKey : monthDateRange(monthKey).start;
 }
 
+function correctionDateField(value, monthKey, range) {
+  return `
+    <div class="field correction-date-field" data-correction-date-field>
+      <span>Date</span>
+      <input name="date" type="hidden" value="${value}" data-correction-date min="${range.start}" max="${range.end}" required />
+      <button class="date-picker-button" type="button" data-open-correction-calendar>
+        <span data-selected-correction-date>${formatLeaveDateDisplay(value)}</span>
+      </button>
+      <div class="leave-calendar" data-correction-calendar hidden>${correctionCalendarMarkup(value, monthKey)}</div>
+    </div>
+  `;
+}
+
+function correctionCalendarMarkup(selectedDate, monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const monthDate = new Date(Date.UTC(year, month - 1, 1));
+  const firstDay = monthDate.getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const header = monthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
+  const cells = [];
+  for (let index = 0; index < firstDay; index += 1) {
+    cells.push(`<button class="calendar-day calendar-empty" type="button" tabindex="-1" disabled aria-hidden="true">&nbsp;</button>`);
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateKey = `${monthKey}-${String(day).padStart(2, "0")}`;
+    const classes = ["calendar-day", dateKey === selectedDate ? "is-selected" : ""].filter(Boolean).join(" ");
+    cells.push(`<button class="${classes}" type="button" data-correction-calendar-date="${dateKey}">${day}</button>`);
+  }
+  return `
+    <div class="calendar-head"><strong>${escapeHtml(header)}</strong></div>
+    <div class="calendar-weekdays">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => `<span>${day}</span>`).join("")}</div>
+    <div class="calendar-grid">${cells.join("")}</div>
+  `;
+}
+
 function visibleEmployeeLeaveRequests(requests) {
   let closedShown = 0;
   return (requests || []).filter((request) => {
@@ -1359,6 +1395,29 @@ function setupLeaveCalendar(form) {
   });
 
   refresh();
+}
+
+function setupCorrectionCalendar(form) {
+  const field = form?.querySelector("[data-correction-date-field]");
+  const input = form?.querySelector("[data-correction-date]");
+  const button = field?.querySelector("[data-open-correction-calendar]");
+  const label = field?.querySelector("[data-selected-correction-date]");
+  const calendar = field?.querySelector("[data-correction-calendar]");
+  if (!field || !input || !button || !label || !calendar) return;
+
+  button.addEventListener("click", () => {
+    calendar.hidden = !calendar.hidden;
+  });
+
+  calendar.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const dayButton = target?.closest("[data-correction-calendar-date]");
+    if (!dayButton || dayButton.disabled) return;
+    input.value = dayButton.dataset.correctionCalendarDate;
+    label.textContent = formatLeaveDateDisplay(input.value);
+    calendar.innerHTML = correctionCalendarMarkup(input.value, selectedEmployeeMonthKey);
+    calendar.hidden = true;
+  });
 }
 
 function validateLeaveDateAndDuration(date, duration) {
