@@ -1243,8 +1243,8 @@
       const rowLastOut = outCandidate?.value || "";
       const inUpdatedAt = inCandidate?.updatedAt || "";
       const outUpdatedAt = outCandidate?.updatedAt || "";
-      const correctionInWins = Boolean(approvedTimes.clockIn) && (sameReportInstant(approvedTimes.clockIn, rowFirstIn) || isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt));
-      const correctionOutWins = Boolean(approvedTimes.clockOut) && (sameReportInstant(approvedTimes.clockOut, rowLastOut) || isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt));
+      const correctionInWins = Boolean(approvedTimes.clockIn) && sameReportInstant(approvedTimes.clockIn, rowFirstIn) && isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt);
+      const correctionOutWins = Boolean(approvedTimes.clockOut) && sameReportInstant(approvedTimes.clockOut, rowLastOut) && isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt);
       const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;
       const lastOut = correctionOutWins ? approvedTimes.clockOut : rowLastOut;
       const breakTime = reportSegments.length > 1 ? reportSegments[0].clock_out_at || "" : "";

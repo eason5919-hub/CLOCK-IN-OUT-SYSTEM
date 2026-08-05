@@ -167,8 +167,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function reportCorrectionWins/);
   assert.match(adminHtml, /function isSameOrNewer/);
   assert.match(adminHtml, /function sameReportInstant/);
-  assert.match(adminHtml, /const correctionInWins = Boolean\(approvedTimes\.clockIn\) && \(sameReportInstant\(approvedTimes\.clockIn, rowFirstIn\) \|\| isSameOrNewer\(approvedTimes\.clockInReviewedAt, inUpdatedAt\)\)/);
-  assert.match(adminHtml, /const correctionOutWins = Boolean\(approvedTimes\.clockOut\) && \(sameReportInstant\(approvedTimes\.clockOut, rowLastOut\) \|\| isSameOrNewer\(approvedTimes\.clockOutReviewedAt, outUpdatedAt\)\)/);
+  assert.match(adminHtml, /const correctionInWins = Boolean\(approvedTimes\.clockIn\) && sameReportInstant\(approvedTimes\.clockIn, rowFirstIn\) && isSameOrNewer\(approvedTimes\.clockInReviewedAt, inUpdatedAt\)/);
+  assert.match(adminHtml, /const correctionOutWins = Boolean\(approvedTimes\.clockOut\) && sameReportInstant\(approvedTimes\.clockOut, rowLastOut\) && isSameOrNewer\(approvedTimes\.clockOutReviewedAt, outUpdatedAt\)/);
   assert.doesNotMatch(adminHtml, /clearCalculatedReportEdits\(approvedCorrection\.employee_id, approvedCorrection\.requested_date\)/);
   assert.match(adminHtml, /class="highlightTime"/);
   assert.match(adminHtml, /function reportPaidWorkMinutes/);
@@ -195,6 +195,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.doesNotMatch(adminHtml, /return Math\.max\(lateShort, earlyOut\)/);
   assert.match(adminHtml, /function isEditableReportField/);
   assert.match(adminHtml, /function reportFieldWasEdited/);
+  assert.match(adminHtml, /sameReportInstant\(approvedTimes\.clockIn, rowFirstIn\) && isSameOrNewer\(approvedTimes\.clockInReviewedAt, inUpdatedAt\)/);
+  assert.match(adminHtml, /sameReportInstant\(approvedTimes\.clockOut, rowLastOut\) && isSameOrNewer\(approvedTimes\.clockOutReviewedAt, outUpdatedAt\)/);
   assert.match(adminHtml, /reportEditedClockIn: Boolean\(inMarker \|\| reportSegmentRows\.some\(row => row\.clock_in_at\)\) && !correctionInWins/);
   assert.match(adminHtml, /reportEditedBreak: Boolean\(breakTime\)/);
   assert.match(adminHtml, /if \(!isEditableReportField\(field\)\) return fallback/);
