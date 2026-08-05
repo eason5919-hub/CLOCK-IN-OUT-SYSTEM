@@ -47,31 +47,34 @@ export async function GET(request: Request) {
 
   const attendance = await db
     .prepare(
-      `WITH base_rows AS (
-         SELECT MIN(id) AS id,
-                work_date,
-                MIN(clock_in_at) AS clock_in_at,
-                MAX(clock_out_at) AS clock_out_at,
-                SUM(COALESCE(total_minutes, 0)) AS total_minutes,
-                MAX(COALESCE(late_minutes, 0)) AS late_minutes,
-                MAX(COALESCE(early_leave_minutes, 0)) AS early_leave_minutes,
-                SUM(COALESCE(overtime_minutes, 0)) AS overtime_minutes,
-                CASE
-                  WHEN MAX(COALESCE(late_minutes, 0)) > 0 THEN 'late'
-                  WHEN MAX(COALESCE(early_leave_minutes, 0)) > 0 THEN 'early_leave'
-                  WHEN SUM(COALESCE(overtime_minutes, 0)) > 0 THEN 'ot'
-                  ELSE 'present'
-                END AS status,
-                MAX(clock_in_accuracy) AS clock_in_accuracy,
-                MAX(clock_in_distance_meters) AS clock_in_distance_meters,
-                MAX(clock_out_accuracy) AS clock_out_accuracy,
-                MAX(clock_out_distance_meters) AS clock_out_distance_meters,
-                MAX(source) AS source,
-                MIN(created_at) AS created_at,
-                MAX(updated_at) AS updated_at
+      `WITH base_ranked AS (
+         SELECT *,
+                ROW_NUMBER() OVER (
+                  PARTITION BY work_date
+                  ORDER BY datetime(updated_at) DESC, datetime(created_at) DESC, id DESC
+                ) AS row_rank
          FROM attendance
          WHERE employee_id = ? AND source NOT LIKE 'admin_report_edit%'
-         GROUP BY work_date
+       ),
+       base_rows AS (
+         SELECT id,
+                work_date,
+                clock_in_at,
+                clock_out_at,
+                COALESCE(total_minutes, 0) AS total_minutes,
+                COALESCE(late_minutes, 0) AS late_minutes,
+                COALESCE(early_leave_minutes, 0) AS early_leave_minutes,
+                COALESCE(overtime_minutes, 0) AS overtime_minutes,
+                status,
+                clock_in_accuracy,
+                clock_in_distance_meters,
+                clock_out_accuracy,
+                clock_out_distance_meters,
+                source,
+                created_at,
+                updated_at
+         FROM base_ranked
+         WHERE row_rank = 1
        ),
        report_rows AS (
          SELECT MIN(id) AS id,

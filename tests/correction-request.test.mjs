@@ -34,7 +34,10 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(employeeSummaryRoute, /function reportClockMark/);
   assert.match(employeeSummaryRoute, /return "corrected"/);
   assert.match(employeeSummaryRoute, /return Number\(row\[editedKey\] \|\| 0\) && row\[valueKey\] \? "edited" : ""/);
-  assert.match(employeeSummaryRoute, /WITH base_rows AS/);
+  assert.match(employeeSummaryRoute, /WITH base_ranked AS/);
+  assert.match(employeeSummaryRoute, /ROW_NUMBER\(\) OVER/);
+  assert.match(employeeSummaryRoute, /ORDER BY datetime\(updated_at\) DESC, datetime\(created_at\) DESC, id DESC/);
+  assert.match(employeeSummaryRoute, /base_rows AS/);
   assert.match(employeeSummaryRoute, /report_rows AS/);
   assert.match(employeeSummaryRoute, /field_overrides AS/);
   assert.match(employeeSummaryRoute, /live_open_rows AS/);
@@ -155,10 +158,11 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function isReportFieldMarker/);
   assert.match(adminHtml, /const reportInRows = reportSegmentRows\.filter\(row => row\.clock_in_at\)/);
   assert.match(adminHtml, /const reportOutRows = reportSegmentRows\.filter\(row => row\.clock_out_at\)/);
-  assert.match(adminHtml, /const baseInRows = baseRows\.filter\(row => row\.clock_in_at\)/);
-  assert.match(adminHtml, /const baseOutRows = baseRows\.filter\(row => row\.clock_out_at\)/);
+  assert.match(adminHtml, /const baseInCandidate = newestReportTimeCandidate\(baseRows\.map\(row => reportTimeCandidate\(row, "clock_in_at"\)\)\)/);
+  assert.match(adminHtml, /const baseOutCandidate = newestReportTimeCandidate\(baseRows\.map\(row => reportTimeCandidate\(row, "clock_out_at"\)\)\)/);
   assert.match(adminHtml, /const inCandidate = newestReportTimeCandidate/);
-  assert.match(adminHtml, /reportTimeCandidate\(baseInRows\[0\], "clock_in_at"\)/);
+  assert.match(adminHtml, /baseInCandidate/);
+  assert.match(adminHtml, /baseOutCandidate/);
   assert.match(adminHtml, /const rowFirstIn = inCandidate\?\.value \|\| ""/);
   assert.match(adminHtml, /function newestReportTimeCandidate/);
   assert.match(adminHtml, /const lastOut = correctionOutWins \? approvedTimes\.clockOut : rowLastOut/);

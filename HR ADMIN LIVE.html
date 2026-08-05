@@ -1235,17 +1235,17 @@
       const outMarker = reportRows.find(row => row.source === "admin_report_edit_out");
       const reportInRows = reportSegmentRows.filter(row => row.clock_in_at).sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
       const reportOutRows = reportSegmentRows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
-      const baseInRows = baseRows.filter(row => row.clock_in_at).sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
-      const baseOutRows = baseRows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
+      const baseInCandidate = newestReportTimeCandidate(baseRows.map(row => reportTimeCandidate(row, "clock_in_at")));
+      const baseOutCandidate = newestReportTimeCandidate(baseRows.map(row => reportTimeCandidate(row, "clock_out_at")));
       const inCandidate = newestReportTimeCandidate([
         reportTimeCandidate(inMarker, "clock_in_at"),
         reportTimeCandidate(reportInRows[0], "clock_in_at"),
-        reportTimeCandidate(baseInRows[0], "clock_in_at"),
+        baseInCandidate,
       ]);
       const outCandidate = newestReportTimeCandidate([
         reportTimeCandidate(outMarker, "clock_out_at"),
         reportTimeCandidate(reportOutRows[reportOutRows.length - 1], "clock_out_at"),
-        reportTimeCandidate(baseOutRows[baseOutRows.length - 1], "clock_out_at"),
+        baseOutCandidate,
       ]);
       const rows = reportSegmentRows.length && !baseRows.some(row => isSameOrNewer(row.updated_at || row.created_at, reportSegments[0]?.updated_at || reportSegments[0]?.created_at)) ? reportSegmentRows : baseRows;
       const rowFirstIn = inCandidate?.value || "";
