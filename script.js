@@ -1056,16 +1056,32 @@ function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr>${employeeOnly ? "" : "<th>Employee</th>"}<th>Date</th><th>Clock In</th><th>Clock Out</th><th>Working Hours</th><th>OT</th><th>Status</th><th>GPS</th></tr></thead>
+        <thead><tr>${employeeOnly ? employeeAttendanceHeader() : adminAttendanceHeader()}</tr></thead>
         <tbody>${records
           .map((row) => {
             const marks = attendanceEditMarks(row, corrections);
             const display = attendanceDisplayTimes(row, corrections);
-            return `<tr>${employeeOnly ? "" : `<td>${escapeHtml(employeeLabel(row))}</td>`}<td>${row.date}</td><td>${timeCell(display.clockIn, marks.clockIn)}</td><td>${timeCell(display.clockOut, marks.clockOut)}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatOtMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
+            return employeeOnly ? employeeAttendanceRow(row, display, marks) : adminAttendanceRow(row, display, marks);
           })
           .join("")}</tbody>
       </table>
     </div>`;
+}
+
+function employeeAttendanceHeader() {
+  return "<th>Date</th><th>Clock In</th><th>Clock Out</th><th>OT</th><th>GPS</th>";
+}
+
+function adminAttendanceHeader() {
+  return "<th>Employee</th><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Working Hours</th><th>OT</th><th>Status</th><th>GPS</th>";
+}
+
+function employeeAttendanceRow(row, display, marks) {
+  return `<tr><td>${row.date}</td><td>${timeCell(display.clockIn, marks.clockIn)}</td><td>${timeCell(display.clockOut, marks.clockOut)}</td><td>${formatOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td>${row.gps || "-"}</td></tr>`;
+}
+
+function adminAttendanceRow(row, display, marks) {
+  return `<tr><td>${escapeHtml(employeeLabel(row))}</td><td>${row.date}</td><td>${timeCell(display.clockIn, marks.clockIn)}</td><td>${timeCell(display.clockOut, marks.clockOut)}</td><td>${formatMinutes(row.workingMinutes)}</td><td>${formatOtMinutes(row.overtimeMinutes)}</td><td><span class="badge ${row.status.toLowerCase()}">${row.status}</span></td><td>${row.gps || "-"}</td></tr>`;
 }
 
 function employeeCard(employee) {
@@ -1701,6 +1717,24 @@ function simpleHash(value) {
 
 function calculateOvertime(clockOut, scheduledEnd, threshold) {
   return toMinutes(clockOut) >= toMinutes(threshold) ? Math.max(0, toMinutes(clockOut) - toMinutes(scheduledEnd)) : 0;
+}
+
+function employeeHistoryOvertimeMinutes(row, display) {
+  if (!display.clockOut) return 0;
+  if (!display.clockIn) return Number(row.overtimeMinutes || 0);
+
+  const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
+  const inMinutes = toMinutes(display.clockIn);
+  let outMinutes = toMinutes(display.clockOut);
+  if (outMinutes <= inMinutes) outMinutes += 24 * 60;
+
+  if (day === 0) return Math.max(0, outMinutes - inMinutes);
+
+  const scheduledEnd = day === 6 ? 13 * 60 : 18 * 60;
+  const threshold = scheduledEnd + 16;
+  const earlyOt = inMinutes < 8 * 60 ? 8 * 60 - inMinutes : 0;
+  const lateOt = outMinutes >= threshold ? Math.max(0, outMinutes - Math.max(inMinutes, scheduledEnd)) : 0;
+  return earlyOt + lateOt;
 }
 
 function toMinutes(value) {
