@@ -974,10 +974,11 @@ function calendarRecordSummary(records, date, today) {
   const hasMissingIn = records.some((row) => !row.clockIn && row.clockOut);
   const hasMissingOut = records.some((row) => row.clockIn && !row.clockOut && date < today);
   const missed = hasMissingIn || hasMissingOut;
+  const present = records.some((row) => row.clockIn && row.clockOut);
 
   return {
-    label: missed ? "Missed" : "-",
-    tone: missed ? "missed" : "",
+    label: missed ? "Missed" : present ? "Present" : "-",
+    tone: missed ? "missed" : present ? "present" : "",
   };
 }
 
