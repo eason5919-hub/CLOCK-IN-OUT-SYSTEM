@@ -129,12 +129,20 @@ test("employee correction metric counts pending requests only", async () => {
 });
 
 test("employee correction form records one missing time and shows requested time", async () => {
-  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+  const [script, employeeSummaryRoute] = await Promise.all([
+    readFile(new URL("../script.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/employee/summary/route.ts", import.meta.url), "utf8"),
+  ]);
 
   assert.match(script, /<option>Clock In<\/option><option selected>Clock Out<\/option>/);
   assert.doesNotMatch(script, /<option>Both<\/option>/);
   assert.match(script, /missingType: missing === "Clock In" \? "clock_in" : "clock_out"/);
   assert.match(script, /requestedClockInAt: missing === "Clock In"/);
   assert.match(script, /requestedClockOutAt: missing === "Clock Out"/);
-  assert.match(script, /Requested: <span class="time-mark corrected">\$\{escapeHtml\(correction\.requestedTime\)\}<\/span>/);
+  assert.match(employeeSummaryRoute, /original_record_json/);
+  assert.match(script, /function parseCorrectionOriginalRecord/);
+  assert.match(script, /originalClockIn: formatLiveTime\(original\?\.clock_in_at\)/);
+  assert.match(script, /originalClockOut: formatLiveTime\(original\?\.clock_out_at\)/);
+  assert.match(script, /function correctionRequestedLine/);
+  assert.match(script, /Requested: \$\{escapeHtml\(originalTime\)\} to <span class="time-mark corrected">\$\{escapeHtml\(requestedTime\)\}<\/span>/);
 });

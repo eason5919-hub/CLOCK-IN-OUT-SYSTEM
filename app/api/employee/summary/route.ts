@@ -187,7 +187,7 @@ export async function GET(request: Request) {
   const corrections = await db
     .prepare(
       `SELECT id, requested_date, missing_type, requested_clock_in_at, requested_clock_out_at, reason, status,
-              created_at, reviewed_at
+              original_record_json, created_at, reviewed_at
        FROM attendance_corrections
        WHERE employee_id = ?
        ORDER BY COALESCE(reviewed_at, created_at) DESC, created_at DESC`,

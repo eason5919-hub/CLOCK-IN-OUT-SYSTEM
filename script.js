@@ -498,6 +498,7 @@ function mapLiveAttendance(row) {
 }
 
 function mapLiveCorrection(row) {
+  const original = parseCorrectionOriginalRecord(row.original_record_json);
   return {
     id: row.id,
     employeeId: state.currentUser?.employeeId,
@@ -509,11 +510,23 @@ function mapLiveCorrection(row) {
     requestedClockIn: formatLiveTime(row.requested_clock_in_at),
     requestedClockOut: formatLiveTime(row.requested_clock_out_at),
     requestedTime: formatLiveTime(row.requested_clock_out_at || row.requested_clock_in_at),
+    originalClockIn: formatLiveTime(original?.clock_in_at),
+    originalClockOut: formatLiveTime(original?.clock_out_at),
     reason: row.reason,
     status: statusLabel(row.status),
     createdAt: row.created_at || "",
     reviewedAt: row.reviewed_at || "",
   };
+}
+
+function parseCorrectionOriginalRecord(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 function mapLiveLeaveRequest(row) {
@@ -1109,9 +1122,17 @@ function employeeCard(employee) {
 }
 
 function correctionCard(correction) {
-  const requested = correction.requestedTime ? `Requested: <span class="time-mark corrected">${escapeHtml(correction.requestedTime)}</span>` : "Requested: -";
+  const requested = correctionRequestedLine(correction);
   const reason = correction.reason ? ` | ${escapeHtml(correction.reason)}` : "";
   return `<div class="list-item"><strong>${correction.date} - ${correction.missing}</strong><span>${requested}${reason}</span><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span></div>`;
+}
+
+function correctionRequestedLine(correction) {
+  const originalTime = correction.missing === "Clock In" ? correction.originalClockIn : correction.originalClockOut;
+  const requestedTime = correction.missing === "Clock In" ? correction.requestedClockIn : correction.requestedClockOut;
+  if (!requestedTime) return "Requested: -";
+  if (!originalTime) return `Requested: <span class="time-mark corrected">${escapeHtml(requestedTime)}</span>`;
+  return `Requested: ${escapeHtml(originalTime)} to <span class="time-mark corrected">${escapeHtml(requestedTime)}</span>`;
 }
 
 function visibleEmployeeLeaveRequests(requests) {
