@@ -1158,7 +1158,11 @@ function correctionRequestedLine(correction) {
 }
 
 function correctionsForMonth(corrections, monthKey) {
-  return (corrections || []).filter((correction) => String(correction.date || "").startsWith(`${monthKey}-`));
+  return (corrections || []).filter((correction) => correctionMonthKey(correction) === monthKey);
+}
+
+function correctionMonthKey(correction) {
+  return String(correction.date || "").slice(0, 7);
 }
 
 function visibleEmployeeLeaveRequests(requests) {

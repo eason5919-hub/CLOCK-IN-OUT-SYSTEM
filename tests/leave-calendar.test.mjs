@@ -66,9 +66,13 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
 });
 
 test("employee month dashboard can show current and previous month only", async () => {
-  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+  const [script, indexHtml] = await Promise.all([
+    readFile(new URL("../script.js", import.meta.url), "utf8"),
+    readFile(new URL("../index.html", import.meta.url), "utf8"),
+  ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
+  assert.match(indexHtml, /script\.js\?v=20260805-month-corrections/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -77,7 +81,9 @@ test("employee month dashboard can show current and previous month only", async 
   assert.match(script, /const visibleCorrections = correctionsForMonth\(corrections, selectedEmployeeMonthKey\)/);
   assert.match(script, /visibleCorrections\.map\(correctionCard\)/);
   assert.match(script, /function correctionsForMonth/);
-  assert.match(script, /String\(correction\.date \|\| ""\)\.startsWith\(`\$\{monthKey\}-`\)/);
+  assert.match(script, /function correctionMonthKey/);
+  assert.match(script, /correctionMonthKey\(correction\) === monthKey/);
+  assert.match(script, /String\(correction\.date \|\| ""\)\.slice\(0, 7\)/);
 });
 
 test("employee month dashboard uses short AL and MC labels", async () => {
