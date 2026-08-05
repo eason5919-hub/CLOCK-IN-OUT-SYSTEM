@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-fast-cancel-correction/);
+  assert.match(indexHtml, /script\.js\?v=20260805-month-metrics/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -154,7 +154,16 @@ test("employee leave requests use one date-range calendar and limit closed cards
 test("employee correction metric counts pending requests only", async () => {
   const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
 
-  assert.match(script, /corrections: pendingCorrectionCount\(corrections\)/);
+  assert.match(script, /const monthRecords = recordsForMonth\(records, selectedEmployeeMonthKey\)/);
+  assert.match(script, /const monthLeaveRequests = leaveRequestsForMonth\(leaveRequests, selectedEmployeeMonthKey\)/);
+  assert.match(script, /present: formatDayCount\(calculatePresentDays\(monthRecords, monthLeaveRequests\)\)/);
+  assert.match(script, /late: monthRecords\.filter\(\(row\) => row\.lateMinutes > 0\)\.length/);
+  assert.match(script, /ot: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ row\.overtimeMinutes, 0\)\)/);
+  assert.match(script, /corrections: pendingCorrectionCount\(visibleCorrections\)/);
+  assert.match(script, /function recordsForMonth/);
+  assert.match(script, /function leaveRequestsForMonth/);
+  assert.match(script, /function formatMetricDuration/);
+  assert.match(script, /`\$\{hours\}hr \$\{remainder\}min`/);
   assert.match(script, /function pendingCorrectionCount/);
   assert.match(script, /correction\.status === "Pending"/);
   assert.match(script, /const canCancel = correction\.status === "Pending"/);

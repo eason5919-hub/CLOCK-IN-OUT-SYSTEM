@@ -180,6 +180,8 @@ function employeeScreen() {
   selectedEmployeeMonthKey = normalizedEmployeeMonthKey(selectedEmployeeMonthKey);
   const currentMonthDate = monthDateFromKey(selectedEmployeeMonthKey);
   const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
+  const monthRecords = recordsForMonth(records, selectedEmployeeMonthKey);
+  const monthLeaveRequests = leaveRequestsForMonth(leaveRequests, selectedEmployeeMonthKey);
   const visibleCorrections = correctionsForMonth(corrections, selectedEmployeeMonthKey);
   const displayedCorrections = showAllEmployeeCorrections ? visibleCorrections : visibleCorrections.slice(0, 3);
   const correctionMoreButton = visibleCorrections.length > 3
@@ -196,10 +198,10 @@ function employeeScreen() {
     ? `Clocked in at ${escapeHtml(openRecord.clockIn)}. Scan the QR again to clock out.`
     : "Scan the warehouse QR to clock in.";
   const stats = {
-    present: formatDayCount(calculatePresentDays(records, leaveRequests)),
-    late: records.filter((row) => row.lateMinutes > 0).length,
-    ot: records.reduce((total, row) => total + row.overtimeMinutes, 0),
-    corrections: pendingCorrectionCount(corrections),
+    present: formatDayCount(calculatePresentDays(monthRecords, monthLeaveRequests)),
+    late: monthRecords.filter((row) => row.lateMinutes > 0).length,
+    ot: formatMetricDuration(monthRecords.reduce((total, row) => total + row.overtimeMinutes, 0)),
+    corrections: pendingCorrectionCount(visibleCorrections),
   };
 
   return `
@@ -218,7 +220,7 @@ function employeeScreen() {
         ${metrics([
           ["Present days", stats.present, ""],
           ["Late records", stats.late, "amber"],
-          ["OT minutes", stats.ot, "blue"],
+          ["OT", stats.ot, "blue"],
           ["Corrections", stats.corrections, "red"],
         ])}
       </section>
@@ -1214,6 +1216,14 @@ function correctionMonthKey(correction) {
   return String(correction.date || "").slice(0, 7);
 }
 
+function recordsForMonth(records, monthKey) {
+  return (records || []).filter((record) => String(record.date || "").slice(0, 7) === monthKey);
+}
+
+function leaveRequestsForMonth(requests, monthKey) {
+  return (requests || []).filter((request) => String(request.date || "").slice(0, 7) === monthKey);
+}
+
 function monthDateRange(monthKey) {
   const [year, month] = monthKey.split("-").map(Number);
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -1958,6 +1968,14 @@ function formatLeaveDays(value) {
 function formatDayCount(value) {
   const number = Number(value || 0);
   return Number.isInteger(number) ? String(number) : number.toFixed(1);
+}
+
+function formatMetricDuration(minutes) {
+  const value = Number(minutes || 0);
+  if (!value) return "0min";
+  const hours = Math.floor(value / 60);
+  const remainder = value % 60;
+  return hours ? `${hours}hr ${remainder}min` : `${remainder}min`;
 }
 
 function calculatePresentDays(records, leaveRequests) {
