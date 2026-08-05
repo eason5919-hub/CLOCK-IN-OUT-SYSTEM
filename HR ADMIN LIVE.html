@@ -708,6 +708,7 @@
     let leaveRequests = [];
     let corrections = [];
     let loading = false;
+    let refreshQueued = false;
     let editingEmployeeId = "";
     let selectedAttendanceDate = todayKey();
     let selectedReportMonth = todayKey().slice(0, 7);
@@ -723,6 +724,10 @@
     function setStatus(target, message, type) {
       target.textContent = message;
       target.className = `status ${type || ""}`.trim();
+    }
+
+    function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     function token() {
@@ -761,22 +766,33 @@
         headers.Authorization = `Bearer ${savedToken}`;
       }
 
-      const response = await fetch(`${API_BASE}${path}`, {
-        ...options,
-        headers,
-        cache: "no-store"
-      });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await fetch(`${API_BASE}${path}`, {
+            ...options,
+            headers,
+            cache: "no-store"
+          });
 
-      const text = await response.text();
-      const data = text ? JSON.parse(text) : {};
-      if (!response.ok) {
-        if (response.status === 401) {
-          clearToken();
-          showLogin("Please login again.");
+          const text = await response.text();
+          const data = text ? JSON.parse(text) : {};
+          if (!response.ok) {
+            if (response.status === 401) {
+              clearToken();
+              showLogin("Please login again.");
+            }
+            throw new Error(data.error || "Request failed.");
+          }
+          return data;
+        } catch (error) {
+          if (error.message && error.message !== "Failed to fetch") throw error;
+          if (attempt < 2) {
+            await wait(500 * (attempt + 1));
+            continue;
+          }
+          throw new Error("Cannot connect to live database. Check internet, then click Refresh.");
         }
-        throw new Error(data.error || "Request failed.");
       }
-      return data;
     }
 
     function escapeHtml(value) {
@@ -1702,7 +1718,10 @@
     }
 
     async function loadLiveData(force = false) {
-      if (loading && !force) return;
+      if (loading) {
+        if (force) refreshQueued = true;
+        return;
+      }
       loading = true;
       try {
         const data = await api(`/api/admin/live?refresh=${Date.now()}`);
@@ -1716,6 +1735,10 @@
         setStatus(statusText, error.message || "Cannot connect", "error");
       } finally {
         loading = false;
+        if (refreshQueued) {
+          refreshQueued = false;
+          loadLiveData(true);
+        }
       }
     }
 

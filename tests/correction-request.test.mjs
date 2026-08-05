@@ -78,6 +78,11 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminRoute, /SET attendance_id = \?, status = \?/);
   assert.match(adminRoute, /let reviewedAttendanceId = correction\.attendance_id/);
   assert.match(adminHtml, /function approvedCorrectionTimes/);
+  assert.match(adminHtml, /function wait\(ms\)/);
+  assert.match(adminHtml, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
+  assert.match(adminHtml, /Cannot connect to live database\. Check internet, then click Refresh\./);
+  assert.match(adminHtml, /let refreshQueued = false/);
+  assert.match(adminHtml, /if \(loading\) \{/);
   assert.match(adminHtml, /const clockOut = approved\.find\(item => item\.requested_clock_out_at\)/);
   assert.match(adminHtml, /clockOut: clockOut\?\.requested_clock_out_at \|\| ""/);
   assert.match(adminHtml, /const inRow = inRows\[0\] \|\| null/);

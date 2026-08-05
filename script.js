@@ -34,6 +34,7 @@ let pendingDeleteEmployeeId = null;
 let pendingScanAction = null;
 let qrScanController = null;
 let liveRefreshInFlight = false;
+let liveRefreshQueued = false;
 let gpsWatchId = null;
 let latestGpsSamples = [];
 let selectedHistoryDate = malaysiaDateKey(new Date());
@@ -358,7 +359,11 @@ function bindLogin() {
 
 async function loadEmployeeLive(force = false) {
   if (optimisticLeaveSubmitInFlight && !force) return;
-  if (!employeeToken() || (liveRefreshInFlight && !force)) return;
+  if (!employeeToken()) return;
+  if (liveRefreshInFlight) {
+    if (force) liveRefreshQueued = true;
+    return;
+  }
   liveRefreshInFlight = true;
   try {
     const result = await liveApi(`/api/employee/summary?refresh=${Date.now()}`, { method: "GET" });
@@ -384,6 +389,10 @@ async function loadEmployeeLive(force = false) {
     }
   } finally {
     liveRefreshInFlight = false;
+    if (liveRefreshQueued) {
+      liveRefreshQueued = false;
+      loadEmployeeLive(true);
+    }
   }
 }
 
@@ -394,19 +403,30 @@ async function liveApi(path, options = {}, requireToken = true) {
   headers["X-Device-Fingerprint"] = getDeviceFingerprint();
   if (requireToken && !token) throw new Error("Employee login is required.");
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-    cache: "no-store",
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    const error = new Error(data.error || "Unable to connect to attendance server.");
-    error.status = response.status;
-    throw error;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+        cache: "no-store",
+      });
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      if (!response.ok) {
+        const error = new Error(data.error || "Unable to connect to attendance server.");
+        error.status = response.status;
+        throw error;
+      }
+      return data;
+    } catch (error) {
+      if (error.status || (error.message && error.message !== "Failed to fetch")) throw error;
+      if (attempt < 2) {
+        await wait(500 * (attempt + 1));
+        continue;
+      }
+      throw new Error("Cannot connect to live database. Check internet, then try again.");
+    }
   }
-  return data;
 }
 
 function saveEmployeeToken(token, expiresAt) {
