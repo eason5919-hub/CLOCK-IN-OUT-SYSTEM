@@ -1000,7 +1000,7 @@ function calendarRecordSummary(records, date, today, corrections = []) {
   const present = displayRecords.some((row) => row.clockIn && row.clockOut);
 
   return {
-    label: missed ? "Missed" : present ? "OK" : "-",
+    label: missed ? "X" : present ? "OK" : "-",
     tone: missed ? "missed" : present ? "present" : "",
   };
 }
