@@ -1024,7 +1024,7 @@
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
       const regularStartMs = scheduledDateTimeMs(dateKey, start - 60);
-      const regularEndMs = scheduledDateTimeMs(dateKey, end);
+      const regularEndMs = scheduledDateTimeMs(dateKey, end + 15);
       const regularSpan = Math.max(0, Math.round((Math.min(clockOutMs, regularEndMs) - Math.max(clockInMs, regularStartMs)) / 60000));
       const breakDeduction = day >= 1 && day <= 5 && regularSpan > 300 ? 60 : 0;
       const regularCap = day === 6 ? 240 : 480;
@@ -1086,7 +1086,7 @@
       const outMs = Date.parse(attendanceRow.clockOut);
       if (Number.isNaN(inMs) || Number.isNaN(outMs) || !attendanceRow.dateKey) return 0;
       const startMs = scheduledDateTimeMs(attendanceRow.dateKey, start);
-      const endMs = scheduledDateTimeMs(attendanceRow.dateKey, end);
+      const endMs = scheduledDateTimeMs(attendanceRow.dateKey, end + 15);
       return Math.max(0, Math.round((Math.min(outMs, endMs) - Math.max(inMs, startMs)) / 60000));
     }
 
@@ -1097,7 +1097,6 @@
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
       let lateShort = Math.max(0, inMinutes - start);
-      if (day !== 6 && lateShort > 60) lateShort -= 60;
       if (inMinutes <= start + 15) lateShort = 0;
       if (isHalfLeaveText(leaveTaken)) {
         const workShort = Math.max(0, 240 - reportWorkingWindowMinutes(attendanceRow, day));

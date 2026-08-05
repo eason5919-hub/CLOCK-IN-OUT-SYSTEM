@@ -129,6 +129,9 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function originalReportValue/);
   assert.match(adminHtml, /const regularSpan = Math\.max\(0, Math\.round/);
   assert.match(adminHtml, /const breakDeduction = day >= 1 && day <= 5 && regularSpan > 300 \? 60 : 0/);
+  assert.match(adminHtml, /scheduledDateTimeMs\(dateKey, end \+ 15\)/);
+  assert.match(adminHtml, /scheduledDateTimeMs\(attendanceRow\.dateKey, end \+ 15\)/);
+  assert.doesNotMatch(adminHtml, /lateShort > 60\) lateShort -= 60/);
   assert.match(adminHtml, /const regularCap = day === 6 \? 240 : 480/);
   assert.match(adminHtml, /Math\.min\(Math\.max\(0, regularSpan - breakDeduction\), regularCap\) \+ overtime/);
   assert.match(adminHtml, /const outMs = Date\.parse\(attendanceRow\.clockOut \|\| ""\)/);
