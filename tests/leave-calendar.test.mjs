@@ -48,7 +48,9 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /const threshold = scheduledEnd \+ 16/);
   assert.match(script, /let liveRefreshQueued = false/);
   assert.match(script, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
-  assert.match(script, /Cannot connect to live database\. Check internet, then try again\./);
+  assert.match(script, /mode: "cors"/);
+  assert.match(script, /credentials: "omit"/);
+  assert.match(script, /Live database is reconnecting\. Try again in a few seconds\./);
   assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*Working Hours/);
   assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*Status/);
   assert.match(script, /const displayRecords = records\.map\(\(row\) => attendanceDisplayTimes\(row, corrections\)\)/);

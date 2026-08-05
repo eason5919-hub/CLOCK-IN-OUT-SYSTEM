@@ -80,7 +80,11 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function approvedCorrectionTimes/);
   assert.match(adminHtml, /function wait\(ms\)/);
   assert.match(adminHtml, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
-  assert.match(adminHtml, /Cannot connect to live database\. Check internet, then click Refresh\./);
+  assert.match(adminHtml, /mode: "cors"/);
+  assert.match(adminHtml, /credentials: "omit"/);
+  assert.match(adminHtml, /Live database is reconnecting\. Click Refresh if it does not update\./);
+  assert.match(adminHtml, /Live database reconnecting\.\.\./);
+  assert.match(adminHtml, /}, 30000\)/);
   assert.match(adminHtml, /let refreshQueued = false/);
   assert.match(adminHtml, /if \(loading\) \{/);
   assert.match(adminHtml, /const clockOut = approved\.find\(item => item\.requested_clock_out_at\)/);

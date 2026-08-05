@@ -771,7 +771,10 @@
           const response = await fetch(`${API_BASE}${path}`, {
             ...options,
             headers,
-            cache: "no-store"
+            cache: "no-store",
+            mode: "cors",
+            credentials: "omit",
+            referrerPolicy: "no-referrer"
           });
 
           const text = await response.text();
@@ -785,12 +788,12 @@
           }
           return data;
         } catch (error) {
-          if (error.message && error.message !== "Failed to fetch") throw error;
+          if (error.message && !["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."].includes(error.message)) throw error;
           if (attempt < 2) {
             await wait(500 * (attempt + 1));
             continue;
           }
-          throw new Error("Cannot connect to live database. Check internet, then click Refresh.");
+          throw new Error("Live database is reconnecting. Click Refresh if it does not update.");
         }
       }
     }
@@ -1732,7 +1735,8 @@
         renderAll();
         setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}`, "ok");
       } catch (error) {
-        setStatus(statusText, error.message || "Cannot connect", "error");
+        const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;
+        setStatus(statusText, hasExistingData ? "Live database reconnecting..." : error.message || "Cannot connect", hasExistingData ? "" : "error");
       } finally {
         loading = false;
         if (refreshQueued) {
@@ -2004,7 +2008,7 @@
 
     setInterval(() => {
       if (token() && !document.hidden) loadLiveData();
-    }, 5000);
+    }, 30000);
   </script>
 </body>
 </html>

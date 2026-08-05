@@ -409,6 +409,9 @@ async function liveApi(path, options = {}, requireToken = true) {
         ...options,
         headers,
         cache: "no-store",
+        mode: "cors",
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
       });
       const text = await response.text();
       const data = text ? JSON.parse(text) : {};
@@ -419,12 +422,12 @@ async function liveApi(path, options = {}, requireToken = true) {
       }
       return data;
     } catch (error) {
-      if (error.status || (error.message && error.message !== "Failed to fetch")) throw error;
+      if (error.status || (error.message && !["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."].includes(error.message))) throw error;
       if (attempt < 2) {
         await wait(500 * (attempt + 1));
         continue;
       }
-      throw new Error("Cannot connect to live database. Check internet, then try again.");
+      throw new Error("Live database is reconnecting. Try again in a few seconds.");
     }
   }
 }
