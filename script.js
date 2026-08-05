@@ -621,6 +621,12 @@ function bindEmployee() {
     button.addEventListener("click", async () => {
       const ok = confirm("Cancel this correction request?");
       if (!ok) return;
+      const previousCorrections = state.corrections.map((correction) => ({ ...correction }));
+      state.corrections = state.corrections.map((correction) =>
+        correction.id === button.dataset.cancelCorrection ? { ...correction, status: "Cancelled" } : correction,
+      );
+      saveState();
+      render();
       try {
         await liveApi("/api/corrections", {
           method: "POST",
@@ -633,6 +639,9 @@ function bindEmployee() {
         await loadEmployeeLive(true);
         render();
       } catch (error) {
+        state.corrections = previousCorrections;
+        saveState();
+        render();
         toast(error.message || "Unable to cancel correction request.");
       }
     });
