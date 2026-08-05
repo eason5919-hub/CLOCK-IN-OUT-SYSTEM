@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-correction-view-more/);
+  assert.match(indexHtml, /script\.js\?v=20260805-correction-collapse-scroll/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -87,6 +87,8 @@ test("employee month dashboard can show current and previous month only", async 
   assert.match(script, /data-toggle-employee-corrections/);
   assert.match(script, /showAllEmployeeCorrections = false/);
   assert.match(script, /showAllEmployeeCorrections = !showAllEmployeeCorrections/);
+  assert.match(script, /const shouldScrollBack = showAllEmployeeCorrections/);
+  assert.match(script, /scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
   assert.match(script, /function correctionsForMonth/);
   assert.match(script, /function correctionMonthKey/);
   assert.match(script, /correctionMonthKey\(correction\) === monthKey/);

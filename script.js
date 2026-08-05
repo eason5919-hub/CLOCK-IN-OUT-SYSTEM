@@ -606,8 +606,14 @@ function bindEmployee() {
     });
   });
   document.querySelector("[data-toggle-employee-corrections]")?.addEventListener("click", () => {
+    const shouldScrollBack = showAllEmployeeCorrections;
     showAllEmployeeCorrections = !showAllEmployeeCorrections;
     render();
+    if (shouldScrollBack) {
+      requestAnimationFrame(() => {
+        document.querySelector("#corrections")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
