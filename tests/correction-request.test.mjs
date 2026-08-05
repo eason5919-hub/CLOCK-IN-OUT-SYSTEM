@@ -130,6 +130,9 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function calculatedReportValues/);
   assert.match(adminHtml, /ms < afterMs/);
   assert.match(adminRoute, /ms < afterMs/);
+  assert.match(adminHtml, /function reportHours\(minutes, showZero = false\)/);
+  assert.match(adminHtml, /const showZeroWork = outMs === inMs/);
+  assert.match(adminHtml, /work: reportHours\(workMinutes, showZeroWork\)/);
   assert.match(adminHtml, /function isHalfLeaveText/);
   assert.match(adminHtml, /function reportWorkingWindowMinutes/);
   assert.match(adminHtml, /if \(inMinutes <= start \+ 15\) lateShort = 0/);

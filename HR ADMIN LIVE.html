@@ -972,9 +972,9 @@
       return ms == null ? "" : new Date(ms).toISOString();
     }
 
-    function reportHours(minutes) {
+    function reportHours(minutes, showZero = false) {
       const value = Number(minutes || 0);
-      if (!value) return "";
+      if (!value) return showZero ? "0.00" : "";
       return `${Math.floor(value / 60)}.${String(Math.abs(value % 60)).padStart(2, "0")}`;
     }
 
@@ -1060,6 +1060,7 @@
       if (inMs == null || outMs == null) {
         return { work: "", overtime: "", short: "" };
       }
+      const showZeroWork = outMs === inMs;
       const firstSegment = breakMs == null ? 0 : Math.max(0, Math.round((breakMs - inMs) / 60000));
       const secondSegmentStart = resumeMs ?? inMs;
       const secondSegment = Math.max(0, Math.round((outMs - secondSegmentStart) / 60000));
@@ -1083,7 +1084,7 @@
         actualMinutes: workMinutes,
       };
       return {
-        work: reportHours(workMinutes),
+        work: reportHours(workMinutes, showZeroWork),
         overtime: reportHours(overtime),
         short: reportHours(reportShortMinutes(attendanceRow, day, values.leaveTaken)),
       };
