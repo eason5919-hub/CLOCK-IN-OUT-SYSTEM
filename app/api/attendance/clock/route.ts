@@ -314,7 +314,10 @@ async function findActiveOpenRecord(
     .prepare(
       `SELECT id, work_date, clock_in_at, clock_out_at
        FROM attendance
-       WHERE employee_id = ? AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
+       WHERE employee_id = ?
+         AND source NOT LIKE 'admin_report_edit%'
+         AND clock_in_at IS NOT NULL
+         AND clock_out_at IS NULL
        ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC
        LIMIT 1`,
     )

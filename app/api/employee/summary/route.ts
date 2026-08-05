@@ -116,6 +116,16 @@ export async function GET(request: Request) {
          WHERE employee_id = ? AND source IN ('admin_report_edit_in', 'admin_report_edit_out')
          GROUP BY work_date
        ),
+       live_open_rows AS (
+         SELECT work_date,
+                MAX(clock_in_at) AS live_open_clock_in_at
+         FROM attendance
+         WHERE employee_id = ?
+           AND source NOT LIKE 'admin_report_edit%'
+           AND clock_in_at IS NOT NULL
+           AND clock_out_at IS NULL
+         GROUP BY work_date
+       ),
        day_keys AS (
          SELECT work_date FROM base_rows
          UNION
@@ -127,7 +137,7 @@ export async function GET(request: Request) {
               early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
               source, created_at, updated_at, clock_in_updated_at, clock_out_updated_at,
-              report_edited_clock_in, report_edited_clock_out
+              report_edited_clock_in, report_edited_clock_out, live_open_clock_in_at
        FROM (
          SELECT COALESCE(r.id, b.id, o.id) AS id,
                 d.work_date,
@@ -173,15 +183,17 @@ export async function GET(request: Request) {
                 CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.clock_in_override_updated_at ELSE COALESCE(r.clock_in_updated_at, b.updated_at) END AS clock_in_updated_at,
                 CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.clock_out_override_updated_at ELSE COALESCE(r.clock_out_updated_at, b.updated_at) END AS clock_out_updated_at,
                 CASE WHEN r.clock_in_at IS NOT NULL OR COALESCE(o.has_clock_in_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_in,
-                CASE WHEN r.clock_out_at IS NOT NULL OR COALESCE(o.has_clock_out_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_out
+                CASE WHEN r.clock_out_at IS NOT NULL OR COALESCE(o.has_clock_out_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_out,
+                l.live_open_clock_in_at
          FROM day_keys d
          LEFT JOIN base_rows b ON b.work_date = d.work_date
          LEFT JOIN report_rows r ON r.work_date = d.work_date
          LEFT JOIN field_overrides o ON o.work_date = d.work_date
+         LEFT JOIN live_open_rows l ON l.work_date = d.work_date
        )
        ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC, created_at DESC`,
     )
-    .bind(session.employee_id, session.employee_id, session.employee_id)
+    .bind(session.employee_id, session.employee_id, session.employee_id, session.employee_id)
     .all();
 
   const corrections = await db

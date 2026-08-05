@@ -194,7 +194,7 @@ function employeeScreen() {
   const clockAction = openRecord ? "out" : "in";
   const clockLabel = openRecord ? "Clock out" : "Clock in";
   const clockHint = openRecord
-    ? `Clocked in at ${escapeHtml(openRecord.clockIn)}. Scan the QR again to clock out.`
+    ? `Clocked in at ${escapeHtml(openRecord.liveClockIn || openRecord.clockIn)}. Scan the QR again to clock out.`
     : "Scan the warehouse QR to clock in.";
   const stats = {
     present: formatDayCount(calculatePresentDays(monthRecords, visibleCorrections)),
@@ -505,6 +505,8 @@ function mapLiveAttendance(row) {
     hasReportMarks: Object.prototype.hasOwnProperty.call(row, "report_clock_in_mark") || Object.prototype.hasOwnProperty.call(row, "report_clock_out_mark"),
     clockInMark: row.report_clock_in_mark || "",
     clockOutMark: row.report_clock_out_mark || "",
+    canClockOut: Boolean(row.live_open_clock_in_at),
+    liveClockIn: formatLiveTime(row.live_open_clock_in_at),
     gps: liveGpsLabel(row),
   };
 }
@@ -2011,7 +2013,11 @@ function localDateTimeToIso(date, time) {
 }
 
 function currentOpenRecord(records) {
-  return records.find((row) => row.clockIn && !row.clockOut && isOpenRecordStillActive(row.date));
+  return records.find((row) =>
+    Object.prototype.hasOwnProperty.call(row, "canClockOut")
+      ? row.canClockOut && isOpenRecordStillActive(row.date)
+      : row.clockIn && !row.clockOut && isOpenRecordStillActive(row.date),
+  );
 }
 
 function isOpenRecordStillActive(workDate) {

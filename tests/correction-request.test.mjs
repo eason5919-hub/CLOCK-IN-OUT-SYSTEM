@@ -3,13 +3,14 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("correction requests save Malaysia time and clock-out approvals target open rows", async () => {
-  const [script, employeeRoute, employeeSummaryRoute, adminRoute, adminHtml, css] = await Promise.all([
+  const [script, employeeRoute, employeeSummaryRoute, adminRoute, adminHtml, css, clockRoute] = await Promise.all([
     readFile(new URL("../script.js", import.meta.url), "utf8"),
     readFile(new URL("../app/api/corrections/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/employee/summary/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/admin/live/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../HR ADMIN LIVE.html", import.meta.url), "utf8"),
     readFile(new URL("../style.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/attendance/clock/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(script, /`\$\{date\}T\$\{time\}:00\+08:00`/);
@@ -36,6 +37,9 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(employeeSummaryRoute, /WITH base_rows AS/);
   assert.match(employeeSummaryRoute, /report_rows AS/);
   assert.match(employeeSummaryRoute, /field_overrides AS/);
+  assert.match(employeeSummaryRoute, /live_open_rows AS/);
+  assert.match(employeeSummaryRoute, /MAX\(clock_in_at\) AS live_open_clock_in_at/);
+  assert.match(employeeSummaryRoute, /report_edited_clock_in, report_edited_clock_out, live_open_clock_in_at/);
   assert.match(employeeSummaryRoute, /day_keys AS/);
   assert.match(employeeSummaryRoute, /source = 'admin_report_edit'/);
   assert.match(employeeSummaryRoute, /source NOT LIKE 'admin_report_edit%'/);
@@ -50,6 +54,7 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(employeeSummaryRoute, /LEFT JOIN base_rows b ON b\.work_date = d\.work_date/);
   assert.match(employeeSummaryRoute, /LEFT JOIN report_rows r ON r\.work_date = d\.work_date/);
   assert.match(employeeSummaryRoute, /LEFT JOIN field_overrides o ON o\.work_date = d\.work_date/);
+  assert.match(employeeSummaryRoute, /LEFT JOIN live_open_rows l ON l\.work_date = d\.work_date/);
   assert.doesNotMatch(employeeSummaryRoute, /work_date NOT IN \(SELECT work_date FROM report_days\)/);
   assert.match(employeeSummaryRoute, /ORDER BY work_date DESC, updated_at DESC/);
   assert.match(employeeSummaryRoute, /created_at, reviewed_at/);
@@ -66,6 +71,11 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(script, /hasReportMarks: Object\.prototype\.hasOwnProperty\.call\(row, "report_clock_in_mark"\) \|\| Object\.prototype\.hasOwnProperty\.call\(row, "report_clock_out_mark"\)/);
   assert.match(script, /clockInMark: row\.report_clock_in_mark \|\| ""/);
   assert.match(script, /clockOutMark: row\.report_clock_out_mark \|\| ""/);
+  assert.match(script, /canClockOut: Boolean\(row\.live_open_clock_in_at\)/);
+  assert.match(script, /liveClockIn: formatLiveTime\(row\.live_open_clock_in_at\)/);
+  assert.match(script, /Object\.prototype\.hasOwnProperty\.call\(row, "canClockOut"\)/);
+  assert.match(script, /row\.canClockOut && isOpenRecordStillActive\(row\.date\)/);
+  assert.match(clockRoute, /AND source NOT LIKE 'admin_report_edit%'/);
   assert.match(script, /const fieldUpdatedAt = field === "clockIn" \? row\.clockInUpdatedAt : row\.clockOutUpdatedAt/);
   assert.match(script, /parseLiveTimestamp\(b\.reviewedAt \|\| b\.createdAt \|\| ""\)/);
   assert.match(script, /sameClockValue\(correction\[key\], row\[field\]\) \|\| isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, fieldUpdatedAt \|\| row\.updatedAt \|\| row\.createdAt\)/);
