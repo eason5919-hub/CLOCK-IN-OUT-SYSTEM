@@ -221,7 +221,7 @@ function employeeScreen() {
             <button class="secondary" type="button" data-employee-month="${currentEmployeeMonthKey()}">Current</button>
           </div>
         </div>
-        <div class="month-calendar">${monthCalendar(records, leaveRequests, historyDate, currentMonthDate)}</div>
+        <div class="month-calendar">${monthCalendar(records, leaveRequests, corrections, historyDate, currentMonthDate)}</div>
       </section>
       <section class="panel wide" id="history">
         <div class="heading"><div><p class="eyebrow">Clock history</p><h3>My attendance - ${formatLeaveDateDisplay(historyDate)}</h3></div></div>
@@ -922,7 +922,7 @@ function metrics(items) {
     .join("")}</section>`;
 }
 
-function monthCalendar(records, leaveRequests, selectedDate, monthDate) {
+function monthCalendar(records, leaveRequests, corrections, selectedDate, monthDate) {
   const today = malaysiaDateKey(new Date());
   const monthKey = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, "0")}`;
   const firstDay = monthDate.getUTCDay();
@@ -939,7 +939,7 @@ function monthCalendar(records, leaveRequests, selectedDate, monthDate) {
     const date = `${monthKey}-${String(day).padStart(2, "0")}`;
     const dayRecords = records.filter((row) => row.date === date);
     const leave = calendarLeaveForDate(leaveRequests, date);
-    const summary = leave || calendarRecordSummary(dayRecords, date, today);
+    const summary = leave || calendarRecordSummary(dayRecords, date, today, corrections);
     const classes = ["month-day", summary.tone, date === selectedDate ? "selected" : ""].filter(Boolean).join(" ");
     cells.push(`
       <button class="${classes}" type="button" data-history-date="${date}">
@@ -968,13 +968,14 @@ function calendarLeaveLabel(request) {
   return `${durationLabel} ${typeLabel}`;
 }
 
-function calendarRecordSummary(records, date, today) {
+function calendarRecordSummary(records, date, today, corrections = []) {
   if (!records.length) return { label: "-", tone: "" };
 
-  const hasMissingIn = records.some((row) => !row.clockIn && row.clockOut);
-  const hasMissingOut = records.some((row) => row.clockIn && !row.clockOut && date < today);
+  const displayRecords = records.map((row) => attendanceDisplayTimes(row, corrections));
+  const hasMissingIn = displayRecords.some((row) => !row.clockIn && row.clockOut);
+  const hasMissingOut = displayRecords.some((row) => row.clockIn && !row.clockOut && date < today);
   const missed = hasMissingIn || hasMissingOut;
-  const present = records.some((row) => row.clockIn && row.clockOut);
+  const present = displayRecords.some((row) => row.clockIn && row.clockOut);
 
   return {
     label: missed ? "Missed" : present ? "Present" : "-",
