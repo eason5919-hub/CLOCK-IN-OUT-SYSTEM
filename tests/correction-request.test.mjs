@@ -77,6 +77,10 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(script, /row\.canClockOut && isOpenRecordStillActive\(row\.date\)/);
   assert.match(clockRoute, /AND source NOT LIKE 'admin_report_edit%'/);
   assert.match(clockRoute, /action: "clock_in_existing"/);
+  assert.match(clockRoute, /findQrAttendanceForDate/);
+  assert.match(clockRoute, /Attendance already completed for today/);
+  assert.doesNotMatch(clockRoute, /findLastCompletedSession/);
+  assert.doesNotMatch(clockRoute, /calculateBreakReturnLateMinutes/);
   assert.doesNotMatch(clockRoute, /Clock out is required before the next clock in/);
   assert.match(script, /const fieldUpdatedAt = field === "clockIn" \? row\.clockInUpdatedAt : row\.clockOutUpdatedAt/);
   assert.match(script, /parseLiveTimestamp\(b\.reviewedAt \|\| b\.createdAt \|\| ""\)/);

@@ -8,7 +8,6 @@ import {
   type GpsSample,
 } from "../../../../db/runtime";
 import {
-  calculateBreakReturnLateMinutes,
   calculateAttendanceTotals,
   isOpenAttendanceStillActive,
   localDayOfWeek,
@@ -128,6 +127,7 @@ export async function POST(request: Request) {
     const workDate = localWorkDate(timestamp, timeZone);
     const todaysSchedule = await loadSchedule(db, warehouse.id, localDayOfWeek(timestamp, timeZone));
     const activeOpenRecord = await findActiveOpenRecord(db, payload.employeeId, timestamp, timeZone);
+    const todaysQrRecord = await findQrAttendanceForDate(db, payload.employeeId, workDate);
 
     const ip = request.headers.get("cf-connecting-ip") ?? "local";
 
@@ -142,11 +142,21 @@ export async function POST(request: Request) {
           accuracy: bestSample.accuracy,
         });
       }
+      if (todaysQrRecord?.clock_out_at) {
+        return json(request, { error: "Attendance already completed for today." }, 409);
+      }
+      if (todaysQrRecord?.clock_in_at) {
+        return json(request, {
+          ok: true,
+          action: "clock_in_existing",
+          timestamp,
+          clockInAt: todaysQrRecord.clock_in_at,
+          distance,
+          accuracy: bestSample.accuracy,
+        });
+      }
 
-      const previousSession = await findLastCompletedSession(db, payload.employeeId, workDate);
-      const lateMinutes = previousSession?.clock_out_at
-        ? calculateBreakReturnLateMinutes(previousSession.clock_out_at, timestamp)
-        : calculateAttendanceTotals(timestamp, timestamp, todaysSchedule, timeZone).lateMinutes;
+      const lateMinutes = calculateAttendanceTotals(timestamp, timestamp, todaysSchedule, timeZone).lateMinutes;
       const status = lateMinutes > 0 ? "late" : "present";
       const attendanceId = crypto.randomUUID();
 
@@ -335,13 +345,15 @@ async function findActiveOpenRecord(
   return existing;
 }
 
-async function findLastCompletedSession(db: D1Database, employeeId: string, workDate: string) {
+async function findQrAttendanceForDate(db: D1Database, employeeId: string, workDate: string) {
   return db
     .prepare(
       `SELECT id, work_date, clock_in_at, clock_out_at, late_minutes, overtime_minutes, total_minutes
        FROM attendance
-       WHERE employee_id = ? AND work_date = ? AND clock_out_at IS NOT NULL
-       ORDER BY clock_out_at DESC
+       WHERE employee_id = ?
+         AND work_date = ?
+         AND source NOT LIKE 'admin_report_edit%'
+       ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
        LIMIT 1`,
     )
     .bind(employeeId, workDate)
