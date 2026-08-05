@@ -1054,8 +1054,8 @@ function attendanceEditMarks(row, corrections = []) {
   const correctedIn = approvedCorrectionForField(row, "clockIn", corrections);
   const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
   return {
-    clockIn: correctedIn ? "corrected" : "",
-    clockOut: correctedOut ? "corrected" : "",
+    clockIn: correctedIn ? "corrected" : row.reportEditedClockIn && row.clockIn ? "edited" : "",
+    clockOut: correctedOut ? "corrected" : row.reportEditedClockOut && row.clockOut ? "edited" : "",
   };
 }
 

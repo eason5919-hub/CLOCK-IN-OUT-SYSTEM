@@ -172,8 +172,8 @@ export async function GET(request: Request) {
                 COALESCE(o.clock_in_override_updated_at, o.clock_out_override_updated_at, r.updated_at, b.updated_at, o.updated_at) AS updated_at,
                 CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.clock_in_override_updated_at ELSE COALESCE(r.clock_in_updated_at, b.updated_at) END AS clock_in_updated_at,
                 CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.clock_out_override_updated_at ELSE COALESCE(r.clock_out_updated_at, b.updated_at) END AS clock_out_updated_at,
-                COALESCE(o.has_clock_in_override, 0) AS report_edited_clock_in,
-                COALESCE(o.has_clock_out_override, 0) AS report_edited_clock_out
+                CASE WHEN r.clock_in_at IS NOT NULL OR COALESCE(o.has_clock_in_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_in,
+                CASE WHEN r.clock_out_at IS NOT NULL OR COALESCE(o.has_clock_out_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_out
          FROM day_keys d
          LEFT JOIN base_rows b ON b.work_date = d.work_date
          LEFT JOIN report_rows r ON r.work_date = d.work_date
