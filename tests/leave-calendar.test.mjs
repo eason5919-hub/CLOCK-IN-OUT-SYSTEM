@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-report-metrics/);
+  assert.match(indexHtml, /script\.js\?v=20260805-qr-scan-stable/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -129,6 +129,17 @@ test("employee GPS display shows warehouse distance and does not fake fallback s
   assert.match(script, /maximumAge: 0/);
   assert.doesNotMatch(script, /function fallbackGps/);
   assert.doesNotMatch(script, /source: "fallback"/);
+});
+
+test("employee QR scanner trims reads and scans multiple frame areas", async () => {
+  const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+
+  assert.match(script, /const QR_SCAN_INTERVAL_MS = 80/);
+  assert.match(script, /const token = String\(qr \|\| ""\)\.trim\(\)/);
+  assert.match(script, /document\.querySelector\("\.scan-modal"\)\?\.closest\("\.modal-backdrop"\)\?\.remove\(\)/);
+  assert.match(script, /\[0\.9, 0\.78, 0\.62\]\.map/);
+  assert.match(script, /String\(window\.jsQR\(image\.data, image\.width, image\.height/);
+  assert.match(script, /if \(String\(qr \|\| ""\)\.trim\(\) !== WAREHOUSE\.qr\)/);
 });
 
 test("employee leave requests use one date-range calendar and limit closed cards without reordering", async () => {

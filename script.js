@@ -18,7 +18,7 @@ const WAREHOUSE = {
 const WHATSAPP_NOTIFY_NUMBER = "60122159225";
 const MAX_GPS_ACCURACY_METERS = 30;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
-const QR_SCAN_INTERVAL_MS = 120;
+const QR_SCAN_INTERVAL_MS = 80;
 
 const defaultState = {
   currentUser: null,
@@ -859,10 +859,15 @@ function closeQrScanner() {
 
 async function completeQrScan(qr) {
   const action = pendingScanAction;
+  const token = String(qr || "").trim();
   stopQrScanner();
   pendingScanAction = null;
-  render();
-  await clock(action, qr);
+  document.querySelector(".scan-modal")?.closest(".modal-backdrop")?.remove();
+  if (!action || !token) {
+    render();
+    return;
+  }
+  await clock(action, token);
 }
 
 async function startQrScanner() {
@@ -937,7 +942,7 @@ async function detectQrCode(video, detector, canvas, context) {
   if (detector) {
     try {
       const codes = await detector.detect(video);
-      const raw = codes[0]?.rawValue || "";
+      const raw = String(codes[0]?.rawValue || "").trim();
       if (raw) return raw;
     } catch {
       // Fall back to jsQR below; some phones expose BarcodeDetector but fail on video frames.
@@ -947,15 +952,21 @@ async function detectQrCode(video, detector, canvas, context) {
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const image = context.getImageData(0, 0, canvas.width, canvas.height);
-  const fullFrame = window.jsQR(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" })?.data;
-  if (fullFrame) return fullFrame;
+  const frameSize = Math.min(canvas.width, canvas.height);
+  const scans = [
+    [0, 0, canvas.width, canvas.height],
+    ...[0.9, 0.78, 0.62].map((scale) => {
+      const size = Math.floor(frameSize * scale);
+      return [Math.floor((canvas.width - size) / 2), Math.floor((canvas.height - size) / 2), size, size];
+    }),
+  ];
 
-  const cropSize = Math.floor(Math.min(canvas.width, canvas.height) * 0.78);
-  const cropX = Math.floor((canvas.width - cropSize) / 2);
-  const cropY = Math.floor((canvas.height - cropSize) / 2);
-  const crop = context.getImageData(cropX, cropY, cropSize, cropSize);
-  return window.jsQR(crop.data, crop.width, crop.height, { inversionAttempts: "attemptBoth" })?.data || "";
+  for (const [x, y, width, height] of scans) {
+    const image = context.getImageData(x, y, width, height);
+    const qr = String(window.jsQR(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" })?.data || "").trim();
+    if (qr) return qr;
+  }
+  return "";
 }
 
 function stopQrScanner() {
@@ -969,7 +980,7 @@ async function clock(action, qr) {
   const scanner = document.querySelector("#scanner");
   const message = document.querySelector("#gps-message");
   scanner.className = "scanner";
-  if (qr !== WAREHOUSE.qr) {
+  if (String(qr || "").trim() !== WAREHOUSE.qr) {
     scanner.className = "scanner rejected";
     message.textContent = "Invalid warehouse QR code.";
     return;
