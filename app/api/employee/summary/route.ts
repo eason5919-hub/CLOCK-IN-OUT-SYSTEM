@@ -201,6 +201,15 @@ export async function GET(request: Request) {
     report_clock_in_mark: reportClockMark(row, "clock_in", correctionRows),
     report_clock_out_mark: reportClockMark(row, "clock_out", correctionRows),
   }));
+  const attendanceByDate = new Map(attendanceRows.map((row) => [String(row.work_date || ""), row]));
+  const correctionsWithReportTimes = correctionRows.map((row) => {
+    const reportRow = attendanceByDate.get(String(row.requested_date || ""));
+    return {
+      ...row,
+      report_clock_in_at: reportRow?.clock_in_at || null,
+      report_clock_out_at: reportRow?.clock_out_at || null,
+    };
+  });
 
   const leaveRequests = await db
     .prepare(
@@ -215,7 +224,7 @@ export async function GET(request: Request) {
   return json(request, {
     employee,
     attendance: attendanceRows,
-    corrections: corrections.results,
+    corrections: correctionsWithReportTimes,
     leaveRequests: leaveRequests.results,
   });
 }
