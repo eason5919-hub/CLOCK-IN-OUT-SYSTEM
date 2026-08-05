@@ -332,7 +332,7 @@ async function findActiveOpenRecord(
       `SELECT id, work_date, clock_in_at, clock_out_at
        FROM attendance
        WHERE employee_id = ?
-         AND source NOT LIKE 'admin_report_edit%'
+         AND source = 'qr_gps'
          AND clock_in_at IS NOT NULL
          AND clock_out_at IS NULL
        ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC
@@ -348,15 +348,36 @@ async function findActiveOpenRecord(
 async function findQrAttendanceForDate(db: D1Database, employeeId: string, workDate: string) {
   return db
     .prepare(
-      `SELECT id, work_date, clock_in_at, clock_out_at, late_minutes, overtime_minutes, total_minutes
-       FROM attendance
-       WHERE employee_id = ?
-         AND work_date = ?
-         AND source NOT LIKE 'admin_report_edit%'
-       ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
-       LIMIT 1`,
+      `WITH qr_row AS (
+         SELECT id, work_date, clock_in_at, clock_out_at, late_minutes, overtime_minutes, total_minutes
+         FROM attendance
+         WHERE employee_id = ?
+           AND work_date = ?
+           AND source = 'qr_gps'
+         ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
+         LIMIT 1
+       ),
+       field_overrides AS (
+         SELECT MAX(CASE WHEN source = 'admin_report_edit_in' THEN 1 ELSE 0 END) AS has_clock_in_override,
+                MAX(CASE WHEN source = 'admin_report_edit_in' THEN clock_in_at END) AS override_clock_in_at,
+                MAX(CASE WHEN source = 'admin_report_edit_out' THEN 1 ELSE 0 END) AS has_clock_out_override,
+                MAX(CASE WHEN source = 'admin_report_edit_out' THEN clock_out_at END) AS override_clock_out_at
+         FROM attendance
+         WHERE employee_id = ?
+           AND work_date = ?
+           AND source IN ('admin_report_edit_in', 'admin_report_edit_out')
+       )
+       SELECT q.id,
+              q.work_date,
+              CASE WHEN COALESCE(f.has_clock_in_override, 0) = 1 THEN f.override_clock_in_at ELSE q.clock_in_at END AS clock_in_at,
+              CASE WHEN COALESCE(f.has_clock_out_override, 0) = 1 THEN f.override_clock_out_at ELSE q.clock_out_at END AS clock_out_at,
+              q.late_minutes,
+              q.overtime_minutes,
+              q.total_minutes
+       FROM qr_row q
+       LEFT JOIN field_overrides f`,
     )
-    .bind(employeeId, workDate)
+    .bind(employeeId, workDate, employeeId, workDate)
     .first<AttendanceRow>();
 }
 

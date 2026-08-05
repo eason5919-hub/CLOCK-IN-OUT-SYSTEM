@@ -121,7 +121,7 @@ export async function GET(request: Request) {
                 MAX(clock_in_at) AS live_open_clock_in_at
          FROM attendance
          WHERE employee_id = ?
-           AND source NOT LIKE 'admin_report_edit%'
+           AND source = 'qr_gps'
            AND clock_in_at IS NOT NULL
            AND clock_out_at IS NULL
          GROUP BY work_date
