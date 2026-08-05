@@ -188,6 +188,10 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /refreshReportRow\(cell\.closest\("tr"\), false\)/);
   assert.match(adminHtml, /refreshReportRow\(cell\.closest\("tr"\), true\)/);
   assert.match(adminHtml, /function originalReportValue/);
+  assert.match(adminHtml, /function reportFieldShouldSave/);
+  assert.match(adminHtml, /reportFieldWasEdited\(employeeId, dateKey, field\)/);
+  assert.match(adminHtml, /return reportFieldShouldSave\(employeeId, dateKey, field, nextEdits\)/);
+  assert.match(adminHtml, /editedFields: \["in", "break", "resume", "out"\]\.filter\(field => reportFieldShouldSave\(employeeId, dateKey, field, nextEdits\)\)/);
   assert.match(adminHtml, /const regularSpan = Math\.max\(0, Math\.round/);
   assert.match(adminHtml, /const breakDeduction = day >= 1 && day <= 5 && regularSpan > 300 \? 60 : 0/);
   assert.match(adminHtml, /scheduledDateTimeMs\(dateKey, end \+ 15\)/);

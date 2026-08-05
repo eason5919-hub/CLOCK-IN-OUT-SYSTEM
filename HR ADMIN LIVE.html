@@ -1648,6 +1648,10 @@
       return "";
     }
 
+    function reportFieldShouldSave(employeeId, dateKey, field, edits) {
+      return Object.prototype.hasOwnProperty.call(edits, reportEditKey(employeeId, dateKey, field)) || reportFieldWasEdited(employeeId, dateKey, field);
+    }
+
     function refreshReportRow(row, normalizeTimes = false) {
       if (!row?.dataset.reportDate) return;
       REPORT_TIME_FIELDS.forEach(field => {
@@ -1706,8 +1710,7 @@
       });
       const timeRows = [...reportRows.entries()]
         .filter(([dateKey]) => ["in", "break", "resume", "out"].some(field => {
-          const key = reportEditKey(employeeId, dateKey, field);
-          return Object.prototype.hasOwnProperty.call(nextEdits, key);
+          return reportFieldShouldSave(employeeId, dateKey, field, nextEdits);
         }))
         .map(([dateKey, row]) => ({
           dateKey,
@@ -1715,7 +1718,7 @@
           break: reportRowText(row, "break"),
           resume: reportRowText(row, "resume"),
           out: reportRowText(row, "out"),
-          editedFields: ["in", "break", "resume", "out"].filter(field => Object.prototype.hasOwnProperty.call(nextEdits, reportEditKey(employeeId, dateKey, field))),
+          editedFields: ["in", "break", "resume", "out"].filter(field => reportFieldShouldSave(employeeId, dateKey, field, nextEdits)),
         }));
       const liveRows = timeRows;
       if (liveRows.length) {
