@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-correction-collapse-scroll/);
+  assert.match(indexHtml, /script\.js\?v=20260805-correction-month-picker/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -80,6 +80,9 @@ test("employee month dashboard can show current and previous month only", async 
   assert.match(script, /selectedHistoryDate =/);
   assert.match(script, /let showAllEmployeeCorrections = false/);
   assert.match(script, /const visibleCorrections = correctionsForMonth\(corrections, selectedEmployeeMonthKey\)/);
+  assert.match(script, /const correctionDateRange = monthDateRange\(selectedEmployeeMonthKey\)/);
+  assert.match(script, /const correctionDateValue = correctionDateInMonth\(historyDate, selectedEmployeeMonthKey\)/);
+  assert.match(script, /min="\$\{correctionDateRange\.start\}" max="\$\{correctionDateRange\.end\}" value="\$\{correctionDateValue\}"/);
   assert.match(script, /const displayedCorrections = showAllEmployeeCorrections \? visibleCorrections : visibleCorrections\.slice\(0, 3\)/);
   assert.match(script, /displayedCorrections\.map\(correctionCard\)/);
   assert.match(script, /View more/);
@@ -91,6 +94,9 @@ test("employee month dashboard can show current and previous month only", async 
   assert.match(script, /scrollIntoView\(\{ behavior: "smooth", block: "start" \}\)/);
   assert.match(script, /function correctionsForMonth/);
   assert.match(script, /function correctionMonthKey/);
+  assert.match(script, /function monthDateRange/);
+  assert.match(script, /start: `\$\{monthKey\}-01`/);
+  assert.match(script, /function correctionDateInMonth/);
   assert.match(script, /correctionMonthKey\(correction\) === monthKey/);
   assert.match(script, /String\(correction\.date \|\| ""\)\.slice\(0, 7\)/);
 });

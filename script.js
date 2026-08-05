@@ -179,13 +179,15 @@ function employeeScreen() {
   const leaveDefaultDate = defaultLeaveDate();
   selectedEmployeeMonthKey = normalizedEmployeeMonthKey(selectedEmployeeMonthKey);
   const currentMonthDate = monthDateFromKey(selectedEmployeeMonthKey);
+  const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
   const visibleCorrections = correctionsForMonth(corrections, selectedEmployeeMonthKey);
   const displayedCorrections = showAllEmployeeCorrections ? visibleCorrections : visibleCorrections.slice(0, 3);
   const correctionMoreButton = visibleCorrections.length > 3
     ? `<button class="secondary" type="button" data-toggle-employee-corrections>${showAllEmployeeCorrections ? "Show less" : "View more"}</button>`
     : "";
+  const correctionDateRange = monthDateRange(selectedEmployeeMonthKey);
+  const correctionDateValue = correctionDateInMonth(historyDate, selectedEmployeeMonthKey);
   const monthLabel = currentMonthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
-  const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
   const historyRecords = records.filter((row) => row.date === historyDate).sort(compareAttendanceLatest);
   const openRecord = currentOpenRecord(records);
   const clockAction = openRecord ? "out" : "in";
@@ -237,7 +239,7 @@ function employeeScreen() {
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
         <form class="form" id="correction-form">
-          <label>Date<input name="date" type="date" value="${malaysiaDateKey(new Date())}" required /></label>
+          <label>Date<input name="date" type="date" min="${correctionDateRange.start}" max="${correctionDateRange.end}" value="${correctionDateValue}" required /></label>
           <label>Missing<select name="missing"><option>Clock In</option><option selected>Clock Out</option></select></label>
           <label>Requested time<input name="time" type="time" required /></label>
           <label>Reason<textarea name="reason" rows="3" required></textarea></label>
@@ -1179,6 +1181,19 @@ function correctionsForMonth(corrections, monthKey) {
 
 function correctionMonthKey(correction) {
   return String(correction.date || "").slice(0, 7);
+}
+
+function monthDateRange(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return {
+    start: `${monthKey}-01`,
+    end: `${monthKey}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+function correctionDateInMonth(dateKey, monthKey) {
+  return String(dateKey || "").startsWith(`${monthKey}-`) ? dateKey : monthDateRange(monthKey).start;
 }
 
 function visibleEmployeeLeaveRequests(requests) {
