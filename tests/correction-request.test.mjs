@@ -80,10 +80,12 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function approvedCorrectionTimes/);
   assert.match(adminHtml, /function wait\(ms\)/);
   assert.match(adminHtml, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
-  assert.match(adminHtml, /mode: "cors"/);
-  assert.match(adminHtml, /credentials: "omit"/);
-  assert.match(adminHtml, /Live database is reconnecting\. Click Refresh if it does not update\./);
-  assert.match(adminHtml, /Live database reconnecting\.\.\./);
+  assert.match(adminHtml, /Cannot connect to live database\. Click Refresh again\./);
+  assert.match(adminHtml, /async function loadLiveData\(force = false, showError = false\)/);
+  assert.match(adminHtml, /if \(showError \|\| !hasExistingData\)/);
+  assert.doesNotMatch(adminHtml, /mode: "cors"/);
+  assert.doesNotMatch(adminHtml, /credentials: "omit"/);
+  assert.doesNotMatch(adminHtml, /Live database reconnecting\.\.\./);
   assert.match(adminHtml, /}, 30000\)/);
   assert.match(adminHtml, /let refreshQueued = false/);
   assert.match(adminHtml, /if \(loading\) \{/);

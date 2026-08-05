@@ -409,9 +409,6 @@ async function liveApi(path, options = {}, requireToken = true) {
         ...options,
         headers,
         cache: "no-store",
-        mode: "cors",
-        credentials: "omit",
-        referrerPolicy: "no-referrer",
       });
       const text = await response.text();
       const data = text ? JSON.parse(text) : {};
@@ -427,7 +424,7 @@ async function liveApi(path, options = {}, requireToken = true) {
         await wait(500 * (attempt + 1));
         continue;
       }
-      throw new Error("Live database is reconnecting. Try again in a few seconds.");
+      throw new Error("Cannot connect to live database. Try again in a few seconds.");
     }
   }
 }

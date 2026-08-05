@@ -771,10 +771,7 @@
           const response = await fetch(`${API_BASE}${path}`, {
             ...options,
             headers,
-            cache: "no-store",
-            mode: "cors",
-            credentials: "omit",
-            referrerPolicy: "no-referrer"
+            cache: "no-store"
           });
 
           const text = await response.text();
@@ -793,7 +790,7 @@
             await wait(500 * (attempt + 1));
             continue;
           }
-          throw new Error("Live database is reconnecting. Click Refresh if it does not update.");
+          throw new Error("Cannot connect to live database. Click Refresh again.");
         }
       }
     }
@@ -1681,7 +1678,7 @@
       monthlyReportEdits = nextEdits;
       saveReportEdits();
       editingReportEmployeeId = "";
-      if (liveRows.length) await loadLiveData(true);
+      if (liveRows.length) await loadLiveData(true, true);
       else renderMonthlyReport();
       setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
     }
@@ -1701,7 +1698,7 @@
       });
       saveReportEdits();
       if (editingReportEmployeeId === employeeId) editingReportEmployeeId = "";
-      await loadLiveData(true);
+      await loadLiveData(true, true);
       setStatus(monthlyReportStatus, `Restored original data | ${monthLabel(selectedReportMonth)}`, "ok");
     }
 
@@ -1720,7 +1717,7 @@
       renderEmployees();
     }
 
-    async function loadLiveData(force = false) {
+    async function loadLiveData(force = false, showError = false) {
       if (loading) {
         if (force) refreshQueued = true;
         return;
@@ -1736,12 +1733,14 @@
         setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}`, "ok");
       } catch (error) {
         const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;
-        setStatus(statusText, hasExistingData ? "Live database reconnecting..." : error.message || "Cannot connect", hasExistingData ? "" : "error");
+        if (showError || !hasExistingData) {
+          setStatus(statusText, error.message || "Cannot connect", "error");
+        }
       } finally {
         loading = false;
         if (refreshQueued) {
           refreshQueued = false;
-          loadLiveData(true);
+          loadLiveData(true, showError);
         }
       }
     }
@@ -1753,7 +1752,7 @@
         body: JSON.stringify(payload)
       });
       setStatus(employeeStatus, payload.action === "delete_employee" ? "Deleted" : "Saved", "ok");
-      await loadLiveData(true);
+      await loadLiveData(true, true);
     }
 
     loginForm.addEventListener("submit", async event => {
@@ -1772,7 +1771,7 @@
         passwordInput.value = "";
         setStatus(loginStatus, "", "");
         showAdmin();
-        await loadLiveData(true);
+        await loadLiveData(true, true);
       } catch (error) {
         setStatus(loginStatus, error.message || "Login failed", "error");
       } finally {
@@ -1959,10 +1958,10 @@
       if (!cell || !REPORT_TIME_FIELDS.has(cell.dataset.reportField)) return;
       refreshReportRow(cell.closest("tr"), true);
     }, true);
-    refreshButton.addEventListener("click", () => loadLiveData(true));
-    window.addEventListener("focus", () => token() && loadLiveData(true));
+    refreshButton.addEventListener("click", () => loadLiveData(true, true));
+    window.addEventListener("focus", () => token() && loadLiveData());
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && token()) loadLiveData(true);
+      if (!document.hidden && token()) loadLiveData();
     });
 
     exportButton.addEventListener("click", () => {
@@ -2001,7 +2000,7 @@
 
     if (token()) {
       showAdmin();
-      loadLiveData(true);
+      loadLiveData(true, true);
     } else {
       showLogin("");
     }
