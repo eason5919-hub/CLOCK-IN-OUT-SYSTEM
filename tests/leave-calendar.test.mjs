@@ -72,7 +72,7 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-correction-month-picker/);
+  assert.match(indexHtml, /script\.js\?v=20260805-cancel-correction/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -151,6 +151,12 @@ test("employee correction metric counts pending requests only", async () => {
   assert.match(script, /corrections: pendingCorrectionCount\(corrections\)/);
   assert.match(script, /function pendingCorrectionCount/);
   assert.match(script, /correction\.status === "Pending"/);
+  assert.match(script, /const canCancel = correction\.status === "Pending"/);
+  assert.match(script, /data-cancel-correction="\$\{correction\.id\}"/);
+  assert.match(script, /Cancel this correction request\?/);
+  assert.match(script, /action: "cancel"/);
+  assert.match(script, /correctionId: button\.dataset\.cancelCorrection/);
+  assert.match(script, /Correction request cancelled\./);
 });
 
 test("employee correction form records one missing time and shows requested time", async () => {

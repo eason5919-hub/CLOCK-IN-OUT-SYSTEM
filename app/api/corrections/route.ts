@@ -4,6 +4,8 @@ import { calculateAttendanceTotals, localDayOfWeek } from "../../../db/attendanc
 export async function POST(request: Request) {
   try {
     const payload = (await request.json()) as {
+      action?: "cancel";
+      correctionId?: string;
       employeeId?: string;
       requestedDate?: string;
       missingType?: CorrectionMissingType;
@@ -12,16 +14,37 @@ export async function POST(request: Request) {
       reason?: string;
     };
 
-    if (!payload.employeeId || !payload.requestedDate || !payload.missingType || !payload.reason) {
-      return json(request, { error: "employeeId, requestedDate, missingType and reason are required." }, 400);
-    }
-
     const db = getD1();
     await ensureDatabase(db);
     const session = await getSessionFromRequest(db, request);
     if (session?.role !== "employee" || !session.employee_id) {
       return json(request, { error: "Employee login is required." }, 401);
     }
+
+    if (payload.action === "cancel") {
+      if (!payload.correctionId) {
+        return json(request, { error: "Correction request is required." }, 400);
+      }
+      const result = await db
+        .prepare(
+          `UPDATE attendance_corrections
+           SET status = 'cancelled',
+               admin_note = 'Cancelled by employee',
+               reviewed_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND employee_id = ? AND status = 'pending'`,
+        )
+        .bind(payload.correctionId, session.employee_id)
+        .run();
+      if (!result.meta.changes) {
+        return json(request, { error: "Pending correction request was not found." }, 404);
+      }
+      return json(request, { ok: true });
+    }
+
+    if (!payload.employeeId || !payload.requestedDate || !payload.missingType || !payload.reason) {
+      return json(request, { error: "employeeId, requestedDate, missingType and reason are required." }, 400);
+    }
+
     if (payload.employeeId !== session.employee_id) {
       return json(request, { error: "Employees can only submit their own corrections." }, 403);
     }

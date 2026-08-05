@@ -13,6 +13,12 @@ test("correction requests save Malaysia time and clock-out approvals target open
   ]);
 
   assert.match(script, /`\$\{date\}T\$\{time\}:00\+08:00`/);
+  assert.match(employeeRoute, /action\?: "cancel"/);
+  assert.match(employeeRoute, /correctionId\?: string/);
+  assert.match(employeeRoute, /SET status = 'cancelled'/);
+  assert.match(employeeRoute, /admin_note = 'Cancelled by employee'/);
+  assert.match(employeeRoute, /WHERE id = \? AND employee_id = \? AND status = 'pending'/);
+  assert.match(employeeRoute, /Pending correction request was not found/);
   assert.match(employeeRoute, /function findTargetAttendanceForCorrection/);
   assert.match(employeeRoute, /clock_in_at IS NOT NULL AND clock_out_at IS NULL/);
   assert.match(employeeRoute, /ORDER BY clock_in_at DESC, updated_at DESC/);

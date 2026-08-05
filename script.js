@@ -617,6 +617,26 @@ function bindEmployee() {
       });
     }
   });
+  document.querySelectorAll("[data-cancel-correction]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const ok = confirm("Cancel this correction request?");
+      if (!ok) return;
+      try {
+        await liveApi("/api/corrections", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "cancel",
+            correctionId: button.dataset.cancelCorrection,
+          }),
+        });
+        toast("Correction request cancelled.");
+        await loadEmployeeLive(true);
+        render();
+      } catch (error) {
+        toast(error.message || "Unable to cancel correction request.");
+      }
+    });
+  });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
     const qr = prompt("Enter the warehouse QR code shown by HR");
@@ -1164,7 +1184,8 @@ function employeeCard(employee) {
 function correctionCard(correction) {
   const requested = correctionRequestedLine(correction);
   const reason = correction.reason ? ` | ${escapeHtml(correction.reason)}` : "";
-  return `<div class="list-item"><strong>${correction.date} - ${correction.missing}</strong><span>${requested}${reason}</span><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span></div>`;
+  const canCancel = correction.status === "Pending";
+  return `<div class="list-item"><div><strong>${correction.date} - ${correction.missing}</strong><span>${requested}${reason}</span></div><div class="actions"><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-correction="${correction.id}">Cancel</button>` : ""}</div></div>`;
 }
 
 function correctionRequestedLine(correction) {
