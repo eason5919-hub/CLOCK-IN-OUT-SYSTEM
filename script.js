@@ -40,6 +40,7 @@ let latestGpsSamples = [];
 let selectedHistoryDate = malaysiaDateKey(new Date());
 let selectedEmployeeMonthKey = employeeMonthKey(malaysiaToday());
 let selectedAdminAttendanceDate = malaysiaDateKey(new Date());
+let showAllEmployeeCorrections = false;
 let optimisticLeaveSubmitInFlight = false;
 
 window.addEventListener("hashchange", () => {
@@ -179,6 +180,10 @@ function employeeScreen() {
   selectedEmployeeMonthKey = normalizedEmployeeMonthKey(selectedEmployeeMonthKey);
   const currentMonthDate = monthDateFromKey(selectedEmployeeMonthKey);
   const visibleCorrections = correctionsForMonth(corrections, selectedEmployeeMonthKey);
+  const displayedCorrections = showAllEmployeeCorrections ? visibleCorrections : visibleCorrections.slice(0, 3);
+  const correctionMoreButton = visibleCorrections.length > 3
+    ? `<button class="secondary" type="button" data-toggle-employee-corrections>${showAllEmployeeCorrections ? "Show less" : "View more"}</button>`
+    : "";
   const monthLabel = currentMonthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
   const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
   const historyRecords = records.filter((row) => row.date === historyDate).sort(compareAttendanceLatest);
@@ -238,7 +243,7 @@ function employeeScreen() {
           <label>Reason<textarea name="reason" rows="3" required></textarea></label>
           <button>Submit Request</button>
         </form>
-        <div class="list" style="margin-top:14px">${visibleCorrections.map(correctionCard).join("") || `<small>No correction requests for ${escapeHtml(monthLabel)}.</small>`}</div>
+        <div class="list" style="margin-top:14px">${displayedCorrections.map(correctionCard).join("") || `<small>No correction requests for ${escapeHtml(monthLabel)}.</small>`}${correctionMoreButton ? `<div class="actions">${correctionMoreButton}</div>` : ""}</div>
       </section>
       <section class="panel" id="leave">
         <div class="heading">
@@ -572,6 +577,7 @@ function bindEmployee() {
   document.querySelectorAll("[data-employee-month]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedEmployeeMonthKey = normalizedEmployeeMonthKey(button.dataset.employeeMonth);
+      showAllEmployeeCorrections = false;
       selectedHistoryDate =
         selectedEmployeeMonthKey === currentEmployeeMonthKey()
           ? malaysiaDateKey(new Date())
@@ -598,6 +604,10 @@ function bindEmployee() {
         toast(error.message || "Unable to cancel Annual Leave/MC request.");
       }
     });
+  });
+  document.querySelector("[data-toggle-employee-corrections]")?.addEventListener("click", () => {
+    showAllEmployeeCorrections = !showAllEmployeeCorrections;
+    render();
   });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
