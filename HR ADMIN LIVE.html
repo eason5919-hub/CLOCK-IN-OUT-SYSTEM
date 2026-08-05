@@ -964,7 +964,7 @@
       const normalized = normalizeReportTime(value);
       if (!normalized || !/^\d{2}:\d{2}$/.test(normalized)) return null;
       let ms = Date.parse(`${dateKey}T${normalized}:00+08:00`);
-      if (afterMs != null && ms <= afterMs) ms += 24 * 60 * 60000;
+      if (afterMs != null && ms < afterMs) ms += 24 * 60 * 60000;
       return ms;
     }
 
@@ -1116,6 +1116,9 @@
       if (inMinutes == null) return 0;
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
+      const inMs = Date.parse(attendanceRow.clockIn || "");
+      const endMs = attendanceRow.dateKey ? scheduledDateTimeMs(attendanceRow.dateKey, end) : null;
+      if (!Number.isNaN(inMs) && endMs != null && inMs >= endMs) return 0;
       let lateShort = Math.max(0, inMinutes - start);
       if (inMinutes <= start + 15) lateShort = 0;
       if (isHalfLeaveText(leaveTaken)) {
@@ -1123,9 +1126,10 @@
         return Math.max(lateShort, workShort);
       }
       const outMs = Date.parse(attendanceRow.clockOut || "");
-      const endMs = attendanceRow.dateKey ? scheduledDateTimeMs(attendanceRow.dateKey, end) : null;
       const earlyOut = Number.isNaN(outMs) || endMs == null ? 0 : Math.max(0, Math.round((endMs - outMs) / 60000));
-      return Math.max(lateShort, earlyOut);
+      const requiredMinutes = day === 6 ? 240 : 480;
+      const workShort = Math.max(0, requiredMinutes - Number(attendanceRow.actualMinutes || 0));
+      return Math.max(lateShort, earlyOut, workShort);
     }
 
     function reportEditKey(employeeId, dateKey, field) {

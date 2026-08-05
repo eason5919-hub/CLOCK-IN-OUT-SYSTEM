@@ -748,7 +748,7 @@ function reportTimeToMs(dateKey: string, value?: string, afterMs: number | null 
   const normalized = normalizeReportTime(value);
   if (!normalized) return null;
   let ms = Date.parse(`${dateKey}T${normalized}:00+08:00`);
-  if (afterMs != null && ms <= afterMs) ms += 24 * 60 * 60000;
+  if (afterMs != null && ms < afterMs) ms += 24 * 60 * 60000;
   return ms;
 }
 
