@@ -82,6 +82,13 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function reportPaidWorkMinutes/);
   assert.match(adminHtml, /function normalizeReportTime/);
   assert.match(adminHtml, /function calculatedReportValues/);
+  assert.match(adminHtml, /function isHalfLeaveText/);
+  assert.match(adminHtml, /function reportWorkingWindowMinutes/);
+  assert.match(adminHtml, /if \(inMinutes <= start \+ 15\) lateShort = 0/);
+  assert.match(adminHtml, /if \(isHalfLeaveText\(leaveTaken\)\)/);
+  assert.match(adminHtml, /Math\.max\(0, 240 - reportWorkingWindowMinutes\(attendanceRow, day\)\)/);
+  assert.match(adminHtml, /return Math\.max\(lateShort, earlyOut\)/);
+  assert.doesNotMatch(adminHtml, /const workShort = Math\.max\(0, requiredMinutes - Number\(attendanceRow\.actualMinutes \|\| 0\)\)/);
   assert.match(adminHtml, /function isEditableReportField/);
   assert.match(adminHtml, /function reportFieldWasEdited/);
   assert.match(adminHtml, /reportEditedClockIn: reportRows\.some\(row => row\.clock_in_at\) && !correctionInWins/);

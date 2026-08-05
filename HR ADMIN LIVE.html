@@ -1065,7 +1065,7 @@
       return {
         work: reportHours(workMinutes),
         overtime: reportHours(overtime),
-        short: reportHours(reportShortMinutes(attendanceRow, day)),
+        short: reportHours(reportShortMinutes(attendanceRow, day, values.leaveTaken)),
       };
     }
 
@@ -1074,21 +1074,39 @@
       return reportOvertimeFromTimes(attendanceRow.clockIn, attendanceRow.clockOut, attendanceRow.dateKey, day);
     }
 
-    function reportShortMinutes(attendanceRow, day) {
+    function isHalfLeaveText(value) {
+      return String(value || "").toUpperCase().includes("HALF");
+    }
+
+    function reportWorkingWindowMinutes(attendanceRow, day) {
+      if (!attendanceRow?.clockIn || !attendanceRow?.clockOut || day === 0) return 0;
+      const start = 9 * 60;
+      const end = day === 6 ? 13 * 60 : 18 * 60;
+      const inMs = Date.parse(attendanceRow.clockIn);
+      const outMs = Date.parse(attendanceRow.clockOut);
+      if (Number.isNaN(inMs) || Number.isNaN(outMs) || !attendanceRow.dateKey) return 0;
+      const startMs = scheduledDateTimeMs(attendanceRow.dateKey, start);
+      const endMs = scheduledDateTimeMs(attendanceRow.dateKey, end);
+      return Math.max(0, Math.round((Math.min(outMs, endMs) - Math.max(inMs, startMs)) / 60000));
+    }
+
+    function reportShortMinutes(attendanceRow, day, leaveTaken = "") {
       if (!attendanceRow?.clockIn || day === 0) return 0;
       const inMinutes = malaysiaClockMinutes(attendanceRow.clockIn);
       if (inMinutes == null) return 0;
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
-      const requiredMinutes = day === 6 ? 240 : 480;
       let lateShort = Math.max(0, inMinutes - start);
       if (day !== 6 && lateShort > 60) lateShort -= 60;
       if (inMinutes <= start + 15) lateShort = 0;
-      const workShort = Math.max(0, requiredMinutes - Number(attendanceRow.actualMinutes || 0));
+      if (isHalfLeaveText(leaveTaken)) {
+        const workShort = Math.max(0, 240 - reportWorkingWindowMinutes(attendanceRow, day));
+        return Math.max(lateShort, workShort);
+      }
       const outMs = Date.parse(attendanceRow.clockOut || "");
       const endMs = attendanceRow.dateKey ? scheduledDateTimeMs(attendanceRow.dateKey, end) : null;
       const earlyOut = Number.isNaN(outMs) || endMs == null ? 0 : Math.max(0, Math.round((endMs - outMs) / 60000));
-      return Math.max(lateShort, workShort, earlyOut);
+      return Math.max(lateShort, earlyOut);
     }
 
     function reportEditKey(employeeId, dateKey, field) {
@@ -1419,11 +1437,12 @@
           break: reportValue(employee.id, dateKey, "break", reportTime(attendanceRow?.breakTime)),
           resume: reportValue(employee.id, dateKey, "resume", reportTime(attendanceRow?.resumeTime)),
           out: reportValue(employee.id, dateKey, "out", reportTime(attendanceRow?.clockOut)),
+          leaveTaken,
         };
         const calculated = calculatedReportValues(dateKey, reportTimes);
         const work = calculated.work || reportHours(attendanceRow?.actualMinutes);
         const overtime = calculated.overtime || reportHours(reportOvertimeMinutes(attendanceRow, day));
-        const short = calculated.short || reportHours(reportShortMinutes(attendanceRow, day));
+        const short = calculated.short || reportHours(reportShortMinutes(attendanceRow, day, leaveTaken));
 
         totalWork += reportHoursToMinutes(work);
         totalOt += reportHoursToMinutes(overtime);
@@ -1554,6 +1573,7 @@
         break: reportRowText(row, "break"),
         resume: reportRowText(row, "resume"),
         out: reportRowText(row, "out"),
+        leaveTaken: reportRowText(row, "leaveTaken"),
       });
       ["work", "overtime", "short"].forEach(field => {
         const cell = reportCell(row, field);
