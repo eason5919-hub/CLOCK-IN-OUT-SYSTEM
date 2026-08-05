@@ -20,6 +20,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(employeeSummaryRoute, /source, created_at, updated_at/);
   assert.match(employeeSummaryRoute, /clock_in_updated_at/);
   assert.match(employeeSummaryRoute, /clock_out_updated_at/);
+  assert.match(employeeSummaryRoute, /report_edited_clock_in/);
+  assert.match(employeeSummaryRoute, /report_edited_clock_out/);
   assert.match(employeeSummaryRoute, /WITH base_rows AS/);
   assert.match(employeeSummaryRoute, /report_rows AS/);
   assert.match(employeeSummaryRoute, /field_overrides AS/);
@@ -44,13 +46,18 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(script, /function attendanceEditMarks/);
   assert.match(script, /function approvedCorrectionForField/);
   assert.match(script, /function attendanceDisplayTimes/);
+  assert.match(script, /function parseLiveTimestamp/);
   assert.match(script, /function sameClockValue/);
   assert.match(script, /clockInUpdatedAt: row\.clock_in_updated_at \|\| row\.updated_at \|\| ""/);
   assert.match(script, /clockOutUpdatedAt: row\.clock_out_updated_at \|\| row\.updated_at \|\| ""/);
+  assert.match(script, /reportEditedClockIn: Boolean\(Number\(row\.report_edited_clock_in \|\| 0\)\)/);
+  assert.match(script, /reportEditedClockOut: Boolean\(Number\(row\.report_edited_clock_out \|\| 0\)\)/);
   assert.match(script, /const fieldUpdatedAt = field === "clockIn" \? row\.clockInUpdatedAt : row\.clockOutUpdatedAt/);
+  assert.match(script, /parseLiveTimestamp\(b\.reviewedAt \|\| b\.createdAt \|\| ""\)/);
   assert.match(script, /sameClockValue\(correction\[key\], row\[field\]\) \|\| isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, fieldUpdatedAt \|\| row\.updatedAt \|\| row\.createdAt\)/);
   assert.doesNotMatch(script, /return correction\[key\] === row\[field\]/);
-  assert.match(script, /clockOut: correctedOut \? "corrected" : row\.clockOut \? "edited" : ""/);
+  assert.match(script, /clockIn: correctedIn \? "corrected" : row\.reportEditedClockIn && row\.clockIn \? "edited" : ""/);
+  assert.match(script, /clockOut: correctedOut \? "corrected" : row\.reportEditedClockOut && row\.clockOut \? "edited" : ""/);
   assert.match(script, /const display = attendanceDisplayTimes\(row, corrections\)/);
   assert.match(script, /class="time-mark corrected"/);
   assert.match(css, /\.time-mark\.edited/);

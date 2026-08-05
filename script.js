@@ -491,6 +491,8 @@ function mapLiveAttendance(row) {
     updatedAt: row.updated_at || "",
     clockInUpdatedAt: row.clock_in_updated_at || row.updated_at || "",
     clockOutUpdatedAt: row.clock_out_updated_at || row.updated_at || "",
+    reportEditedClockIn: Boolean(Number(row.report_edited_clock_in || 0)),
+    reportEditedClockOut: Boolean(Number(row.report_edited_clock_out || 0)),
     gps: liveGpsLabel(row),
   };
 }
@@ -1004,14 +1006,23 @@ function calendarRecordSummary(records, date, today, corrections = []) {
 }
 
 function compareAttendanceLatest(a, b) {
-  const left = Date.parse(b.updatedAt || b.createdAt || `${b.date || ""}T00:00:00+08:00`) || 0;
-  const right = Date.parse(a.updatedAt || a.createdAt || `${a.date || ""}T00:00:00+08:00`) || 0;
+  const left = parseLiveTimestamp(b.updatedAt || b.createdAt || `${b.date || ""}T00:00:00+08:00`) || 0;
+  const right = parseLiveTimestamp(a.updatedAt || a.createdAt || `${a.date || ""}T00:00:00+08:00`) || 0;
   return left - right;
 }
 
+function parseLiveTimestamp(value) {
+  const text = String(value || "").trim();
+  if (!text) return Number.NaN;
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) {
+    return Date.parse(`${text.replace(" ", "T")}Z`);
+  }
+  return Date.parse(text);
+}
+
 function isSameOrNewer(left, right) {
-  const leftMs = Date.parse(left || "");
-  const rightMs = Date.parse(right || "");
+  const leftMs = parseLiveTimestamp(left);
+  const rightMs = parseLiveTimestamp(right);
   if (Number.isNaN(leftMs)) return false;
   if (Number.isNaN(rightMs)) return true;
   return leftMs >= rightMs;
@@ -1026,7 +1037,7 @@ function approvedCorrectionForField(row, field, corrections = []) {
   const fieldUpdatedAt = field === "clockIn" ? row.clockInUpdatedAt : row.clockOutUpdatedAt;
   return corrections
     .filter((correction) => correction.date === row.date && correction.status === "Approved" && correction[key])
-    .sort((a, b) => Date.parse(b.reviewedAt || b.createdAt || "") - Date.parse(a.reviewedAt || a.createdAt || ""))
+    .sort((a, b) => parseLiveTimestamp(b.reviewedAt || b.createdAt || "") - parseLiveTimestamp(a.reviewedAt || a.createdAt || ""))
     .find((correction) => sameClockValue(correction[key], row[field]) || isSameOrNewer(correction.reviewedAt || correction.createdAt, fieldUpdatedAt || row.updatedAt || row.createdAt));
 }
 
@@ -1044,8 +1055,8 @@ function attendanceEditMarks(row, corrections = []) {
   const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
   if (row.source === "admin_report_edit") {
     return {
-      clockIn: correctedIn ? "corrected" : row.clockIn ? "edited" : "",
-      clockOut: correctedOut ? "corrected" : row.clockOut ? "edited" : "",
+      clockIn: correctedIn ? "corrected" : row.reportEditedClockIn && row.clockIn ? "edited" : "",
+      clockOut: correctedOut ? "corrected" : row.reportEditedClockOut && row.clockOut ? "edited" : "",
     };
   }
   return {

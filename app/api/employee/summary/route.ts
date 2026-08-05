@@ -126,7 +126,8 @@ export async function GET(request: Request) {
        SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
               early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
-              source, created_at, updated_at, clock_in_updated_at, clock_out_updated_at
+              source, created_at, updated_at, clock_in_updated_at, clock_out_updated_at,
+              report_edited_clock_in, report_edited_clock_out
        FROM (
          SELECT COALESCE(r.id, b.id, o.id) AS id,
                 d.work_date,
@@ -170,7 +171,9 @@ export async function GET(request: Request) {
                 COALESCE(r.created_at, b.created_at, o.created_at) AS created_at,
                 COALESCE(o.clock_in_override_updated_at, o.clock_out_override_updated_at, r.updated_at, b.updated_at, o.updated_at) AS updated_at,
                 CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.clock_in_override_updated_at ELSE COALESCE(r.clock_in_updated_at, b.updated_at) END AS clock_in_updated_at,
-                CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.clock_out_override_updated_at ELSE COALESCE(r.clock_out_updated_at, b.updated_at) END AS clock_out_updated_at
+                CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.clock_out_override_updated_at ELSE COALESCE(r.clock_out_updated_at, b.updated_at) END AS clock_out_updated_at,
+                COALESCE(o.has_clock_in_override, 0) AS report_edited_clock_in,
+                COALESCE(o.has_clock_out_override, 0) AS report_edited_clock_out
          FROM day_keys d
          LEFT JOIN base_rows b ON b.work_date = d.work_date
          LEFT JOIN report_rows r ON r.work_date = d.work_date
