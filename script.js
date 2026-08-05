@@ -1077,7 +1077,7 @@ function adminAttendanceHeader() {
 }
 
 function employeeAttendanceRow(row, display, marks) {
-  return `<tr><td>${row.date}</td><td>${timeCell(display.clockIn, marks.clockIn)}</td><td>${timeCell(display.clockOut, marks.clockOut)}</td><td>${formatOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td>${row.gps || "-"}</td></tr>`;
+  return `<tr><td>${row.date}</td><td>${timeCell(display.clockIn, marks.clockIn)}</td><td>${timeCell(display.clockOut, marks.clockOut)}</td><td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td>${row.gps || "-"}</td></tr>`;
 }
 
 function adminAttendanceRow(row, display, marks) {
@@ -1751,6 +1751,12 @@ function formatMinutes(minutes) {
 
 function formatOtMinutes(minutes) {
   return Number(minutes || 0) > 0 ? formatMinutes(Number(minutes)) : "-";
+}
+
+function formatReportOtMinutes(minutes) {
+  const value = Number(minutes || 0);
+  if (!value) return "-";
+  return `${Math.floor(value / 60)}.${String(Math.abs(value % 60)).padStart(2, "0")}`;
 }
 
 function formatLeaveDays(value) {

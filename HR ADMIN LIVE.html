@@ -1654,6 +1654,11 @@
             rows: liveRows,
           }),
         });
+        liveRows.forEach(row => {
+          ["in", "break", "resume", "out"].forEach(field => {
+            delete nextEdits[reportEditKey(employeeId, row.dateKey, field)];
+          });
+        });
       }
       monthlyReportEdits = nextEdits;
       saveReportEdits();

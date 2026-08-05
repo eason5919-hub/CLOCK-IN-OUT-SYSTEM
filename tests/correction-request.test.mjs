@@ -115,6 +115,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /break: reportValue\(employee\.id, dateKey, "break", reportTime\(attendanceRow\?\.breakTime\)\)/);
   assert.match(adminHtml, /resume: reportValue\(employee\.id, dateKey, "resume", reportTime\(attendanceRow\?\.resumeTime\)\)/);
   assert.match(adminHtml, /const liveRows = timeRows/);
+  assert.match(adminHtml, /liveRows\.forEach\(row =>/);
+  assert.match(adminHtml, /delete nextEdits\[reportEditKey\(employeeId, row\.dateKey, field\)\]/);
   assert.doesNotMatch(adminHtml, /const restoreRows = \[\.\.\.reportRows\.keys\(\)\]/);
   assert.match(adminHtml, /action: "save_report_attendance_times"/);
   assert.match(adminHtml, /action: "restore_report_attendance_times"/);

@@ -40,8 +40,14 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
   assert.match(script, /function employeeAttendanceHeader/);
   assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>OT<\/th><th>GPS<\/th>/);
+  assert.match(script, /function adminAttendanceHeader/);
+  assert.match(script, /<th>Employee<\/th><th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>Working Hours<\/th><th>OT<\/th><th>Status<\/th><th>GPS<\/th>/);
+  assert.match(script, /formatReportOtMinutes\(employeeHistoryOvertimeMinutes\(row, display\)\)/);
+  assert.match(script, /function formatReportOtMinutes/);
   assert.match(script, /function employeeHistoryOvertimeMinutes/);
   assert.match(script, /const threshold = scheduledEnd \+ 16/);
+  assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*Working Hours/);
+  assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*Status/);
   assert.match(script, /const displayRecords = records\.map\(\(row\) => attendanceDisplayTimes\(row, corrections\)\)/);
   assert.match(script, /const present = displayRecords\.some\(\(row\) => row\.clockIn && row\.clockOut\)/);
   assert.match(script, /label: missed \? "Missed" : present \? "OK" : "-"/);
