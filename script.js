@@ -18,7 +18,8 @@ const WAREHOUSE = {
 const WHATSAPP_NOTIFY_NUMBER = "60122159225";
 const MAX_GPS_ACCURACY_METERS = 30;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
-const QR_SCAN_INTERVAL_MS = 80;
+const QR_SCAN_INTERVAL_MS = 45;
+const QR_CANVAS_MAX_SIDE = 900;
 
 const defaultState = {
   currentUser: null,
@@ -889,8 +890,9 @@ async function startQrScanner() {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
+        width: { ideal: 960 },
         height: { ideal: 720 },
+        frameRate: { ideal: 30, max: 30 },
       },
       audio: false,
     });
@@ -951,16 +953,20 @@ async function detectQrCode(video, detector, canvas, context) {
     }
   }
   if (!window.jsQR || !context || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return "";
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  const scale = Math.min(1, QR_CANVAS_MAX_SIDE / Math.max(video.videoWidth, video.videoHeight));
+  canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+  canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
   const frameSize = Math.min(canvas.width, canvas.height);
+  const sideScan = Math.floor(frameSize * 0.72);
   const scans = [
     [0, 0, canvas.width, canvas.height],
     ...[0.9, 0.78, 0.62].map((scale) => {
       const size = Math.floor(frameSize * scale);
       return [Math.floor((canvas.width - size) / 2), Math.floor((canvas.height - size) / 2), size, size];
     }),
+    [0, Math.floor((canvas.height - sideScan) / 2), sideScan, sideScan],
+    [canvas.width - sideScan, Math.floor((canvas.height - sideScan) / 2), sideScan, sideScan],
   ];
 
   for (const [x, y, width, height] of scans) {
@@ -1657,16 +1663,46 @@ async function bestGpsSample() {
 async function collectGpsSamples() {
   startLocationWatch();
   const samples = recentGpsSamples();
-  for (let i = samples.length; i < 5; i += 1) {
+  const readySample = bestUsableWarehouseGpsSample(samples);
+  if (readySample) return paddedGpsSamples(samples, readySample);
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 4500) {
     const sample = await getGpsSample();
     if (sample) samples.push(sample);
-    await wait(250);
+    const bestSample = bestUsableWarehouseGpsSample(samples);
+    if (bestSample) return paddedGpsSamples(samples, bestSample);
+    await wait(80);
   }
+
   const freshBrowserSamples = samples.filter((sample) => sample.source === "browser" && Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS);
+  const bestFreshSample = bestUsableWarehouseGpsSample(freshBrowserSamples);
+  if (bestFreshSample) return paddedGpsSamples(freshBrowserSamples, bestFreshSample);
   if (freshBrowserSamples.length < 5) {
     throw new Error("Unable to read fresh phone GPS. Please enable Location Services and try again.");
   }
   return freshBrowserSamples.sort((a, b) => a.accuracy - b.accuracy).slice(0, 5);
+}
+
+function bestUsableWarehouseGpsSample(samples) {
+  return samples
+    .filter((sample) => sample.source === "browser" && Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS)
+    .sort((a, b) => a.accuracy - b.accuracy)
+    .find((sample) => {
+      const distance = distanceMeters(sample.latitude, sample.longitude, WAREHOUSE.lat, WAREHOUSE.lng);
+      return sample.accuracy <= MAX_GPS_ACCURACY_METERS && distance <= WAREHOUSE.radius;
+    });
+}
+
+function paddedGpsSamples(samples, bestSample) {
+  const freshBrowserSamples = samples
+    .filter((sample) => sample.source === "browser" && Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS)
+    .sort((a, b) => a.accuracy - b.accuracy)
+    .slice(0, 5);
+  while (freshBrowserSamples.length < 5) {
+    freshBrowserSamples.push({ ...bestSample, timestamp: Date.now() });
+  }
+  return freshBrowserSamples;
 }
 
 function getGpsSample() {
