@@ -130,6 +130,12 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /function calculatedReportValues/);
   assert.match(adminHtml, /ms < afterMs/);
   assert.match(adminRoute, /ms < afterMs/);
+  assert.match(adminRoute, /outMs >= inMs/);
+  assert.match(adminHtml, /hasTimes: false/);
+  assert.match(adminHtml, /hasTimes: true/);
+  assert.match(adminHtml, /const work = calculated\.hasTimes \? calculated\.work : reportHours\(attendanceRow\?\.actualMinutes\)/);
+  assert.match(adminHtml, /const overtime = calculated\.hasTimes \? calculated\.overtime : reportHours\(reportOvertimeMinutes\(attendanceRow, day\)\)/);
+  assert.match(adminHtml, /const short = calculated\.hasTimes \? calculated\.short : reportHours\(reportShortMinutes\(attendanceRow, day, leaveTaken\)\)/);
   assert.match(adminHtml, /function reportHours\(minutes, showZero = false\)/);
   assert.match(adminHtml, /const showZeroWork = outMs === inMs/);
   assert.match(adminHtml, /work: reportHours\(workMinutes, showZeroWork\)/);
@@ -174,7 +180,7 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /const outMs = Date\.parse\(attendanceRow\.clockOut \|\| ""\)/);
   assert.match(adminHtml, /Math\.round\(\(endMs - outMs\) \/ 60000\)/);
   assert.doesNotMatch(adminHtml, /Math\.max\(0, end - outMinutes\)/);
-  assert.match(adminHtml, /20260805-equal-time-short-fix/);
+  assert.match(adminHtml, /20260805-zero-overtime-fallback/);
   assert.doesNotMatch(adminHtml, /<th>Sche<\/th>/);
   assert.doesNotMatch(adminHtml, /<th>Diff OT<\/th>/);
   assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "schedule"/);

@@ -724,7 +724,7 @@ function reportTimeSegments(
   if (resumeMs != null && outMs != null && outMs > resumeMs) {
     segments.push({ clockInAt: new Date(resumeMs).toISOString(), clockOutAt: new Date(outMs).toISOString() });
   }
-  if (!segments.length && inMs != null && outMs != null && outMs > inMs) {
+  if (!segments.length && inMs != null && outMs != null && outMs >= inMs) {
     segments.push({ clockInAt: new Date(inMs).toISOString(), clockOutAt: new Date(outMs).toISOString() });
   }
   return segments;
