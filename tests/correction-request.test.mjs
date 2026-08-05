@@ -163,6 +163,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.doesNotMatch(adminHtml, /const restoreRows = \[\.\.\.reportRows\.keys\(\)\]/);
   assert.match(adminHtml, /action: "save_report_attendance_times"/);
   assert.match(adminHtml, /action: "restore_report_attendance_times"/);
+  assert.match(adminHtml, /data-cancel-report/);
+  assert.match(adminHtml, /Cancelled edit \|/);
   assert.match(adminHtml, /row\.source === "admin_report_edit"/);
   assert.match(adminHtml, /editedFields: \["in", "break", "resume", "out"\]\.filter/);
   assert.match(adminHtml, /REPORT_TIME_FIELDS = new Set\(\["in", "break", "resume", "out"\]\)/);

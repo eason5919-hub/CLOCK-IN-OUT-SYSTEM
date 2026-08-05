@@ -1515,6 +1515,7 @@
               <button class="secondary" type="button" data-print-report="${escapeHtml(employee.id)}">Print A4</button>
               <button class="secondary" type="button" data-restore-report="${escapeHtml(employee.id)}">Restore</button>
               <button class="${isEditing ? "blue" : "secondary"}" type="button" ${isEditing ? `data-save-report="${escapeHtml(employee.id)}"` : `data-edit-report="${escapeHtml(employee.id)}"`}>${isEditing ? "Save" : "Edit"}</button>
+              ${isEditing ? `<button class="secondary" type="button" data-cancel-report="${escapeHtml(employee.id)}">Cancel</button>` : ""}
             </div>
           </div>
           <div class="tableWrap">
@@ -1960,6 +1961,13 @@
         saveEmployeeMonthlyReport(saveButton.dataset.saveReport).catch(error => {
           setStatus(monthlyReportStatus, error.message || "Unable to save report times", "error");
         });
+        return;
+      }
+      const cancelButton = event.target.closest("[data-cancel-report]");
+      if (cancelButton) {
+        editingReportEmployeeId = "";
+        renderMonthlyReport();
+        setStatus(monthlyReportStatus, `Cancelled edit | ${monthLabel(selectedReportMonth)}`, "");
       }
     });
     monthlyReportArea.addEventListener("input", event => {
