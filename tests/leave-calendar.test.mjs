@@ -37,11 +37,12 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /monthDateFromKey\(selectedEmployeeMonthKey\)/);
   assert.match(script, /data-history-date/);
   assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
-  assert.match(script, /labels\.join\(" "\)/);
-  assert.match(script, /hasLate\) labels\.push\("Late"\)/);
-  assert.match(script, /hasOpenToday\) labels\.push\("In"\)/);
-  assert.match(script, /hasMissingOut\) labels\.push\("Missed"\)/);
-  assert.match(script, /hasOt\) labels\.push\("OT"\)/);
+  assert.match(script, /label: missed \? "Missed" : "-"/);
+  assert.match(script, /tone: missed \? "missed" : ""/);
+  assert.doesNotMatch(script, /labels\.push\("Late"\)/);
+  assert.doesNotMatch(script, /labels\.push\("In"\)/);
+  assert.doesNotMatch(script, /labels\.push\("OT"\)/);
+  assert.doesNotMatch(script, /labels\.push\("OK"\)/);
   assert.match(css, /\.month-calendar[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(css, /\.calendar[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
 });
