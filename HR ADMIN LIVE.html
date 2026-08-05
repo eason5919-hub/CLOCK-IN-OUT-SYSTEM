@@ -925,6 +925,16 @@
       return `${day}-${month}-${year} ${weekday}`;
     }
 
+    function correctionDateLabel(dateKey) {
+      if (!dateKey) return "-";
+      return dateParts(dateKey).toLocaleDateString("en-MY", {
+        timeZone: "UTC",
+        day: "2-digit",
+        month: "short",
+        year: "numeric"
+      });
+    }
+
     function reportTime(value) {
       if (!value) return "";
       const date = new Date(value);
@@ -1399,9 +1409,7 @@
     function renderCorrections() {
       const rows = activeCorrectionRequests();
       correctionBody.innerHTML = rows.map((request, index) => {
-        const clockIn = request.requested_clock_in_at ? formatDateTime(request.requested_clock_in_at) : "";
-        const clockOut = request.requested_clock_out_at ? formatDateTime(request.requested_clock_out_at) : "";
-        const requested = [clockIn && `In: <span class="highlightTime">${escapeHtml(clockIn)}</span>`, clockOut && `Out: <span class="highlightTime">${escapeHtml(clockOut)}</span>`].filter(Boolean).join(" | ") || "-";
+        const requested = correctionRequestedSummary(request);
         return `
           <tr>
             <td>${index + 1}</td>
@@ -1425,6 +1433,45 @@
       }).join("");
       correctionEmpty.hidden = rows.length > 0;
       correctionCountText.textContent = `${rows.length} pending request${rows.length === 1 ? "" : "s"}`;
+    }
+
+    function correctionRequestedSummary(request) {
+      const lines = [
+        correctionRequestedField(request, "in", request.requested_clock_in_at),
+        correctionRequestedField(request, "out", request.requested_clock_out_at),
+      ].filter(Boolean);
+      return lines.join(" | ") || "-";
+    }
+
+    function correctionRequestedField(request, field, requestedValue) {
+      if (!requestedValue) return "";
+      const label = field === "in" ? "In" : "Out";
+      const fromTime = correctionSourceTime(request, field);
+      const requestedTime = reportTime(requestedValue);
+      const dateText = correctionDateLabel(request.requested_date);
+      const timeText = fromTime
+        ? `${escapeHtml(fromTime)} to <span class="highlightTime">${escapeHtml(requestedTime)}</span>`
+        : `<span class="highlightTime">${escapeHtml(requestedTime)}</span>`;
+      return `${label}: <strong>${escapeHtml(dateText)}, ${timeText}</strong>`;
+    }
+
+    function correctionSourceTime(request, field) {
+      const reportRow = employeeAttendanceByDate(request.employee_id, request.requested_date);
+      const original = parseCorrectionOriginalRecord(request.original_record_json);
+      const value = field === "in"
+        ? reportRow?.clockIn || original?.clock_in_at
+        : reportRow?.clockOut || original?.clock_out_at;
+      return reportTime(value);
+    }
+
+    function parseCorrectionOriginalRecord(value) {
+      if (!value) return null;
+      if (typeof value === "object") return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
     }
 
     function renderAttendance() {

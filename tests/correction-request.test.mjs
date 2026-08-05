@@ -103,6 +103,13 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminRoute, /bodyToken\.trim\(\)/);
   assert.doesNotMatch(adminRoute, /searchParams\.get\("hrToken"\)/);
   assert.match(adminHtml, /function approvedCorrectionTimes/);
+  assert.match(adminHtml, /function correctionRequestedSummary/);
+  assert.match(adminHtml, /function correctionRequestedField/);
+  assert.match(adminHtml, /function correctionSourceTime/);
+  assert.match(adminHtml, /const reportRow = employeeAttendanceByDate\(request\.employee_id, request\.requested_date\)/);
+  assert.match(adminHtml, /reportRow\?\.clockIn \|\| original\?\.clock_in_at/);
+  assert.match(adminHtml, /reportRow\?\.clockOut \|\| original\?\.clock_out_at/);
+  assert.match(adminHtml, /return `\$\{label\}: <strong>\$\{escapeHtml\(dateText\)\}, \$\{timeText\}<\/strong>`/);
   assert.match(adminHtml, /function wait\(ms\)/);
   assert.match(adminHtml, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
   assert.match(adminHtml, /body = JSON\.stringify\(\{ \.\.\.payload, hrToken: savedToken \}\)/);
