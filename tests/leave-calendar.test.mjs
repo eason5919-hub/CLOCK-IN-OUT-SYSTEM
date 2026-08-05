@@ -172,7 +172,7 @@ test("employee metric cards use selected month report data", async () => {
   assert.match(script, /const monthRecords = recordsForMonth\(records, selectedEmployeeMonthKey\)/);
   assert.match(script, /present: formatDayCount\(calculatePresentDays\(monthRecords, visibleCorrections\)\)/);
   assert.match(script, /late: monthRecords\.filter\(\(row\) => row\.lateMinutes > 0\)\.length/);
-  assert.match(script, /ot: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ row\.overtimeMinutes, 0\)\)/);
+  assert.match(script, /ot: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ employeeHistoryOvertimeMinutes\(row, attendanceDisplayTimes\(row, visibleCorrections\)\), 0\)\)/);
   assert.match(script, /corrections: correctedReportBoxCount\(monthRecords, visibleCorrections\)/);
   assert.match(script, /function recordsForMonth/);
   assert.match(script, /function formatMetricDuration/);

@@ -140,7 +140,11 @@ export async function GET(request: Request) {
               early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
               source, created_at, updated_at, clock_in_updated_at, clock_out_updated_at,
-              report_edited_clock_in, report_edited_clock_out, live_open_clock_in_at
+              report_edited_clock_in, report_edited_clock_out, live_open_clock_in_at,
+              base_id, base_clock_in_at, base_clock_out_at, base_updated_at, base_created_at,
+              report_clock_in_at, report_clock_out_at, report_clock_in_updated_at, report_clock_out_updated_at, report_updated_at,
+              has_clock_in_override, override_clock_in_at, clock_in_override_updated_at,
+              has_clock_out_override, override_clock_out_at, clock_out_override_updated_at
        FROM (
          SELECT COALESCE(r.id, b.id, o.id) AS id,
                 d.work_date,
@@ -192,7 +196,23 @@ export async function GET(request: Request) {
                    AND (CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.override_clock_out_at ELSE COALESCE(r.clock_out_at, b.clock_out_at) END) IS NULL
                   THEN (CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.override_clock_in_at ELSE COALESCE(r.clock_in_at, b.clock_in_at) END)
                   ELSE l.live_open_clock_in_at
-                END AS live_open_clock_in_at
+                END AS live_open_clock_in_at,
+                b.id AS base_id,
+                b.clock_in_at AS base_clock_in_at,
+                b.clock_out_at AS base_clock_out_at,
+                b.updated_at AS base_updated_at,
+                b.created_at AS base_created_at,
+                r.clock_in_at AS report_clock_in_at,
+                r.clock_out_at AS report_clock_out_at,
+                r.clock_in_updated_at AS report_clock_in_updated_at,
+                r.clock_out_updated_at AS report_clock_out_updated_at,
+                r.updated_at AS report_updated_at,
+                COALESCE(o.has_clock_in_override, 0) AS has_clock_in_override,
+                o.override_clock_in_at,
+                o.clock_in_override_updated_at,
+                COALESCE(o.has_clock_out_override, 0) AS has_clock_out_override,
+                o.override_clock_out_at,
+                o.clock_out_override_updated_at
          FROM day_keys d
          LEFT JOIN base_rows b ON b.work_date = d.work_date
          LEFT JOIN report_rows r ON r.work_date = d.work_date
@@ -216,11 +236,14 @@ export async function GET(request: Request) {
     .all();
 
   const correctionRows = (corrections.results || []) as Array<Record<string, unknown>>;
-  const attendanceRows = ((attendance.results || []) as Array<Record<string, unknown>>).map((row) => ({
-    ...row,
-    report_clock_in_mark: reportClockMark(row, "clock_in", correctionRows),
-    report_clock_out_mark: reportClockMark(row, "clock_out", correctionRows),
-  }));
+  const attendanceRows = ((attendance.results || []) as Array<Record<string, unknown>>).map((row) => {
+    const effectiveRow = applyLatestReportFields(row);
+    return {
+      ...effectiveRow,
+      report_clock_in_mark: reportClockMark(effectiveRow, "clock_in", correctionRows),
+      report_clock_out_mark: reportClockMark(effectiveRow, "clock_out", correctionRows),
+    };
+  });
   const attendanceByDate = new Map(attendanceRows.map((row) => [String(row.work_date || ""), row]));
   const correctionsWithReportTimes = correctionRows.map((row) => {
     const reportRow = attendanceByDate.get(String(row.requested_date || ""));
@@ -257,6 +280,61 @@ function json(request: Request, data: unknown, status = 200) {
   return Response.json(data, { status, headers: corsHeaders(request) });
 }
 
+function applyLatestReportFields(row: Record<string, unknown>) {
+  const clockIn = newestFieldCandidate([
+    reportFieldCandidate(row, "base_clock_in_at", "base_updated_at", "base_created_at", "base"),
+    reportFieldCandidate(row, "report_clock_in_at", "report_clock_in_updated_at", "report_updated_at", "report"),
+    Number(row.has_clock_in_override || 0)
+      ? reportFieldCandidate(row, "override_clock_in_at", "clock_in_override_updated_at", "updated_at", "override", true)
+      : null,
+  ]);
+  const clockOut = newestFieldCandidate([
+    reportFieldCandidate(row, "base_clock_out_at", "base_updated_at", "base_created_at", "base"),
+    reportFieldCandidate(row, "report_clock_out_at", "report_clock_out_updated_at", "report_updated_at", "report"),
+    Number(row.has_clock_out_override || 0)
+      ? reportFieldCandidate(row, "override_clock_out_at", "clock_out_override_updated_at", "updated_at", "override", true)
+      : null,
+  ]);
+
+  return {
+    ...row,
+    clock_in_at: clockIn?.value || null,
+    clock_out_at: clockOut?.value || null,
+    clock_in_updated_at: clockIn?.updatedAt || row.clock_in_updated_at || row.updated_at || "",
+    clock_out_updated_at: clockOut?.updatedAt || row.clock_out_updated_at || row.updated_at || "",
+    report_edited_clock_in: clockIn?.source === "report" || clockIn?.source === "override" ? 1 : 0,
+    report_edited_clock_out: clockOut?.source === "report" || clockOut?.source === "override" ? 1 : 0,
+    live_open_clock_in_at: clockIn?.value && !clockOut?.value ? clockIn.value : row.live_open_clock_in_at,
+  };
+}
+
+function reportFieldCandidate(
+  row: Record<string, unknown>,
+  valueKey: string,
+  updatedKey: string,
+  fallbackUpdatedKey: string,
+  source: string,
+  includeBlank = false,
+) {
+  if (!includeBlank && !row[valueKey]) return null;
+  if (source === "base" && !row.base_id) return null;
+  return {
+    value: row[valueKey] ? String(row[valueKey]) : "",
+    updatedAt: String(row[updatedKey] || row[fallbackUpdatedKey] || row.updated_at || row.created_at || ""),
+    source,
+  };
+}
+
+function newestFieldCandidate(
+  candidates: Array<{ value: string; updatedAt: string; source: string } | null>,
+) {
+  return candidates.filter(Boolean).reduce<{ value: string; updatedAt: string; source: string } | null>((best, candidate) => {
+    if (!candidate) return best;
+    if (!best) return candidate;
+    return isSameOrNewer(candidate.updatedAt, best.updatedAt) ? candidate : best;
+  }, null);
+}
+
 function reportClockMark(row: Record<string, unknown>, field: "clock_in" | "clock_out", corrections: Array<Record<string, unknown>>) {
   const dateKey = String(row.work_date || "");
   const valueKey = field === "clock_in" ? "clock_in_at" : "clock_out_at";
@@ -283,7 +361,8 @@ function reportClockMark(row: Record<string, unknown>, field: "clock_in" | "cloc
 }
 
 function parseLiveTimestamp(value: string) {
-  const ms = Date.parse(value);
+  const text = String(value || "").trim();
+  const ms = Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text) ? `${text.replace(" ", "T")}Z` : text);
   return Number.isNaN(ms) ? 0 : ms;
 }
 
@@ -297,9 +376,9 @@ function isSameOrNewer(left: string, right: string) {
 
 function sameLiveInstant(left: string, right: string) {
   if (!left || !right) return false;
-  const leftMs = Date.parse(left);
-  const rightMs = Date.parse(right);
-  if (Number.isNaN(leftMs) || Number.isNaN(rightMs)) return left === right;
+  const leftMs = parseLiveTimestamp(left);
+  const rightMs = parseLiveTimestamp(right);
+  if (!leftMs || !rightMs) return left === right;
   return leftMs === rightMs;
 }
 

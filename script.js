@@ -200,7 +200,7 @@ function employeeScreen() {
   const stats = {
     present: formatDayCount(calculatePresentDays(monthRecords, visibleCorrections)),
     late: monthRecords.filter((row) => row.lateMinutes > 0).length,
-    ot: formatMetricDuration(monthRecords.reduce((total, row) => total + row.overtimeMinutes, 0)),
+    ot: formatMetricDuration(monthRecords.reduce((total, row) => total + employeeHistoryOvertimeMinutes(row, attendanceDisplayTimes(row, visibleCorrections)), 0)),
     corrections: correctedReportBoxCount(monthRecords, visibleCorrections),
   };
 
@@ -1967,7 +1967,6 @@ function calculateOvertime(clockOut, scheduledEnd, threshold) {
 }
 
 function employeeHistoryOvertimeMinutes(row, display) {
-  if (Number.isFinite(Number(row.overtimeMinutes))) return Number(row.overtimeMinutes || 0);
   if (!display.clockOut) return 0;
   if (!display.clockIn) return Number(row.overtimeMinutes || 0);
 

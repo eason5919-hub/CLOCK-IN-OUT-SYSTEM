@@ -29,8 +29,13 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(employeeSummaryRoute, /clock_out_updated_at/);
   assert.match(employeeSummaryRoute, /report_edited_clock_in/);
   assert.match(employeeSummaryRoute, /report_edited_clock_out/);
-  assert.match(employeeSummaryRoute, /report_clock_in_mark: reportClockMark\(row, "clock_in", correctionRows\)/);
-  assert.match(employeeSummaryRoute, /report_clock_out_mark: reportClockMark\(row, "clock_out", correctionRows\)/);
+  assert.match(employeeSummaryRoute, /report_clock_in_mark: reportClockMark\(effectiveRow, "clock_in", correctionRows\)/);
+  assert.match(employeeSummaryRoute, /report_clock_out_mark: reportClockMark\(effectiveRow, "clock_out", correctionRows\)/);
+  assert.match(employeeSummaryRoute, /function applyLatestReportFields/);
+  assert.match(employeeSummaryRoute, /function newestFieldCandidate/);
+  assert.match(employeeSummaryRoute, /base_clock_in_at/);
+  assert.match(employeeSummaryRoute, /override_clock_out_at/);
+  assert.match(employeeSummaryRoute, /\$\{text\.replace\(" ", "T"\)\}Z/);
   assert.match(employeeSummaryRoute, /function reportClockMark/);
   assert.match(employeeSummaryRoute, /return "corrected"/);
   assert.match(employeeSummaryRoute, /return Number\(row\[editedKey\] \|\| 0\) && row\[valueKey\] \? "edited" : ""/);
@@ -65,7 +70,7 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(script, /function attendanceEditMarks/);
   assert.match(script, /function approvedCorrectionForField/);
   assert.match(script, /function attendanceDisplayTimes/);
-  assert.match(script, /if \(Number\.isFinite\(Number\(row\.overtimeMinutes\)\)\) return Number\(row\.overtimeMinutes \|\| 0\)/);
+  assert.doesNotMatch(script, /if \(Number\.isFinite\(Number\(row\.overtimeMinutes\)\)\) return Number\(row\.overtimeMinutes \|\| 0\)/);
   assert.match(script, /function parseLiveTimestamp/);
   assert.match(script, /function sameClockValue/);
   assert.match(script, /clockInUpdatedAt: row\.clock_in_updated_at \|\| row\.updated_at \|\| ""/);
