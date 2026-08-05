@@ -218,6 +218,10 @@ export async function POST(request: Request) {
       return json(request, { ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
     }
 
+    if (todaysQrRecord?.clock_out_at) {
+      return json(request, { error: "Clock out already recorded for today." }, 409);
+    }
+
     const existing = activeOpenRecord || (todaysQrRecord?.clock_in_at && !todaysQrRecord.clock_out_at ? todaysQrRecord : null);
 
     if (!existing?.clock_in_at) {
@@ -227,28 +231,40 @@ export async function POST(request: Request) {
       return json(request, { error: "Clock out already recorded for today." }, 409);
     }
 
+    const clockInClearedByAdmin = await hasClearedReportFieldMarker(db, payload.employeeId, existing.work_date, "in");
     const schedule = await loadSchedule(db, warehouse.id, localDayOfWeek(existing.clock_in_at, timeZone));
     const previousRegularMinutes = existing.id ? await getPreviousRegularMinutes(db, payload.employeeId, existing.work_date, existing.id) : 0;
-    const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone, {
+    const calculatedTotals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone, {
       previousRegularMinutes,
     });
     const halfDayLeave = await hasApprovedHalfDayLeave(db, payload.employeeId, existing.work_date);
-    const halfDayShortMinutes = halfDayLeave ? Math.max(0, HALF_DAY_REQUIRED_MINUTES - totals.totalMinutes) : 0;
-    const lateMinutes = Math.max(Number(existing.late_minutes || totals.lateMinutes), halfDayShortMinutes);
-    const status =
-      lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+    const halfDayShortMinutes = halfDayLeave ? Math.max(0, HALF_DAY_REQUIRED_MINUTES - calculatedTotals.totalMinutes) : 0;
+    const calculatedLateMinutes = Math.max(Number(existing.late_minutes || calculatedTotals.lateMinutes), halfDayShortMinutes);
+    const totals = clockInClearedByAdmin
+      ? { totalMinutes: 0, lateMinutes: 0, earlyLeaveMinutes: 0, overtimeMinutes: 0 }
+      : calculatedTotals;
+    const lateMinutes = clockInClearedByAdmin ? 0 : calculatedLateMinutes;
+    const status = clockInClearedByAdmin
+      ? "pending_review"
+      : lateMinutes > 0
+        ? "late"
+        : totals.earlyLeaveMinutes > 0
+          ? "early_leave"
+          : "present";
 
     const attendanceId = existing.id || crypto.randomUUID();
     if (existing.id) {
       await db
         .prepare(
           `UPDATE attendance
-           SET clock_out_at = ?, total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
+           SET clock_in_at = CASE WHEN ? THEN NULL ELSE clock_in_at END,
+               clock_out_at = ?, total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
                overtime_minutes = ?, status = ?, clock_out_latitude = ?, clock_out_longitude = ?,
                clock_out_accuracy = ?, clock_out_distance_meters = ?, source = 'qr_gps', updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
         )
         .bind(
+          clockInClearedByAdmin ? 1 : 0,
           timestamp,
           totals.totalMinutes,
           lateMinutes,
@@ -458,6 +474,21 @@ async function archiveReportFieldMarkers(db: D1Database, employeeId: string, wor
     )
     .bind(employeeId, workDate, source)
     .run();
+}
+
+async function hasClearedReportFieldMarker(db: D1Database, employeeId: string, workDate: string, field: "in" | "out") {
+  const source = field === "in" ? "admin_report_edit_in" : "admin_report_edit_out";
+  const column = field === "in" ? "clock_in_at" : "clock_out_at";
+  const marker = await db
+    .prepare(
+      `SELECT id
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND source = ? AND ${column} IS NULL
+       LIMIT 1`,
+    )
+    .bind(employeeId, workDate, source)
+    .first<{ id: string }>();
+  return Boolean(marker);
 }
 
 async function getPreviousRegularMinutes(
