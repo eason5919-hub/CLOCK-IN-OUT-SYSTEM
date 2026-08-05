@@ -473,7 +473,7 @@
   <header>
     <div>
       <h1>Warehouse HR Attendance</h1>
-      <p>Live employee and attendance records from the shared warehouse database. Calc v20260805-short-cap.</p>
+      <p>Live employee and attendance records from the shared warehouse database. Calc v20260805-shared-time-rules.</p>
     </div>
     <div class="actions">
       <a class="buttonLink secondary" href="index.html">Employee App</a>
@@ -664,7 +664,7 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260805-short-cap";
+    const REPORT_CALC_VERSION = "20260805-shared-time-rules";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "work", "overtime", "diffOt", "short"]);
     const REPORT_TIME_FIELDS = new Set(["in", "break", "resume", "out"]);
     const loginSection = document.getElementById("loginSection");
@@ -1035,6 +1035,13 @@
       return Date.parse(`${dateKey}T${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:00+08:00`);
     }
 
+    function regularWindowStartMs(dateKey, clockInMs) {
+      const startMs = scheduledDateTimeMs(dateKey, 9 * 60);
+      const earlyStartMs = scheduledDateTimeMs(dateKey, 8 * 60);
+      const graceEndMs = startMs + 15 * 60000;
+      return clockInMs >= earlyStartMs && clockInMs <= graceEndMs ? startMs : Math.max(clockInMs, earlyStartMs);
+    }
+
     function reportOvertimeFromTimes(clockIn, clockOut, dateKey, day) {
       if (!clockOut) return 0;
       const elapsed = elapsedMinutes(clockIn, clockOut);
@@ -1062,10 +1069,10 @@
       const overtime = reportOvertimeFromTimes(clockIn, clockOut, dateKey, day);
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
-      const regularStartMs = scheduledDateTimeMs(dateKey, start - 60);
+      const regularStartMs = regularWindowStartMs(dateKey, clockInMs);
       const regularEndMs = scheduledDateTimeMs(dateKey, end + 15);
-      const regularSpan = Math.max(0, Math.round((Math.min(clockOutMs, regularEndMs) - Math.max(clockInMs, regularStartMs)) / 60000));
-      const breakDeduction = day >= 1 && day <= 5 && regularSpan > 300 ? 60 : 0;
+      const regularSpan = Math.max(0, Math.round((Math.min(clockOutMs, regularEndMs) - regularStartMs) / 60000));
+      const breakDeduction = day >= 1 && day <= 5 && regularSpan >= 300 ? 60 : 0;
       const regularCap = day === 6 ? 240 : 480;
       return Math.min(Math.max(0, regularSpan - breakDeduction), regularCap) + overtime;
     }
@@ -1127,9 +1134,9 @@
       const inMs = parseLiveTimestamp(attendanceRow.clockIn);
       const outMs = parseLiveTimestamp(attendanceRow.clockOut);
       if (Number.isNaN(inMs) || Number.isNaN(outMs) || !attendanceRow.dateKey) return 0;
-      const startMs = scheduledDateTimeMs(attendanceRow.dateKey, start);
+      const startMs = regularWindowStartMs(attendanceRow.dateKey, inMs);
       const endMs = scheduledDateTimeMs(attendanceRow.dateKey, end + 15);
-      return Math.max(0, Math.round((Math.min(outMs, endMs) - Math.max(inMs, startMs)) / 60000));
+      return Math.max(0, Math.round((Math.min(outMs, endMs) - startMs) / 60000));
     }
 
     function reportShortMinutes(attendanceRow, day, leaveTaken = "") {

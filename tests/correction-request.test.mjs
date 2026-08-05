@@ -65,6 +65,7 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(script, /function attendanceEditMarks/);
   assert.match(script, /function approvedCorrectionForField/);
   assert.match(script, /function attendanceDisplayTimes/);
+  assert.match(script, /if \(Number\.isFinite\(Number\(row\.overtimeMinutes\)\)\) return Number\(row\.overtimeMinutes \|\| 0\)/);
   assert.match(script, /function parseLiveTimestamp/);
   assert.match(script, /function sameClockValue/);
   assert.match(script, /clockInUpdatedAt: row\.clock_in_updated_at \|\| row\.updated_at \|\| ""/);
@@ -231,7 +232,9 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /return reportFieldShouldSave\(employeeId, dateKey, field, nextEdits\)/);
   assert.match(adminHtml, /editedFields: \["in", "break", "resume", "out"\]\.filter\(field => reportFieldShouldSave\(employeeId, dateKey, field, nextEdits\)\)/);
   assert.match(adminHtml, /const regularSpan = Math\.max\(0, Math\.round/);
-  assert.match(adminHtml, /const breakDeduction = day >= 1 && day <= 5 && regularSpan > 300 \? 60 : 0/);
+  assert.match(adminHtml, /function regularWindowStartMs/);
+  assert.match(adminHtml, /clockInMs >= earlyStartMs && clockInMs <= graceEndMs \? startMs : Math\.max\(clockInMs, earlyStartMs\)/);
+  assert.match(adminHtml, /const breakDeduction = day >= 1 && day <= 5 && regularSpan >= 300 \? 60 : 0/);
   assert.match(adminHtml, /scheduledDateTimeMs\(dateKey, end \+ 15\)/);
   assert.match(adminHtml, /scheduledDateTimeMs\(attendanceRow\.dateKey, end \+ 15\)/);
   assert.doesNotMatch(adminHtml, /lateShort > 60\) lateShort -= 60/);
@@ -240,7 +243,7 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /const outMs = parseLiveTimestamp\(attendanceRow\.clockOut\)/);
   assert.match(adminHtml, /Math\.round\(\(endMs - outMs\) \/ 60000\)/);
   assert.doesNotMatch(adminHtml, /Math\.max\(0, end - outMinutes\)/);
-  assert.match(adminHtml, /20260805-short-cap/);
+  assert.match(adminHtml, /20260805-shared-time-rules/);
   assert.doesNotMatch(adminHtml, /<th>Sche<\/th>/);
   assert.doesNotMatch(adminHtml, /<th>Diff OT<\/th>/);
   assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "schedule"/);

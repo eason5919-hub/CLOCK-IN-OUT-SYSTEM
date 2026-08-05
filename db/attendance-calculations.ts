@@ -23,7 +23,6 @@ export function calculateAttendanceTotals(
     0,
     Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000),
   );
-  const lateMinutes = calculateLateMinutes(clockInAt, schedule, timeZone);
   const earlyLeaveMinutes = calculateEarlyLeaveMinutes(clockInAt, clockOutAt, schedule, timeZone);
   const overtimeMinutes = calculateOvertimeMinutes(clockInAt, clockOutAt, schedule, timeZone);
   const totalMinutes = calculatePaidMinutes(
@@ -31,9 +30,11 @@ export function calculateAttendanceTotals(
     overtimeMinutes,
     schedule,
     clockInAt,
+    clockOutAt,
     timeZone,
     options.previousRegularMinutes ?? 0,
   );
+  const lateMinutes = calculateShortMinutes(clockInAt, clockOutAt, schedule, timeZone, totalMinutes);
 
   return { totalMinutes, lateMinutes, earlyLeaveMinutes, overtimeMinutes };
 }
@@ -119,15 +120,76 @@ function calculatePaidMinutes(
   overtimeMinutes: number,
   schedule: AttendanceSchedule | null | undefined,
   clockInAt: string,
+  clockOutAt: string,
   timeZone: string,
   previousRegularMinutes: number,
 ) {
   const dailyRegularCap = calculateDailyRegularCap(schedule, clockInAt, timeZone);
   if (dailyRegularCap === null) return elapsedMinutes;
 
-  const regularMinutes = Math.max(0, elapsedMinutes - overtimeMinutes);
+  const regularMinutes = calculateRegularWindowMinutes(clockInAt, clockOutAt, schedule, timeZone, previousRegularMinutes);
   const remainingRegularMinutes = Math.max(0, dailyRegularCap - previousRegularMinutes);
   return Math.min(regularMinutes, remainingRegularMinutes) + overtimeMinutes;
+}
+
+function calculateShortMinutes(
+  clockInAt: string,
+  clockOutAt: string,
+  schedule: AttendanceSchedule | null | undefined,
+  timeZone: string,
+  totalMinutes: number,
+) {
+  if (!schedule?.start_time || !schedule.end_time || schedule.is_off_day) return 0;
+
+  const clockInMinutes = localMinutesSinceMidnight(clockInAt, timeZone);
+  const scheduledStartMinutes = timeToMinutes(schedule.start_time);
+  const lateShort =
+    clockInMinutes > scheduledStartMinutes + START_GRACE_MINUTES
+      ? Math.max(0, clockInMinutes - scheduledStartMinutes)
+      : 0;
+
+  const workDate = localDateTimeParts(clockInAt, timeZone);
+  const scheduledEndMs = localDateAndTimeToUtcMs(workDate, schedule.end_time, timeZone);
+  const clockInMs = Date.parse(clockInAt);
+  const clockOutMs = Date.parse(clockOutAt);
+  if (Number.isNaN(clockInMs) || Number.isNaN(clockOutMs) || clockInMs >= scheduledEndMs) return 0;
+
+  const requiredMinutes = calculateDailyRegularCap(schedule, clockInAt, timeZone) ?? 0;
+  const earlyOutShort = clockOutMs < scheduledEndMs ? Math.max(0, Math.round((scheduledEndMs - clockOutMs) / 60000)) : 0;
+  const workShort = Math.max(0, requiredMinutes - totalMinutes);
+  return Math.min(requiredMinutes, Math.max(lateShort, earlyOutShort, workShort));
+}
+
+function calculateRegularWindowMinutes(
+  clockInAt: string,
+  clockOutAt: string,
+  schedule: AttendanceSchedule | null | undefined,
+  timeZone: string,
+  previousRegularMinutes: number,
+) {
+  if (!schedule?.start_time || !schedule.end_time || schedule.is_off_day) {
+    return Math.max(0, Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000));
+  }
+
+  const workDate = localDateTimeParts(clockInAt, timeZone);
+  const scheduledStartMinutes = timeToMinutes(schedule.start_time);
+  const scheduledEndMinutes = timeToMinutes(schedule.end_time);
+  const day = localDayOfWeek(clockInAt, timeZone);
+  const regularStartMs = localDateAndTimeToUtcMs(workDate, minutesToTime(Math.max(0, scheduledStartMinutes - EARLY_OT_BEFORE_START_MINUTES)), timeZone);
+  const scheduledStartMs = localDateAndTimeToUtcMs(workDate, schedule.start_time, timeZone);
+  const graceEndMs = scheduledStartMs + START_GRACE_MINUTES * 60000;
+  const clockInMs = Date.parse(clockInAt);
+  const clockOutMs = Date.parse(clockOutAt);
+  if (Number.isNaN(clockInMs) || Number.isNaN(clockOutMs)) return 0;
+  const effectiveClockInMs =
+    clockInMs >= regularStartMs && clockInMs <= graceEndMs ? scheduledStartMs : Math.max(clockInMs, regularStartMs);
+  const regularEndMs = localDateAndTimeToUtcMs(workDate, minutesToTime(scheduledEndMinutes + START_GRACE_MINUTES), timeZone);
+  const regularSpan = Math.max(
+    0,
+    Math.round((Math.min(clockOutMs, regularEndMs) - effectiveClockInMs) / 60000),
+  );
+  const breakDeduction = day >= 1 && day <= 5 && previousRegularMinutes <= 0 && regularSpan >= 300 ? BREAK_MINUTES : 0;
+  return Math.max(0, regularSpan - breakDeduction);
 }
 
 function calculateDailyRegularCap(

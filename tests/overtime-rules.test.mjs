@@ -37,8 +37,16 @@ test("weekday overtime uses grace for eligibility and scheduled end for counting
   assert.equal(calculateAttendanceTotals("2026-08-03T09:15:00+08:00", "2026-08-03T18:00:00+08:00", weekday).lateMinutes, 0);
   assert.equal(calculateAttendanceTotals("2026-08-03T09:16:00+08:00", "2026-08-03T18:00:00+08:00", weekday).lateMinutes, 16);
   assert.equal(calculateAttendanceTotals("2026-08-03T09:00:00+08:00", "2026-08-03T18:00:00+08:00", weekday).totalMinutes, 480);
+  assert.equal(calculateAttendanceTotals("2026-08-03T09:10:00+08:00", "2026-08-03T18:10:00+08:00", weekday).totalMinutes, 480);
+  assert.equal(calculateAttendanceTotals("2026-08-03T09:10:00+08:00", "2026-08-03T18:10:00+08:00", weekday).lateMinutes, 0);
   assert.equal(calculateAttendanceTotals("2026-08-03T09:00:00+08:00", "2026-08-03T19:00:00+08:00", weekday).totalMinutes, 540);
   assert.equal(calculateAttendanceTotals("2026-08-03T09:00:00+08:00", "2026-08-03T11:00:00+08:00", weekday).totalMinutes, 120);
+  assert.equal(calculateAttendanceTotals("2026-08-03T09:00:00+08:00", "2026-08-03T14:00:00+08:00", weekday).totalMinutes, 240);
+  assert.equal(calculateAttendanceTotals("2026-08-03T09:00:00+08:00", "2026-08-03T14:00:00+08:00", weekday).lateMinutes, 240);
+  assert.equal(calculateAttendanceTotals("2026-08-03T17:57:00+08:00", "2026-08-03T17:57:00+08:00", weekday).totalMinutes, 0);
+  assert.equal(calculateAttendanceTotals("2026-08-03T17:57:00+08:00", "2026-08-03T17:57:00+08:00", weekday).overtimeMinutes, 0);
+  assert.equal(calculateAttendanceTotals("2026-08-03T17:57:00+08:00", "2026-08-03T17:57:00+08:00", weekday).lateMinutes, 480);
+  assert.equal(calculateAttendanceTotals("2026-08-03T09:00:00+08:00", "2026-08-04T05:00:00+08:00", weekday).lateMinutes, 0);
   assert.equal(
     calculateAttendanceTotals("2026-08-03T12:00:00+08:00", "2026-08-03T18:00:00+08:00", weekday, undefined, {
       previousRegularMinutes: 120,

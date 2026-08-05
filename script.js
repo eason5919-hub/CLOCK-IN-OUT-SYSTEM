@@ -1967,6 +1967,7 @@ function calculateOvertime(clockOut, scheduledEnd, threshold) {
 }
 
 function employeeHistoryOvertimeMinutes(row, display) {
+  if (Number.isFinite(Number(row.overtimeMinutes))) return Number(row.overtimeMinutes || 0);
   if (!display.clockOut) return 0;
   if (!display.clockIn) return Number(row.overtimeMinutes || 0);
 
