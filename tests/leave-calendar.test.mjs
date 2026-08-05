@@ -144,8 +144,10 @@ test("employee correction form records one missing time and shows requested time
   assert.match(employeeSummaryRoute, /report_clock_in_at: reportRow\?\.clock_in_at \|\| null/);
   assert.match(employeeSummaryRoute, /report_clock_out_at: reportRow\?\.clock_out_at \|\| null/);
   assert.match(script, /function parseCorrectionOriginalRecord/);
-  assert.match(script, /originalClockIn: formatLiveTime\(original\?\.clock_in_at \|\| row\.report_clock_in_at\)/);
-  assert.match(script, /originalClockOut: formatLiveTime\(original\?\.clock_out_at \|\| row\.report_clock_out_at\)/);
+  assert.match(script, /const attendanceRow = state\.attendance\.find\(\(item\) => item\.date === row\.requested_date\)/);
+  assert.match(script, /function firstDisplayTime/);
+  assert.match(script, /originalClockIn: firstDisplayTime\(original\?\.clock_in_at, row\.report_clock_in_at, attendanceRow\?\.clockIn\)/);
+  assert.match(script, /originalClockOut: firstDisplayTime\(original\?\.clock_out_at, row\.report_clock_out_at, attendanceRow\?\.clockOut\)/);
   assert.match(script, /function correctionRequestedLine/);
   assert.match(script, /Requested: \$\{escapeHtml\(originalTime\)\} to <span class="time-mark corrected">\$\{escapeHtml\(requestedTime\)\}<\/span>/);
 });

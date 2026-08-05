@@ -502,6 +502,7 @@ function mapLiveAttendance(row) {
 
 function mapLiveCorrection(row) {
   const original = parseCorrectionOriginalRecord(row.original_record_json);
+  const attendanceRow = state.attendance.find((item) => item.date === row.requested_date);
   return {
     id: row.id,
     employeeId: state.currentUser?.employeeId,
@@ -513,13 +514,24 @@ function mapLiveCorrection(row) {
     requestedClockIn: formatLiveTime(row.requested_clock_in_at),
     requestedClockOut: formatLiveTime(row.requested_clock_out_at),
     requestedTime: formatLiveTime(row.requested_clock_out_at || row.requested_clock_in_at),
-    originalClockIn: formatLiveTime(original?.clock_in_at || row.report_clock_in_at),
-    originalClockOut: formatLiveTime(original?.clock_out_at || row.report_clock_out_at),
+    originalClockIn: firstDisplayTime(original?.clock_in_at, row.report_clock_in_at, attendanceRow?.clockIn),
+    originalClockOut: firstDisplayTime(original?.clock_out_at, row.report_clock_out_at, attendanceRow?.clockOut),
     reason: row.reason,
     status: statusLabel(row.status),
     createdAt: row.created_at || "",
     reviewedAt: row.reviewed_at || "",
   };
+}
+
+function firstDisplayTime(...values) {
+  for (const value of values) {
+    if (!value || String(value).toLowerCase() === "null") continue;
+    const text = String(value);
+    if (/^\d{1,2}:\d{2}$/.test(text)) return text.padStart(5, "0");
+    const formatted = formatLiveTime(value);
+    if (formatted) return formatted;
+  }
+  return null;
 }
 
 function parseCorrectionOriginalRecord(value) {
