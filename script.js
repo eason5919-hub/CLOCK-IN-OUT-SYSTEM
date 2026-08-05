@@ -178,6 +178,7 @@ function employeeScreen() {
   const leaveDefaultDate = defaultLeaveDate();
   selectedEmployeeMonthKey = normalizedEmployeeMonthKey(selectedEmployeeMonthKey);
   const currentMonthDate = monthDateFromKey(selectedEmployeeMonthKey);
+  const visibleCorrections = correctionsForMonth(corrections, selectedEmployeeMonthKey);
   const monthLabel = currentMonthDate.toLocaleDateString("en-MY", { timeZone: "UTC", month: "long", year: "numeric" });
   const historyDate = selectedHistoryDate || malaysiaDateKey(new Date());
   const historyRecords = records.filter((row) => row.date === historyDate).sort(compareAttendanceLatest);
@@ -237,7 +238,7 @@ function employeeScreen() {
           <label>Reason<textarea name="reason" rows="3" required></textarea></label>
           <button>Submit Request</button>
         </form>
-        <div class="list" style="margin-top:14px">${corrections.map(correctionCard).join("") || `<small>No correction requests.</small>`}</div>
+        <div class="list" style="margin-top:14px">${visibleCorrections.map(correctionCard).join("") || `<small>No correction requests for ${escapeHtml(monthLabel)}.</small>`}</div>
       </section>
       <section class="panel" id="leave">
         <div class="heading">
@@ -1154,6 +1155,10 @@ function correctionRequestedLine(correction) {
   if (!requestedTime) return "Requested: -";
   if (!originalTime) return `Requested: <span class="time-mark corrected">${escapeHtml(requestedTime)}</span>`;
   return `Requested: ${escapeHtml(originalTime)} to <span class="time-mark corrected">${escapeHtml(requestedTime)}</span>`;
+}
+
+function correctionsForMonth(corrections, monthKey) {
+  return (corrections || []).filter((correction) => String(correction.date || "").startsWith(`${monthKey}-`));
 }
 
 function visibleEmployeeLeaveRequests(requests) {

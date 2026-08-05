@@ -74,6 +74,10 @@ test("employee month dashboard can show current and previous month only", async 
   assert.match(script, /function previousEmployeeMonthKey/);
   assert.match(script, /normalizedEmployeeMonthKey/);
   assert.match(script, /selectedHistoryDate =/);
+  assert.match(script, /const visibleCorrections = correctionsForMonth\(corrections, selectedEmployeeMonthKey\)/);
+  assert.match(script, /visibleCorrections\.map\(correctionCard\)/);
+  assert.match(script, /function correctionsForMonth/);
+  assert.match(script, /String\(correction\.date \|\| ""\)\.startsWith\(`\$\{monthKey\}-`\)/);
 });
 
 test("employee month dashboard uses short AL and MC labels", async () => {
