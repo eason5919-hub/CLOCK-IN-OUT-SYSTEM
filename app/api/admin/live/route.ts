@@ -30,7 +30,7 @@ type AdminAction =
   | {
       action: "save_report_attendance_times";
       employeeId?: string;
-      rows?: Array<{ dateKey?: string; in?: string; break?: string; resume?: string; out?: string }>;
+      rows?: Array<{ dateKey?: string; in?: string; break?: string; resume?: string; out?: string; editedFields?: string[] }>;
     }
   | { action: "restore_report_attendance_times"; employeeId?: string; monthKey?: string };
 
@@ -569,7 +569,7 @@ async function saveReportAttendanceTimes(
     if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
 
     await db
-      .prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date = ? AND source = 'admin_report_edit'")
+      .prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date = ? AND source LIKE 'admin_report_edit%'")
       .bind(payload.employeeId, dateKey)
       .run();
 
@@ -616,6 +616,27 @@ async function saveReportAttendanceTimes(
         .run();
     }
 
+    const overrides = reportFieldOverrides(dateKey, row);
+    for (const field of row.editedFields ?? []) {
+      if (field !== "in" && field !== "out") continue;
+      const source = field === "in" ? "admin_report_edit_in" : "admin_report_edit_out";
+      await db
+        .prepare(
+          `INSERT INTO attendance
+           (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at, status, source, updated_at)
+           VALUES (?, ?, 'wh-main', ?, ?, ?, 'pending_review', ?, CURRENT_TIMESTAMP)`,
+        )
+        .bind(
+          crypto.randomUUID(),
+          payload.employeeId,
+          dateKey,
+          field === "in" ? overrides.in : null,
+          field === "out" ? overrides.out : null,
+          source,
+        )
+        .run();
+    }
+
     await db
       .prepare(
         "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -627,7 +648,7 @@ async function saveReportAttendanceTimes(
         "attendance",
         payload.employeeId,
         null,
-        JSON.stringify({ dateKey, ...row, segments }),
+        JSON.stringify({ dateKey, ...row, segments, overrides }),
       )
       .run();
   }
@@ -646,7 +667,7 @@ async function restoreReportAttendanceTimes(
   }
 
   await db
-    .prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date LIKE ? AND source = 'admin_report_edit'")
+    .prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date LIKE ? AND source LIKE 'admin_report_edit%'")
     .bind(payload.employeeId, `${payload.monthKey}-%`)
     .run();
 
@@ -687,6 +708,20 @@ function reportTimeSegments(
     segments.push({ clockInAt: new Date(inMs).toISOString(), clockOutAt: new Date(outMs).toISOString() });
   }
   return segments;
+}
+
+function reportFieldOverrides(
+  dateKey: string,
+  row: { in?: string; break?: string; resume?: string; out?: string },
+) {
+  const inMs = reportTimeToMs(dateKey, row.in);
+  const breakMs = reportTimeToMs(dateKey, row.break, inMs);
+  const resumeMs = reportTimeToMs(dateKey, row.resume, breakMs ?? inMs);
+  const outMs = reportTimeToMs(dateKey, row.out, resumeMs ?? breakMs ?? inMs);
+  return {
+    in: inMs == null ? null : new Date(inMs).toISOString(),
+    out: outMs == null ? null : new Date(outMs).toISOString(),
+  };
 }
 
 function reportTimeToMs(dateKey: string, value?: string, afterMs: number | null = null) {

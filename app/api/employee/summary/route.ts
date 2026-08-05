@@ -70,7 +70,7 @@ export async function GET(request: Request) {
                 MIN(created_at) AS created_at,
                 MAX(updated_at) AS updated_at
          FROM attendance
-         WHERE employee_id = ? AND source <> 'admin_report_edit'
+         WHERE employee_id = ? AND source NOT LIKE 'admin_report_edit%'
          GROUP BY work_date
        ),
        report_rows AS (
@@ -101,41 +101,84 @@ export async function GET(request: Request) {
          WHERE employee_id = ? AND source = 'admin_report_edit'
          GROUP BY work_date
        ),
+       field_overrides AS (
+         SELECT MIN(id) AS id,
+                work_date,
+                MAX(CASE WHEN source = 'admin_report_edit_in' THEN 1 ELSE 0 END) AS has_clock_in_override,
+                MAX(CASE WHEN source = 'admin_report_edit_in' THEN clock_in_at END) AS override_clock_in_at,
+                MAX(CASE WHEN source = 'admin_report_edit_in' THEN updated_at END) AS clock_in_override_updated_at,
+                MAX(CASE WHEN source = 'admin_report_edit_out' THEN 1 ELSE 0 END) AS has_clock_out_override,
+                MAX(CASE WHEN source = 'admin_report_edit_out' THEN clock_out_at END) AS override_clock_out_at,
+                MAX(CASE WHEN source = 'admin_report_edit_out' THEN updated_at END) AS clock_out_override_updated_at,
+                MIN(created_at) AS created_at,
+                MAX(updated_at) AS updated_at
+         FROM attendance
+         WHERE employee_id = ? AND source IN ('admin_report_edit_in', 'admin_report_edit_out')
+         GROUP BY work_date
+       ),
        day_keys AS (
          SELECT work_date FROM base_rows
          UNION
          SELECT work_date FROM report_rows
+         UNION
+         SELECT work_date FROM field_overrides
        )
        SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
               early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
               clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
               source, created_at, updated_at, clock_in_updated_at, clock_out_updated_at
        FROM (
-         SELECT COALESCE(r.id, b.id) AS id,
+         SELECT COALESCE(r.id, b.id, o.id) AS id,
                 d.work_date,
-                COALESCE(r.clock_in_at, b.clock_in_at) AS clock_in_at,
-                COALESCE(r.clock_out_at, b.clock_out_at) AS clock_out_at,
-                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.total_minutes ELSE b.total_minutes END AS total_minutes,
-                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.late_minutes ELSE b.late_minutes END AS late_minutes,
-                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.early_leave_minutes ELSE b.early_leave_minutes END AS early_leave_minutes,
-                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.overtime_minutes ELSE b.overtime_minutes END AS overtime_minutes,
-                CASE WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.status ELSE b.status END AS status,
+                CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.override_clock_in_at ELSE COALESCE(r.clock_in_at, b.clock_in_at) END AS clock_in_at,
+                CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.override_clock_out_at ELSE COALESCE(r.clock_out_at, b.clock_out_at) END AS clock_out_at,
+                CASE
+                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
+                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 0
+                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.total_minutes
+                  ELSE b.total_minutes
+                END AS total_minutes,
+                CASE
+                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
+                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 0
+                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.late_minutes
+                  ELSE b.late_minutes
+                END AS late_minutes,
+                CASE
+                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
+                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 0
+                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.early_leave_minutes
+                  ELSE b.early_leave_minutes
+                END AS early_leave_minutes,
+                CASE
+                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
+                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 0
+                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.overtime_minutes
+                  ELSE b.overtime_minutes
+                END AS overtime_minutes,
+                CASE
+                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
+                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 'pending_review'
+                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.status
+                  ELSE b.status
+                END AS status,
                 COALESCE(r.clock_in_accuracy, b.clock_in_accuracy) AS clock_in_accuracy,
                 COALESCE(r.clock_in_distance_meters, b.clock_in_distance_meters) AS clock_in_distance_meters,
                 COALESCE(r.clock_out_accuracy, b.clock_out_accuracy) AS clock_out_accuracy,
                 COALESCE(r.clock_out_distance_meters, b.clock_out_distance_meters) AS clock_out_distance_meters,
-                CASE WHEN r.work_date IS NOT NULL THEN 'admin_report_edit' ELSE b.source END AS source,
-                COALESCE(r.created_at, b.created_at) AS created_at,
-                COALESCE(r.updated_at, b.updated_at) AS updated_at,
-                COALESCE(r.clock_in_updated_at, b.updated_at) AS clock_in_updated_at,
-                COALESCE(r.clock_out_updated_at, b.updated_at) AS clock_out_updated_at
+                CASE WHEN r.work_date IS NOT NULL OR o.work_date IS NOT NULL THEN 'admin_report_edit' ELSE b.source END AS source,
+                COALESCE(r.created_at, b.created_at, o.created_at) AS created_at,
+                COALESCE(o.clock_in_override_updated_at, o.clock_out_override_updated_at, r.updated_at, b.updated_at, o.updated_at) AS updated_at,
+                CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.clock_in_override_updated_at ELSE COALESCE(r.clock_in_updated_at, b.updated_at) END AS clock_in_updated_at,
+                CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.clock_out_override_updated_at ELSE COALESCE(r.clock_out_updated_at, b.updated_at) END AS clock_out_updated_at
          FROM day_keys d
          LEFT JOIN base_rows b ON b.work_date = d.work_date
          LEFT JOIN report_rows r ON r.work_date = d.work_date
+         LEFT JOIN field_overrides o ON o.work_date = d.work_date
        )
        ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC, created_at DESC`,
     )
-    .bind(session.employee_id, session.employee_id)
+    .bind(session.employee_id, session.employee_id, session.employee_id)
     .all();
 
   const corrections = await db

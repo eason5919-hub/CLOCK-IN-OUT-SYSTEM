@@ -1180,19 +1180,23 @@
 
     function employeeAttendanceByDate(employeeId, dateKey) {
       const dayRows = attendance.filter(row => row.employee_id === employeeId && row.work_date === dateKey);
-      const reportRows = dayRows.filter(row => row.source === "admin_report_edit");
-      const rows = reportRows.length ? reportRows : dayRows;
+      const reportRows = dayRows.filter(isReportEditSource);
+      const reportSegmentRows = reportRows.filter(row => row.source === "admin_report_edit");
+      const baseRows = dayRows.filter(row => !isReportEditSource(row));
+      const rows = reportSegmentRows.length ? reportSegmentRows : baseRows;
       const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
-      if (!rows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
-      const reportSegments = [...reportRows].sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
+      if (!dayRows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
+      const reportSegments = [...reportSegmentRows].sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
+      const inMarker = reportRows.find(row => row.source === "admin_report_edit_in");
+      const outMarker = reportRows.find(row => row.source === "admin_report_edit_out");
       const inRows = rows.filter(row => row.clock_in_at).sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
       const outRows = rows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
       const inRow = inRows[0] || null;
       const outRow = outRows[outRows.length - 1] || null;
-      const rowFirstIn = inRow?.clock_in_at || "";
-      const rowLastOut = outRow?.clock_out_at || "";
-      const inUpdatedAt = inRow?.updated_at || inRow?.created_at || "";
-      const outUpdatedAt = outRow?.updated_at || outRow?.created_at || "";
+      const rowFirstIn = inMarker ? inMarker.clock_in_at || "" : inRow?.clock_in_at || "";
+      const rowLastOut = outMarker ? outMarker.clock_out_at || "" : outRow?.clock_out_at || "";
+      const inUpdatedAt = inMarker?.updated_at || inMarker?.created_at || inRow?.updated_at || inRow?.created_at || "";
+      const outUpdatedAt = outMarker?.updated_at || outMarker?.created_at || outRow?.updated_at || outRow?.created_at || "";
       const correctionInWins = Boolean(approvedTimes.clockIn) && (sameReportInstant(approvedTimes.clockIn, rowFirstIn) || isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt));
       const correctionOutWins = Boolean(approvedTimes.clockOut) && (sameReportInstant(approvedTimes.clockOut, rowLastOut) || isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt));
       const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;
@@ -1207,10 +1211,10 @@
         clockOut: lastOut,
         correctedClockIn: correctionInWins,
         correctedClockOut: correctionOutWins,
-        reportEditedClockIn: reportRows.some(row => row.clock_in_at) && !correctionInWins,
+        reportEditedClockIn: Boolean(inMarker || reportSegmentRows.some(row => row.clock_in_at)) && !correctionInWins,
         reportEditedBreak: Boolean(breakTime),
         reportEditedResume: Boolean(resumeTime),
-        reportEditedClockOut: reportRows.some(row => row.clock_out_at) && !correctionOutWins,
+        reportEditedClockOut: Boolean(outMarker || reportSegmentRows.some(row => row.clock_out_at)) && !correctionOutWins,
         actualMinutes: reportPaidWorkMinutes(firstIn, lastOut, dateKey, dateParts(dateKey).getUTCDay()),
         totalMinutes: rows.reduce((sum, row) => sum + Number(row.total_minutes || 0), 0),
         lateMinutes: rows.reduce((sum, row) => sum + Number(row.late_minutes || 0), 0),
@@ -1240,8 +1244,16 @@
 
     function visibleAttendance() {
       const q = searchInput.value.trim().toLowerCase();
-      const dayRows = attendance.filter(item => item.work_date === selectedAttendanceDate);
+      const dayRows = attendance.filter(item => item.work_date === selectedAttendanceDate && !isReportFieldMarker(item));
       return q ? dayRows.filter(item => searchable(item).includes(q)) : dayRows;
+    }
+
+    function isReportEditSource(row) {
+      return String(row?.source || "").startsWith("admin_report_edit");
+    }
+
+    function isReportFieldMarker(row) {
+      return String(row?.source || "").startsWith("admin_report_edit_");
     }
 
     function activeLeaveNotices() {
@@ -1629,6 +1641,7 @@
           break: reportRowText(row, "break"),
           resume: reportRowText(row, "resume"),
           out: reportRowText(row, "out"),
+          editedFields: ["in", "break", "resume", "out"].filter(field => Object.prototype.hasOwnProperty.call(nextEdits, reportEditKey(employeeId, dateKey, field))),
         }));
       const liveRows = timeRows;
       if (liveRows.length) {
