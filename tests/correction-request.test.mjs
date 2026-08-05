@@ -171,7 +171,7 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /const outMs = Date\.parse\(attendanceRow\.clockOut \|\| ""\)/);
   assert.match(adminHtml, /Math\.round\(\(endMs - outMs\) \/ 60000\)/);
   assert.doesNotMatch(adminHtml, /Math\.max\(0, end - outMinutes\)/);
-  assert.match(adminHtml, /20260804-no-stale-calculated-report/);
+  assert.match(adminHtml, /20260805-equal-time-short-fix/);
   assert.doesNotMatch(adminHtml, /<th>Sche<\/th>/);
   assert.doesNotMatch(adminHtml, /<th>Diff OT<\/th>/);
   assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "schedule"/);
