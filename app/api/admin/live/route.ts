@@ -28,6 +28,7 @@ type AdminAction =
   | { action: "unlink_device"; deviceId?: string }
   | { action: "review_leave_request"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string }
   | { action: "review_correction"; requestId?: string; status?: "approved" | "rejected"; adminNote?: string }
+  | { action: "reset_attendance_times"; confirm?: string }
   | {
       action: "save_report_attendance_times";
       employeeId?: string;
@@ -84,6 +85,9 @@ export async function POST(request: Request) {
     }
     if (payload.action === "review_correction") {
       return reviewCorrectionRequest(db, request, payload, auth.userId);
+    }
+    if (payload.action === "reset_attendance_times") {
+      return resetAttendanceTimes(db, request, payload, auth.userId);
     }
     if (payload.action === "save_report_attendance_times") {
       return saveReportAttendanceTimes(db, request, payload, auth.userId);
@@ -690,6 +694,57 @@ async function restoreReportAttendanceTimes(
       payload.employeeId,
       null,
       JSON.stringify({ monthKey: payload.monthKey }),
+    )
+    .run();
+
+  return json(request, { ok: true });
+}
+
+async function resetAttendanceTimes(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "reset_attendance_times" }>,
+  adminUserId: string,
+) {
+  if (payload.confirm !== "RESET_ALL_ATTENDANCE_TIMES") {
+    return json(request, { error: "Reset confirmation is required." }, 400);
+  }
+
+  await db
+    .prepare(
+      `UPDATE attendance
+       SET clock_in_at = NULL,
+           clock_out_at = NULL,
+           total_minutes = 0,
+           late_minutes = 0,
+           early_leave_minutes = 0,
+           overtime_minutes = 0,
+           status = 'pending_review',
+           clock_in_latitude = NULL,
+           clock_in_longitude = NULL,
+           clock_in_accuracy = NULL,
+           clock_in_distance_meters = NULL,
+           clock_out_latitude = NULL,
+           clock_out_longitude = NULL,
+           clock_out_accuracy = NULL,
+           clock_out_distance_meters = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE source <> 'admin_report_edit_archived'`,
+    )
+    .run();
+
+  await db
+    .prepare(
+      "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(
+      crypto.randomUUID(),
+      adminUserId,
+      "reset_attendance_times",
+      "attendance",
+      "all",
+      null,
+      JSON.stringify({ confirm: payload.confirm }),
     )
     .run();
 

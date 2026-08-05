@@ -34,7 +34,7 @@ type WarehouseRow = {
 };
 
 type AttendanceRow = {
-  id: string;
+  id: string | null;
   work_date: string;
   clock_in_at: string | null;
   clock_out_at: string | null;
@@ -158,23 +158,131 @@ export async function POST(request: Request) {
 
       const lateMinutes = calculateAttendanceTotals(timestamp, timestamp, todaysSchedule, timeZone).lateMinutes;
       const status = lateMinutes > 0 ? "late" : "present";
-      const attendanceId = crypto.randomUUID();
+      const attendanceId = todaysQrRecord?.id || crypto.randomUUID();
 
+      if (todaysQrRecord?.id) {
+        await db
+          .prepare(
+            `UPDATE attendance
+             SET clock_in_at = ?, clock_out_at = NULL, total_minutes = 0, late_minutes = ?,
+                 early_leave_minutes = 0, overtime_minutes = 0, status = ?,
+                 clock_in_latitude = ?, clock_in_longitude = ?, clock_in_accuracy = ?,
+                 clock_in_distance_meters = ?, device_id = ?, device_model = ?, ip_address = ?,
+                 source = 'qr_gps', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+          )
+          .bind(
+            timestamp,
+            lateMinutes,
+            status,
+            bestSample.latitude,
+            bestSample.longitude,
+            bestSample.accuracy,
+            distance,
+            device.id,
+            payload.deviceModel,
+            ip,
+            attendanceId,
+          )
+          .run();
+      } else {
+        await db
+          .prepare(
+            `INSERT INTO attendance
+             (id, employee_id, warehouse_id, work_date, clock_in_at, late_minutes, status,
+              clock_in_latitude, clock_in_longitude, clock_in_accuracy, clock_in_distance_meters,
+              device_id, device_model, ip_address)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            attendanceId,
+            payload.employeeId,
+            warehouse.id,
+            workDate,
+            timestamp,
+            lateMinutes,
+            status,
+            bestSample.latitude,
+            bestSample.longitude,
+            bestSample.accuracy,
+            distance,
+            device.id,
+            payload.deviceModel,
+            ip,
+          )
+          .run();
+      }
+
+      await writeAudit(db, session.user_id, "clock_in", "attendance", attendanceId, null, { timestamp });
+      await archiveReportFieldMarkers(db, payload.employeeId, workDate, "in");
+      return json(request, { ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
+    }
+
+    const existing = activeOpenRecord || (todaysQrRecord?.clock_in_at && !todaysQrRecord.clock_out_at ? todaysQrRecord : null);
+
+    if (!existing?.clock_in_at) {
+      return json(request, { error: "Clock in is required before clock out." }, 409);
+    }
+    if (existing.clock_out_at) {
+      return json(request, { error: "Clock out already recorded for today." }, 409);
+    }
+
+    const schedule = await loadSchedule(db, warehouse.id, localDayOfWeek(existing.clock_in_at, timeZone));
+    const previousRegularMinutes = existing.id ? await getPreviousRegularMinutes(db, payload.employeeId, existing.work_date, existing.id) : 0;
+    const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone, {
+      previousRegularMinutes,
+    });
+    const halfDayLeave = await hasApprovedHalfDayLeave(db, payload.employeeId, existing.work_date);
+    const halfDayShortMinutes = halfDayLeave ? Math.max(0, HALF_DAY_REQUIRED_MINUTES - totals.totalMinutes) : 0;
+    const lateMinutes = Math.max(Number(existing.late_minutes || totals.lateMinutes), halfDayShortMinutes);
+    const status =
+      lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+
+    const attendanceId = existing.id || crypto.randomUUID();
+    if (existing.id) {
+      await db
+        .prepare(
+          `UPDATE attendance
+           SET clock_out_at = ?, total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
+               overtime_minutes = ?, status = ?, clock_out_latitude = ?, clock_out_longitude = ?,
+               clock_out_accuracy = ?, clock_out_distance_meters = ?, source = 'qr_gps', updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+        )
+        .bind(
+          timestamp,
+          totals.totalMinutes,
+          lateMinutes,
+          totals.earlyLeaveMinutes,
+          totals.overtimeMinutes,
+          status,
+          bestSample.latitude,
+          bestSample.longitude,
+          bestSample.accuracy,
+          distance,
+          attendanceId,
+        )
+        .run();
+    } else {
       await db
         .prepare(
           `INSERT INTO attendance
-           (id, employee_id, warehouse_id, work_date, clock_in_at, late_minutes, status,
-            clock_in_latitude, clock_in_longitude, clock_in_accuracy, clock_in_distance_meters,
+           (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at,
+            total_minutes, late_minutes, early_leave_minutes, overtime_minutes, status,
+            clock_out_latitude, clock_out_longitude, clock_out_accuracy, clock_out_distance_meters,
             device_id, device_model, ip_address)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           attendanceId,
           payload.employeeId,
           warehouse.id,
-          workDate,
+          existing.work_date,
+          existing.clock_in_at,
           timestamp,
+          totals.totalMinutes,
           lateMinutes,
+          totals.earlyLeaveMinutes,
+          totals.overtimeMinutes,
           status,
           bestSample.latitude,
           bestSample.longitude,
@@ -185,55 +293,10 @@ export async function POST(request: Request) {
           ip,
         )
         .run();
-
-      await writeAudit(db, session.user_id, "clock_in", "attendance", attendanceId, null, { timestamp });
-      return json(request, { ok: true, action: "clock_in", timestamp, distance, accuracy: bestSample.accuracy });
     }
 
-    const existing = activeOpenRecord;
-
-    if (!existing?.clock_in_at) {
-      return json(request, { error: "Clock in is required before clock out." }, 409);
-    }
-    if (existing.clock_out_at) {
-      return json(request, { error: "Clock out already recorded for today." }, 409);
-    }
-
-    const schedule = await loadSchedule(db, warehouse.id, localDayOfWeek(existing.clock_in_at, timeZone));
-    const previousRegularMinutes = await getPreviousRegularMinutes(db, payload.employeeId, existing.work_date, existing.id);
-    const totals = calculateAttendanceTotals(existing.clock_in_at, timestamp, schedule, timeZone, {
-      previousRegularMinutes,
-    });
-    const halfDayLeave = await hasApprovedHalfDayLeave(db, payload.employeeId, existing.work_date);
-    const halfDayShortMinutes = halfDayLeave ? Math.max(0, HALF_DAY_REQUIRED_MINUTES - totals.totalMinutes) : 0;
-    const lateMinutes = Math.max(Number(existing.late_minutes || totals.lateMinutes), halfDayShortMinutes);
-    const status =
-      lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
-
-    await db
-      .prepare(
-        `UPDATE attendance
-         SET clock_out_at = ?, total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
-             overtime_minutes = ?, status = ?, clock_out_latitude = ?, clock_out_longitude = ?,
-             clock_out_accuracy = ?, clock_out_distance_meters = ?, updated_at = CURRENT_TIMESTAMP
-         WHERE id = ?`,
-      )
-      .bind(
-        timestamp,
-        totals.totalMinutes,
-        lateMinutes,
-        totals.earlyLeaveMinutes,
-        totals.overtimeMinutes,
-        status,
-        bestSample.latitude,
-        bestSample.longitude,
-        bestSample.accuracy,
-        distance,
-        existing.id,
-      )
-      .run();
-
-    await writeAudit(db, session.user_id, "clock_out", "attendance", existing.id, null, { timestamp });
+    await archiveReportFieldMarkers(db, payload.employeeId, existing.work_date, "out");
+    await writeAudit(db, session.user_id, "clock_out", "attendance", attendanceId, null, { timestamp });
     return json(request, { ok: true, action: "clock_out", timestamp, distance, accuracy: bestSample.accuracy, totals });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
@@ -348,7 +411,10 @@ async function findActiveOpenRecord(
 async function findQrAttendanceForDate(db: D1Database, employeeId: string, workDate: string) {
   return db
     .prepare(
-      `WITH qr_row AS (
+      `WITH day_key AS (
+         SELECT ? AS work_date
+       ),
+       qr_row AS (
          SELECT id, work_date, clock_in_at, clock_out_at, late_minutes, overtime_minutes, total_minutes
          FROM attendance
          WHERE employee_id = ?
@@ -368,17 +434,30 @@ async function findQrAttendanceForDate(db: D1Database, employeeId: string, workD
            AND source IN ('admin_report_edit_in', 'admin_report_edit_out')
        )
        SELECT q.id,
-              q.work_date,
+              d.work_date,
               CASE WHEN COALESCE(f.has_clock_in_override, 0) = 1 THEN f.override_clock_in_at ELSE q.clock_in_at END AS clock_in_at,
               CASE WHEN COALESCE(f.has_clock_out_override, 0) = 1 THEN f.override_clock_out_at ELSE q.clock_out_at END AS clock_out_at,
-              q.late_minutes,
-              q.overtime_minutes,
-              q.total_minutes
-       FROM qr_row q
+              COALESCE(q.late_minutes, 0) AS late_minutes,
+              COALESCE(q.overtime_minutes, 0) AS overtime_minutes,
+              COALESCE(q.total_minutes, 0) AS total_minutes
+       FROM day_key d
+       LEFT JOIN qr_row q ON q.work_date = d.work_date
        LEFT JOIN field_overrides f`,
     )
-    .bind(employeeId, workDate, employeeId, workDate)
+    .bind(workDate, employeeId, workDate, employeeId, workDate)
     .first<AttendanceRow>();
+}
+
+async function archiveReportFieldMarkers(db: D1Database, employeeId: string, workDate: string, field: "in" | "out") {
+  const source = field === "in" ? "admin_report_edit_in" : "admin_report_edit_out";
+  await db
+    .prepare(
+      `UPDATE attendance
+       SET source = 'admin_report_edit_archived', updated_at = CURRENT_TIMESTAMP
+       WHERE employee_id = ? AND work_date = ? AND source = ?`,
+    )
+    .bind(employeeId, workDate, source)
+    .run();
 }
 
 async function getPreviousRegularMinutes(

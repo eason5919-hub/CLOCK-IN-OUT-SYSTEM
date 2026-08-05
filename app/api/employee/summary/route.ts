@@ -184,7 +184,12 @@ export async function GET(request: Request) {
                 CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.clock_out_override_updated_at ELSE COALESCE(r.clock_out_updated_at, b.updated_at) END AS clock_out_updated_at,
                 CASE WHEN r.clock_in_at IS NOT NULL OR COALESCE(o.has_clock_in_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_in,
                 CASE WHEN r.clock_out_at IS NOT NULL OR COALESCE(o.has_clock_out_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_out,
-                l.live_open_clock_in_at
+                CASE
+                  WHEN (CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.override_clock_in_at ELSE COALESCE(r.clock_in_at, b.clock_in_at) END) IS NOT NULL
+                   AND (CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.override_clock_out_at ELSE COALESCE(r.clock_out_at, b.clock_out_at) END) IS NULL
+                  THEN (CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.override_clock_in_at ELSE COALESCE(r.clock_in_at, b.clock_in_at) END)
+                  ELSE l.live_open_clock_in_at
+                END AS live_open_clock_in_at
          FROM day_keys d
          LEFT JOIN base_rows b ON b.work_date = d.work_date
          LEFT JOIN report_rows r ON r.work_date = d.work_date
