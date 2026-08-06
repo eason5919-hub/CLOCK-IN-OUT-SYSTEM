@@ -144,6 +144,10 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminRoute, /function archiveReportAttendanceRows/);
   assert.match(adminRoute, /let previousRegularMinutes = 0/);
   assert.match(adminRoute, /function reportFieldOverrides/);
+  assert.match(adminRoute, /const preservedEditedFields = await reportEditedFieldsForDate\(db, payload\.employeeId, dateKey\)/);
+  assert.match(adminRoute, /const editedFields = new Set\(\[\.\.\.preservedEditedFields, \.\.\.\(row\.editedFields \?\? \[\]\)\]\)/);
+  assert.match(adminRoute, /if \(Number\(resolved\?\.report_edited_clock_in \|\| 0\)\) fields\.push\("in"\)/);
+  assert.match(adminRoute, /if \(Number\(resolved\?\.report_edited_clock_out \|\| 0\)\) fields\.push\("out"\)/);
   assert.match(adminRoute, /admin_report_edit_in/);
   assert.match(adminRoute, /admin_report_edit_out/);
   assert.match(adminRoute, /function reportTimeSegments/);

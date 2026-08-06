@@ -267,6 +267,45 @@ test("sequential clock in and clock out approvals keep separate corrected states
   assert.equal(approvedCorrectionMatchesField(manuallyEditedIn, clockOutCorrection, "clock_out"), true);
 });
 
+test("editing clock in keeps an existing manual clock out highlight", async () => {
+  const { reconcileAttendanceDay } = await loadReconciliation();
+  const editedAt = "2026-08-09 08:00:00";
+  const clockInAt = "2026-08-09T01:01:00.000Z";
+  const clockOutAt = "2026-08-09T10:01:00.000Z";
+  const resolved = reconcileAttendanceDay([
+    baseRow,
+    {
+      ...baseRow,
+      id: "updated-report",
+      clock_in_at: clockInAt,
+      clock_out_at: clockOutAt,
+      source: "admin_report_edit",
+      updated_at: editedAt,
+    },
+    {
+      ...baseRow,
+      id: "updated-in-marker",
+      clock_in_at: clockInAt,
+      clock_out_at: null,
+      source: "admin_report_edit_in",
+      updated_at: editedAt,
+    },
+    {
+      ...baseRow,
+      id: "preserved-out-marker",
+      clock_in_at: null,
+      clock_out_at: clockOutAt,
+      source: "admin_report_edit_out",
+      updated_at: editedAt,
+    },
+  ]);
+
+  assert.equal(resolved.clock_in_at, clockInAt);
+  assert.equal(resolved.clock_out_at, clockOutAt);
+  assert.equal(resolved.report_edited_clock_in, 1);
+  assert.equal(resolved.report_edited_clock_out, 1);
+});
+
 test("blank clock out keeps break and resume in their own fields", async () => {
   const { reconcileAttendanceDay } = await loadReconciliation();
   const reportRows = [

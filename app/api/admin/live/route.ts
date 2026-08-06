@@ -768,6 +768,7 @@ async function saveReportAttendanceTimes(
     const dateKey = row.dateKey?.trim();
     if (!dateKey || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
 
+    const preservedEditedFields = await reportEditedFieldsForDate(db, payload.employeeId, dateKey);
     await archiveReportAttendanceRows(db, payload.employeeId, dateKey);
 
     const segments = reportTimeSegments(dateKey, row);
@@ -823,7 +824,8 @@ async function saveReportAttendanceTimes(
     }
 
     const overrides = reportFieldOverrides(dateKey, row);
-    for (const field of row.editedFields ?? []) {
+    const editedFields = new Set([...preservedEditedFields, ...(row.editedFields ?? [])]);
+    for (const field of editedFields) {
       if (field !== "in" && field !== "out") continue;
       const source = field === "in" ? "admin_report_edit_in" : "admin_report_edit_out";
       await db
@@ -911,6 +913,24 @@ async function resetAttendanceTimes(
     .run();
 
   return json(request, { ok: true });
+}
+
+async function reportEditedFieldsForDate(db: D1Database, employeeId: string, dateKey: string) {
+  const rows = await db
+    .prepare(
+      `SELECT *
+       FROM attendance
+       WHERE employee_id = ?
+         AND work_date = ?
+         AND source <> 'admin_report_edit_archived'`,
+    )
+    .bind(employeeId, dateKey)
+    .all();
+  const resolved = reconcileAttendanceDay((rows.results ?? []) as AttendanceRow[]);
+  const fields: Array<"in" | "out"> = [];
+  if (Number(resolved?.report_edited_clock_in || 0)) fields.push("in");
+  if (Number(resolved?.report_edited_clock_out || 0)) fields.push("out");
+  return fields;
 }
 
 async function archiveReportAttendanceRows(db: D1Database, employeeId: string, dateKey: string) {
