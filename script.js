@@ -1231,9 +1231,11 @@ function employeeCard(employee) {
 
 function correctionCard(correction) {
   const requested = correctionRequestedLine(correction);
-  const reason = correction.reason ? ` | ${escapeHtml(correction.reason)}` : "";
+  const reason = correction.reason
+    ? `<span class="correction-card-reason">${escapeHtml(correction.reason)}</span>`
+    : "";
   const canCancel = correction.status === "Pending";
-  return `<div class="list-item"><div><strong>${correction.date} - ${correction.missing}</strong><span>${requested}${reason}</span></div><div class="actions"><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-correction="${correction.id}">Cancel</button>` : ""}</div></div>`;
+  return `<article class="list-item correction-card"><div class="correction-card-copy"><strong class="correction-card-title">${escapeHtml(correction.date)} - ${escapeHtml(correction.missing)}</strong><span class="correction-card-request">${requested}</span>${reason}</div><div class="actions correction-card-actions"><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-correction="${correction.id}">Cancel</button>` : ""}</div></article>`;
 }
 
 function correctionRequestedLine(correction) {

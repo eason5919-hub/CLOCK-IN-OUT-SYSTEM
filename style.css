@@ -828,6 +828,43 @@ th {
   gap: 5px;
 }
 
+.correction-card {
+  gap: 10px;
+}
+
+.correction-card-copy {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.correction-card-title,
+.correction-card-request,
+.correction-card-reason {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.correction-card-title {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.correction-card-request {
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.correction-card-reason {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.correction-card-actions {
+  justify-content: flex-start;
+}
+
 .leave-card {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;

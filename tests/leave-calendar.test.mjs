@@ -236,4 +236,6 @@ test("employee correction form records one missing time and shows requested time
   assert.match(script, /originalClockOut: firstDisplayTime\(original\?\.clock_out_at, row\.report_clock_out_at, attendanceRow\?\.clockOut\)/);
   assert.match(script, /function correctionRequestedLine/);
   assert.match(script, /Requested: \$\{escapeHtml\(originalTime\)\} to <span class="time-mark corrected">\$\{escapeHtml\(requestedTime\)\}<\/span>/);
+  assert.match(script, /class="correction-card-title">\$\{escapeHtml\(correction\.date\)\} - \$\{escapeHtml\(correction\.missing\)\}<\/strong><span class="correction-card-request">\$\{requested\}<\/span>/);
+  assert.match(script, /class="correction-card-reason">\$\{escapeHtml\(correction\.reason\)\}<\/span>/);
 });
