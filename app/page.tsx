@@ -347,6 +347,14 @@ function EmployeeApp({
   const records = useMemo(() => data?.attendance ?? [], [data?.attendance]);
   const corrections = useMemo(() => data?.corrections ?? [], [data?.corrections]);
   const openRecord = records.find((record) => record.live_open_clock_in_at && isOpenRecordStillActive(String(record.work_date ?? "")));
+  const today = malaysiaDateKey(new Date());
+  const [calendarYear, calendarMonth] = today.split("-").map(Number);
+  const calendarDays = new Date(Date.UTC(calendarYear, calendarMonth, 0)).getUTCDate();
+  const calendarMonthLabel = new Date(Date.UTC(calendarYear, calendarMonth - 1, 1)).toLocaleDateString("en-MY", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
   const nextAction = openRecord ? "clock_out" : "clock_in";
   const nextLabel = openRecord ? "Clock out" : "Clock in";
   const stats = useMemo(
@@ -410,16 +418,20 @@ function EmployeeApp({
           <div className="panel-heading">
             <div>
               <p className="eyebrow">Current month</p>
-              <h3>Attendance Calendar</h3>
+              <h3>{calendarMonthLabel}</h3>
             </div>
           </div>
           <div className="calendar">
-            {Array.from({ length: 31 }, (_, index) => {
+            {Array.from({ length: calendarDays }, (_, index) => {
               const day = index + 1;
-              const date = `2026-08-${String(day).padStart(2, "0")}`;
+              const date = `${calendarYear}-${String(calendarMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const record = records.find((item) => item.work_date === date);
               return (
-                <div key={date} className={`day ${String(record?.status ?? "").replace("_", "-")}`}>
+                <div
+                  key={date}
+                  className={`day ${String(record?.status ?? "").replace("_", "-")} ${date === today ? "today" : ""}`}
+                  aria-current={date === today ? "date" : undefined}
+                >
                   <span>{day}</span>
                   <small>{record ? statusLabel(record.status) : "-"}</small>
                 </div>
@@ -629,8 +641,8 @@ function AttendanceTable({
             {!employeeOnly ? <th>Employee</th> : null}
             <th>Date</th>
             <th>Clock In</th>
-            <th>Break</th>
-            <th>Resume</th>
+            {!employeeOnly ? <th>Break</th> : null}
+            {!employeeOnly ? <th>Resume</th> : null}
             <th>Clock Out</th>
             <th>Working Hours</th>
             <th>OT</th>
@@ -644,8 +656,8 @@ function AttendanceTable({
               {!employeeOnly ? <td>{String(record.full_name ?? record.employee_code ?? "-")}</td> : null}
               <td>{String(record.work_date ?? "-")}</td>
               <td>{formatTime(record.clock_in_at)}</td>
-              <td>{formatTime(record.break_at)}</td>
-              <td>{formatTime(record.resume_at)}</td>
+              {!employeeOnly ? <td>{formatTime(record.break_at)}</td> : null}
+              {!employeeOnly ? <td>{formatTime(record.resume_at)}</td> : null}
               <td>{formatTime(record.clock_out_at)}</td>
               <td>{formatMinutes(Number(record.total_minutes ?? 0))}</td>
               <td>{formatOtMinutes(Number(record.overtime_minutes ?? 0))}</td>

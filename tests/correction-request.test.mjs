@@ -88,8 +88,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(script, /clockOut: row\.clockOutMark \|\| ""/);
   assert.match(script, /const display = attendanceDisplayTimes\(row, corrections\)/);
   assert.match(script, /function employeeHistoryTimeCell/);
-  assert.match(script, /employeeHistoryTimeCell\(display\.breakTime, marks\.breakTime\)/);
-  assert.match(script, /employeeHistoryTimeCell\(display\.resumeTime, marks\.resumeTime\)/);
+  assert.doesNotMatch(script, /employeeHistoryTimeCell\(display\.breakTime, marks\.breakTime\)/);
+  assert.doesNotMatch(script, /employeeHistoryTimeCell\(display\.resumeTime, marks\.resumeTime\)/);
   assert.match(script, /class="time-mark corrected"/);
   assert.match(css, /\.time-mark\.edited/);
   assert.match(css, /\.time-mark\.corrected/);
@@ -200,6 +200,10 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /return Math\.min\(requiredMinutes, Math\.max\(lateShort, earlyOut, workShort\)\)/);
   assert.doesNotMatch(adminHtml, /inMs >= endMs\) return 0/);
   assert.match(adminHtml, /REPORT_CALC_VERSION = "20260806-leave-picker-short"/);
+  assert.match(adminHtml, /main \{\s+width: calc\(100% - 24px\)/);
+  assert.match(adminHtml, /\.reportTable \{\s+width: 100%;\s+min-width: 0;\s+table-layout: fixed;/);
+  assert.match(adminHtml, /\.employeeReport \.tableWrap \{\s+overflow-x: hidden;/);
+  assert.match(adminHtml, /<colgroup>[\s\S]*<col style="width:12%">[\s\S]*<col style="width:20\.5%">[\s\S]*<\/colgroup>/);
   assert.doesNotMatch(adminHtml, /return Math\.max\(lateShort, earlyOut\)/);
   assert.match(adminHtml, /function isEditableReportField/);
   assert.match(adminHtml, /function reportFieldWasEdited/);

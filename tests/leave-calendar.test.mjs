@@ -39,7 +39,9 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /monthCalendar\(records, leaveRequests, corrections, historyDate, currentMonthDate\)/);
   assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
   assert.match(script, /function employeeAttendanceHeader/);
-  assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Break<\/th><th>Resume<\/th><th>Clock Out<\/th><th>OT<\/th><th>GPS<\/th>/);
+  assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>OT<\/th><th>GPS<\/th>/);
+  assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*<th>Break<\/th>/);
+  assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*<th>Resume<\/th>/);
   assert.match(script, /function adminAttendanceHeader/);
   assert.match(script, /<th>Employee<\/th><th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>Working Hours<\/th><th>OT<\/th><th>Status<\/th><th>GPS<\/th>/);
   assert.match(script, /formatReportOtMinutes\(employeeHistoryOvertimeMinutes\(row, display\)\)/);
@@ -62,6 +64,9 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.doesNotMatch(script, /labels\.push\("OT"\)/);
   assert.doesNotMatch(script, /labels\.push\("OK"\)/);
   assert.match(css, /\.month-calendar[\s\S]*grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
+  assert.match(script, /isToday \? "today" : ""/);
+  assert.match(script, /aria-current="date"/);
+  assert.match(css, /\.month-day\.today[\s\S]*background: var\(--blue\)/);
   assert.doesNotMatch(css, /\.calendar[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
 });
 
@@ -72,8 +77,8 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260806-leave-cancel/);
-  assert.match(indexHtml, /script\.js\?v=20260806-leave-cancel/);
+  assert.match(indexHtml, /style\.css\?v=20260806-report-fit-today/);
+  assert.match(indexHtml, /script\.js\?v=20260806-report-fit-today/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);

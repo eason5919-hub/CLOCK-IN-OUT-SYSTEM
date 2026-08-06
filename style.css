@@ -531,8 +531,23 @@ h3 {
   word-break: normal;
 }
 
+.month-day.today {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+.month-day.today small {
+  color: #fff;
+  font-weight: 900;
+}
+
 .month-day.selected {
   box-shadow: 0 0 0 2px var(--blue);
+}
+
+.month-day.today.selected {
+  box-shadow: 0 0 0 2px #0d3456;
 }
 
 .table-wrap {

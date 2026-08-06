@@ -1065,9 +1065,10 @@ function monthCalendar(records, leaveRequests, corrections, selectedDate, monthD
     const dayRecords = records.filter((row) => row.date === date);
     const leave = calendarLeaveForDate(leaveRequests, date);
     const summary = leave || calendarRecordSummary(dayRecords, date, today, corrections);
-    const classes = ["month-day", summary.tone, date === selectedDate ? "selected" : ""].filter(Boolean).join(" ");
+    const isToday = date === today;
+    const classes = ["month-day", summary.tone, isToday ? "today" : "", date === selectedDate ? "selected" : ""].filter(Boolean).join(" ");
     cells.push(`
-      <button class="${classes}" type="button" data-history-date="${date}">
+      <button class="${classes}" type="button" data-history-date="${date}" ${isToday ? 'aria-current="date"' : ""}>
         <span>${day}</span>
         <small>${escapeHtml(summary.label)}</small>
       </button>
@@ -1210,7 +1211,7 @@ function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []
 }
 
 function employeeAttendanceHeader() {
-  return "<th>Date</th><th>Clock In</th><th>Break</th><th>Resume</th><th>Clock Out</th><th>OT</th><th>GPS</th>";
+  return "<th>Date</th><th>Clock In</th><th>Clock Out</th><th>OT</th><th>GPS</th>";
 }
 
 function adminAttendanceHeader() {
@@ -1218,7 +1219,7 @@ function adminAttendanceHeader() {
 }
 
 function employeeAttendanceRow(row, display, marks) {
-  return `<tr><td>${row.date}</td>${employeeHistoryTimeCell(display.clockIn, marks.clockIn)}${employeeHistoryTimeCell(display.breakTime, marks.breakTime)}${employeeHistoryTimeCell(display.resumeTime, marks.resumeTime)}${employeeHistoryTimeCell(display.clockOut, marks.clockOut)}<td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td>${row.gps || "-"}</td></tr>`;
+  return `<tr><td>${row.date}</td>${employeeHistoryTimeCell(display.clockIn, marks.clockIn)}${employeeHistoryTimeCell(display.clockOut, marks.clockOut)}<td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td>${row.gps || "-"}</td></tr>`;
 }
 
 function adminAttendanceRow(row, display, marks) {

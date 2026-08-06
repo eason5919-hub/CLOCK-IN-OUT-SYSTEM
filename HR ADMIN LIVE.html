@@ -50,7 +50,7 @@
     header p { margin-bottom: 0; color: #dce8e2; font-size: 14px; }
 
     main {
-      width: min(1280px, calc(100% - 24px));
+      width: calc(100% - 24px);
       margin: 18px auto 40px;
     }
 
@@ -264,8 +264,8 @@
 
     .monthlyReportArea {
       display: grid;
-      gap: 18px;
-      padding: 14px;
+      gap: 12px;
+      padding: 8px;
       background: #fff;
     }
 
@@ -292,15 +292,18 @@
     }
 
     .reportTable {
-      min-width: 1160px;
-      font-size: 12px;
+      width: 100%;
+      min-width: 0;
+      table-layout: fixed;
+      font-size: 11px;
     }
 
     .reportTable th,
     .reportTable td {
-      padding: 6px 7px;
+      padding: 5px 3px;
       border: 1px dotted #dce5e1;
       vertical-align: middle;
+      overflow-wrap: anywhere;
     }
 
     .reportTable th {
@@ -319,7 +322,7 @@
     }
 
     .editableCell {
-      min-width: 48px;
+      min-width: 0;
       min-height: 18px;
       outline: 0;
       background: #fff;
@@ -353,7 +356,7 @@
 
     .reportLeavePicker {
       width: 100%;
-      min-width: 142px;
+      min-width: 0;
       min-height: 30px;
       border: 1px solid #cbd8d3;
       border-radius: 4px;
@@ -362,6 +365,10 @@
       padding: 3px 24px 3px 6px;
       font: inherit;
       font-weight: 700;
+    }
+
+    .employeeReport .tableWrap {
+      overflow-x: hidden;
     }
 
     .reportLeavePicker:disabled {
@@ -1688,6 +1695,14 @@
           </div>
           <div class="tableWrap">
             <table class="reportTable">
+              <colgroup>
+                <col style="width:12%">
+                <col style="width:9%">
+                <col span="4" style="width:6.5%">
+                <col span="3" style="width:6.5%">
+                <col style="width:13%">
+                <col style="width:20.5%">
+              </colgroup>
               <thead>
                 <tr>
                   <th>Date</th>

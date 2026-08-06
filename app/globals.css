@@ -595,6 +595,17 @@ textarea {
   background: rgba(180, 54, 54, 0.08);
 }
 
+.day.today {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+.day.today small {
+  color: #fff;
+  font-weight: 900;
+}
+
 .table-wrap {
   width: 100%;
   overflow-x: auto;
