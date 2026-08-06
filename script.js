@@ -1181,10 +1181,9 @@ function timeCell(value, mark = "") {
   return `<span class="time-mark ${mark}">${escapeHtml(text)}</span>`;
 }
 
-function employeeHistoryTimeCell(value, mark = "") {
+function employeeHistoryTimeCell(value) {
   const text = value || "";
-  const markClass = mark === "corrected" ? " correctedTime" : mark === "edited" ? " manualEdit" : "";
-  return `<td class="history-time-cell${markClass}">${escapeHtml(text)}</td>`;
+  return `<td class="history-time-cell"><span class="history-time-value">${escapeHtml(text)}</span></td>`;
 }
 
 function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []) {
@@ -1196,14 +1195,14 @@ function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []
   }
 
   return `
-    <div class="table-wrap">
-      <table>
+    <div class="table-wrap${employeeOnly ? " employee-history-wrap" : ""}">
+      <table${employeeOnly ? ' class="employee-history-table"' : ""}>
         <thead><tr>${employeeOnly ? employeeAttendanceHeader() : adminAttendanceHeader()}</tr></thead>
         <tbody>${records
           .map((row) => {
             const marks = attendanceEditMarks(row, corrections);
             const display = attendanceDisplayTimes(row, corrections);
-            return employeeOnly ? employeeAttendanceRow(row, display, marks) : adminAttendanceRow(row, display, marks);
+            return employeeOnly ? employeeAttendanceRow(row, display) : adminAttendanceRow(row, display, marks);
           })
           .join("")}</tbody>
       </table>
@@ -1218,8 +1217,9 @@ function adminAttendanceHeader() {
   return "<th>Employee</th><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Working Hours</th><th>OT</th><th>Status</th><th>GPS</th>";
 }
 
-function employeeAttendanceRow(row, display, marks) {
-  return `<tr><td>${row.date}</td>${employeeHistoryTimeCell(display.clockIn, marks.clockIn)}${employeeHistoryTimeCell(display.clockOut, marks.clockOut)}<td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td>${row.gps || "-"}</td></tr>`;
+function employeeAttendanceRow(row, display) {
+  const gps = row.gps || "-";
+  return `<tr><td>${row.date}</td>${employeeHistoryTimeCell(display.clockIn)}${employeeHistoryTimeCell(display.clockOut)}<td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td class="history-gps-cell" title="${escapeHtml(gps)}">${escapeHtml(gps)}</td></tr>`;
 }
 
 function adminAttendanceRow(row, display, marks) {

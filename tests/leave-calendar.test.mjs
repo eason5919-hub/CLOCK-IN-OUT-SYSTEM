@@ -42,6 +42,9 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>OT<\/th><th>GPS<\/th>/);
   assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*<th>Break<\/th>/);
   assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*<th>Resume<\/th>/);
+  assert.match(script, /class="table-wrap\$\{employeeOnly \? " employee-history-wrap" : ""\}"/);
+  assert.match(script, /class="employee-history-table"/);
+  assert.match(css, /\.employee-history-table \{\s+min-width: 0;\s+table-layout: fixed;/);
   assert.match(script, /function adminAttendanceHeader/);
   assert.match(script, /<th>Employee<\/th><th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>Working Hours<\/th><th>OT<\/th><th>Status<\/th><th>GPS<\/th>/);
   assert.match(script, /formatReportOtMinutes\(employeeHistoryOvertimeMinutes\(row, display\)\)/);
@@ -77,8 +80,8 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260806-gold-approved-readable-report/);
-  assert.match(indexHtml, /script\.js\?v=20260806-gold-approved-readable-report/);
+  assert.match(indexHtml, /style\.css\?v=20260806-compact-history-clean/);
+  assert.match(indexHtml, /script\.js\?v=20260806-compact-history-clean/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);

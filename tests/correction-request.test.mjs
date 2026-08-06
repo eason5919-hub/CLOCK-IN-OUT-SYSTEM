@@ -99,11 +99,12 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(script, /class="time-mark corrected"/);
   assert.match(css, /\.time-mark\.edited/);
   assert.match(css, /\.time-mark\.corrected/);
-  assert.match(css, /\.history-time-cell\.manualEdit \{\s+background: #e9f2ff;\s+box-shadow: inset 0 0 0 1px #7aa7d9;\s+font-weight: 800;/);
-  assert.match(css, /\.history-time-cell\.correctedTime \{\s+background: #fff2bf;\s+box-shadow: inset 0 0 0 1px #d2a310;[\s\S]*font-weight: 800;/);
+  assert.doesNotMatch(css, /\.history-time-cell\.manualEdit/);
+  assert.doesNotMatch(css, /\.history-time-cell\.correctedTime/);
   assert.match(adminHtml, /\.editableCell\.manualEdit \{\s+background: #e9f2ff;\s+box-shadow: inset 0 0 0 1px #7aa7d9;\s+font-weight: 800;/);
   assert.match(adminHtml, /\.editableCell\.correctedTime \{\s+background: #fff2bf;\s+box-shadow: inset 0 0 0 1px #d2a310;[\s\S]*font-weight: 800;/);
-  assert.match(script, /function employeeHistoryTimeCell\(value, mark = ""\) \{\s+const text = value \|\| "";/);
+  assert.match(script, /function employeeHistoryTimeCell\(value\) \{\s+const text = value \|\| "";/);
+  assert.doesNotMatch(script, /function employeeHistoryTimeCell\(value\)[\s\S]{0,250}(correctedTime|manualEdit)/);
   assert.match(script, /function formatLiveTime\(value\) \{\s+if \(!value\) return "";\s+const date = new Date\(parseLiveTimestamp\(value\)\);\s+if \(Number\.isNaN\(date\.getTime\(\)\)\) return "";/);
   assert.match(script, /toLocaleTimeString\("en-MY", \{ timeZone: "Asia\/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false \}\)/);
   assert.match(adminHtml, /toLocaleTimeString\("en-MY", \{\s+timeZone: "Asia\/Kuala_Lumpur",\s+hour: "2-digit",\s+minute: "2-digit",\s+hour12: false\s+\}\)/);

@@ -554,6 +554,10 @@ h3 {
   overflow-x: auto;
 }
 
+.employee-history-wrap {
+  overflow-x: hidden;
+}
+
 .empty-state {
   border: 1px dashed var(--line);
   border-radius: 8px;
@@ -567,6 +571,53 @@ table {
   width: 100%;
   min-width: 780px;
   border-collapse: collapse;
+}
+
+.employee-history-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.employee-history-table th,
+.employee-history-table td {
+  padding: 10px 7px;
+  white-space: nowrap;
+}
+
+.employee-history-table th:nth-child(1),
+.employee-history-table td:nth-child(1) {
+  width: 24%;
+}
+
+.employee-history-table th:nth-child(2),
+.employee-history-table td:nth-child(2),
+.employee-history-table th:nth-child(3),
+.employee-history-table td:nth-child(3) {
+  width: 18%;
+}
+
+.employee-history-table th:nth-child(4),
+.employee-history-table td:nth-child(4) {
+  width: 12%;
+}
+
+.employee-history-table th:nth-child(2),
+.employee-history-table td:nth-child(2),
+.employee-history-table th:nth-child(3),
+.employee-history-table td:nth-child(3),
+.employee-history-table th:nth-child(4),
+.employee-history-table td:nth-child(4) {
+  text-align: center;
+}
+
+.employee-history-table th:nth-child(5),
+.employee-history-table td:nth-child(5) {
+  width: 28%;
+}
+
+.history-gps-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 th,
@@ -621,21 +672,24 @@ th {
   border-radius: 7px;
 }
 
-.time-mark.edited,
-.history-time-cell.manualEdit {
+.time-mark.edited {
   background: #e9f2ff;
   box-shadow: inset 0 0 0 1px #7aa7d9;
   font-weight: 800;
 }
 
-.history-time-cell.correctedTime {
+.time-mark.corrected {
   background: #fff2bf;
   box-shadow: inset 0 0 0 1px #d2a310;
   color: #5f4700;
   font-weight: 800;
 }
 
-.time-mark.corrected,
+.history-time-value {
+  display: inline-block;
+  min-width: 42px;
+  font-variant-numeric: tabular-nums;
+}
 
 .form {
   display: grid;
@@ -945,6 +999,19 @@ small,
 
   .panel {
     padding: 12px;
+  }
+
+  .employee-history-table {
+    font-size: 12px;
+  }
+
+  .employee-history-table th,
+  .employee-history-table td {
+    padding: 9px 4px;
+  }
+
+  .employee-history-table th {
+    font-size: 10px;
   }
 
   .employee-content {
