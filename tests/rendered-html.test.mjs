@@ -43,6 +43,20 @@ test("keeps starter preview files removed", async () => {
   await assert.rejects(access(new URL("../app/_sites-preview/preview.css", templateRoot)));
 });
 
+test("keeps the permanent warehouse QR print-ready", async () => {
+  const [adminHtml, qrPng] = await Promise.all([
+    readFile(new URL("../HR ADMIN LIVE.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/warehouse-qr.png", import.meta.url)),
+  ]);
+
+  assert.equal(qrPng.toString("ascii", 1, 4), "PNG");
+  assert.ok(qrPng.readUInt32BE(16) >= 1600);
+  assert.ok(qrPng.readUInt32BE(20) >= 1600);
+  assert.match(adminHtml, /const QR_IMAGE_URL = `\$\{API_BASE\}\/warehouse-qr\.png\?v=20260806-print-quality`/);
+  assert.match(adminHtml, /width:125mm;height:125mm;image-rendering:pixelated/);
+  assert.match(adminHtml, /Scan to Clock In \/ Clock Out/);
+});
+
 async function readBuiltPageChunk() {
   const assetsRoot = new URL("../dist/server/ssr/assets/", import.meta.url);
   const file = (await readdir(assetsRoot)).find((name) => /^page-.*\.js$/.test(name));

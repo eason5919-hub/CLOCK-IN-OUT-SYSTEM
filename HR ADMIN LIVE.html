@@ -829,6 +829,7 @@
 
   <script>
     const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
+    const QR_IMAGE_URL = `${API_BASE}/warehouse-qr.png?v=20260806-print-quality`;
     const TOKEN_KEY = "warehouseHrLiveToken";
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
@@ -894,8 +895,8 @@
     emailInput.value = "d1_racing@yahoo.com";
     attendanceDateInput.value = selectedAttendanceDate;
     setupReportMonthOptions();
-    qrImage.src = `${API_BASE}/warehouse-qr.png`;
-    downloadQrLink.href = `${API_BASE}/warehouse-qr.png`;
+    qrImage.src = QR_IMAGE_URL;
+    downloadQrLink.href = QR_IMAGE_URL;
 
     function setStatus(target, message, type) {
       target.textContent = message;
@@ -2409,9 +2410,9 @@
     });
 
     printQrButton.addEventListener("click", () => {
-      const popup = window.open("", "_blank", "width=420,height=520");
+      const popup = window.open("", "_blank", "width=900,height=1000");
       if (!popup) return;
-      popup.document.write(`<!doctype html><title>Warehouse QR</title><body style="font-family:Arial;text-align:center;padding:24px"><h2>Warehouse QR</h2><img src="${API_BASE}/warehouse-qr.png" style="width:280px;height:280px"><p>WAREHOUSE-MAIN-QR</p><script>window.onload=()=>window.print();<\/script></body>`);
+      popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Warehouse QR</title><style>@page{size:A4 portrait;margin:12mm}*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;text-align:center;color:#111}main{display:flex;min-height:260mm;flex-direction:column;align-items:center;justify-content:center}h1{margin:0 0 8mm;font-size:28px}img{display:block;width:125mm;height:125mm;image-rendering:pixelated;image-rendering:crisp-edges}p{margin:7mm 0 0;font-size:18px;font-weight:700}.token{margin-top:3mm;font-size:12px;font-weight:400}</style></head><body><main><h1>Warehouse QR</h1><img src="${QR_IMAGE_URL}" alt="Warehouse QR code"><p>Scan to Clock In / Clock Out</p><div class="token">WAREHOUSE-MAIN-QR</div></main><script>window.onload=()=>setTimeout(()=>window.print(),100);<\/script></body></html>`);
       popup.document.close();
     });
 
