@@ -566,9 +566,9 @@ async function reviewCorrectionRequest(
           `UPDATE attendance
            SET clock_in_at = COALESCE(?, clock_in_at),
                clock_out_at = COALESCE(?, clock_out_at),
-               source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END,
+               source = CASE WHEN source IN ('admin_report_edit', 'admin_report_edit_resume') THEN source ELSE 'admin_adjustment' END,
                status = 'pending_review',
-               updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
+               updated_at = CASE WHEN source IN ('admin_report_edit', 'admin_report_edit_resume') THEN updated_at ELSE CURRENT_TIMESTAMP END
            WHERE id = ?`,
         )
         .bind(correction.requested_clock_in_at, correction.requested_clock_out_at, attendanceId)
@@ -622,7 +622,7 @@ async function reviewCorrectionRequest(
           `UPDATE attendance
            SET total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
                overtime_minutes = ?, status = ?,
-               updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
+                updated_at = CASE WHEN source IN ('admin_report_edit', 'admin_report_edit_resume') THEN updated_at ELSE CURRENT_TIMESTAMP END
            WHERE id = ?`,
         )
         .bind(
@@ -745,25 +745,38 @@ async function saveReportAttendanceTimes(
     const segments = reportTimeSegments(dateKey, row);
     let previousRegularMinutes = 0;
 
-    for (const segment of segments) {
+    for (const [segmentIndex, segment] of segments.entries()) {
       const schedule = await db
         .prepare(
           "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = 'wh-main' AND day_of_week = ?",
         )
         .bind(localDayOfWeek(`${dateKey}T12:00:00+08:00`, "Asia/Kuala_Lumpur"))
         .first();
-      const totals = calculateAttendanceTotals(segment.clockInAt, segment.clockOutAt, schedule, "Asia/Kuala_Lumpur", {
-        previousRegularMinutes,
-      });
+      const completeSegment = Boolean(
+        segment.clockInAt &&
+          segment.clockOutAt &&
+          Date.parse(segment.clockOutAt) > Date.parse(segment.clockInAt),
+      );
+      const totals = completeSegment
+        ? calculateAttendanceTotals(segment.clockInAt!, segment.clockOutAt!, schedule, "Asia/Kuala_Lumpur", {
+            previousRegularMinutes,
+          })
+        : { totalMinutes: 0, lateMinutes: 0, earlyLeaveMinutes: 0, overtimeMinutes: 0 };
       previousRegularMinutes += Math.max(0, totals.totalMinutes - totals.overtimeMinutes);
-      const status = totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+      const status = !completeSegment
+        ? "pending_review"
+        : totals.lateMinutes > 0
+          ? "late"
+          : totals.earlyLeaveMinutes > 0
+            ? "early_leave"
+            : "present";
       await db
         .prepare(
           `INSERT INTO attendance
            (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at,
             total_minutes, late_minutes, early_leave_minutes, overtime_minutes,
             status, source, updated_at)
-           VALUES (?, ?, 'wh-main', ?, ?, ?, ?, ?, ?, ?, ?, 'admin_report_edit', CURRENT_TIMESTAMP)`,
+            VALUES (?, ?, 'wh-main', ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
         )
         .bind(
           crypto.randomUUID(),
@@ -774,9 +787,10 @@ async function saveReportAttendanceTimes(
           totals.totalMinutes,
           totals.lateMinutes,
           totals.earlyLeaveMinutes,
-          totals.overtimeMinutes,
-          status,
-        )
+           totals.overtimeMinutes,
+           status,
+           segmentIndex === 0 ? "admin_report_edit" : "admin_report_edit_resume",
+         )
         .run();
     }
 
@@ -836,7 +850,7 @@ async function restoreReportAttendanceTimes(
        SET source = 'admin_report_edit_archived', updated_at = CURRENT_TIMESTAMP
        WHERE employee_id = ?
          AND work_date LIKE ?
-         AND source IN ('admin_report_edit', 'admin_report_edit_in', 'admin_report_edit_out')`,
+         AND source IN ('admin_report_edit', 'admin_report_edit_resume', 'admin_report_edit_in', 'admin_report_edit_out')`,
     )
     .bind(payload.employeeId, `${payload.monthKey}-%`)
     .run();
@@ -917,7 +931,7 @@ async function archiveReportAttendanceRows(db: D1Database, employeeId: string, d
        SET source = 'admin_report_edit_archived', updated_at = CURRENT_TIMESTAMP
        WHERE employee_id = ?
          AND work_date = ?
-         AND source IN ('admin_report_edit', 'admin_report_edit_in', 'admin_report_edit_out')`,
+         AND source IN ('admin_report_edit', 'admin_report_edit_resume', 'admin_report_edit_in', 'admin_report_edit_out')`,
     )
     .bind(employeeId, dateKey)
     .run();
@@ -931,17 +945,16 @@ function reportTimeSegments(
   const breakMs = reportTimeToMs(dateKey, row.break, inMs);
   const resumeMs = reportTimeToMs(dateKey, row.resume, breakMs ?? inMs);
   const outMs = reportTimeToMs(dateKey, row.out, resumeMs ?? breakMs ?? inMs);
-  const segments: Array<{ clockInAt: string; clockOutAt: string }> = [];
-  if (inMs != null && breakMs != null && breakMs > inMs) {
-    segments.push({ clockInAt: new Date(inMs).toISOString(), clockOutAt: new Date(breakMs).toISOString() });
+  const iso = (value: number | null) => (value == null ? null : new Date(value).toISOString());
+
+  if (breakMs != null || resumeMs != null) {
+    return [
+      { clockInAt: iso(inMs), clockOutAt: iso(breakMs) },
+      { clockInAt: iso(resumeMs), clockOutAt: iso(outMs) },
+    ];
   }
-  if (resumeMs != null && outMs != null && outMs > resumeMs) {
-    segments.push({ clockInAt: new Date(resumeMs).toISOString(), clockOutAt: new Date(outMs).toISOString() });
-  }
-  if (!segments.length && inMs != null && outMs != null && outMs >= inMs) {
-    segments.push({ clockInAt: new Date(inMs).toISOString(), clockOutAt: new Date(outMs).toISOString() });
-  }
-  return segments;
+
+  return [{ clockInAt: iso(inMs), clockOutAt: iso(outMs) }];
 }
 
 function reportFieldOverrides(

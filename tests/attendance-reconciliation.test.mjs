@@ -58,7 +58,7 @@ test("newer report segments resolve to one day with break and resume", async () 
       clock_out_at: "2026-08-09T06:00:00.000Z",
       total_minutes: 120,
       overtime_minutes: 120,
-      source: "admin_report_edit",
+      source: "admin_report_edit_resume",
       updated_at: "2026-08-09 05:00:00",
     },
   ];
@@ -83,7 +83,7 @@ test("a newer open base punch clears stale report out and break fields", async (
       id: "report-2",
       clock_in_at: "2026-08-09T05:00:00.000Z",
       clock_out_at: "2026-08-09T06:00:00.000Z",
-      source: "admin_report_edit",
+      source: "admin_report_edit_resume",
       updated_at: "2026-08-09 05:00:00",
     },
   ];
@@ -127,6 +127,152 @@ test("blank field overrides win deterministic timestamp ties", async () => {
   assert.equal(resolved.clock_out_at, null);
   assert.equal(resolved.report_edited_clock_out, 1);
   assert.equal(resolved.overtime_minutes, 0);
+});
+
+test("blank clock out keeps break and resume in their own fields", async () => {
+  const { reconcileAttendanceDay } = await loadReconciliation();
+  const reportRows = [
+    {
+      ...baseRow,
+      id: "report-1",
+      clock_in_at: "2026-08-09T01:00:00.000Z",
+      clock_out_at: "2026-08-09T03:00:00.000Z",
+      source: "admin_report_edit",
+      updated_at: "2026-08-09 05:00:00",
+    },
+    {
+      ...baseRow,
+      id: "report-2",
+      clock_in_at: "2026-08-09T04:00:00.000Z",
+      clock_out_at: null,
+      total_minutes: 0,
+      overtime_minutes: 0,
+      source: "admin_report_edit_resume",
+      updated_at: "2026-08-09 05:00:00",
+    },
+    {
+      ...baseRow,
+      id: "blank-out",
+      clock_in_at: null,
+      clock_out_at: null,
+      total_minutes: 0,
+      overtime_minutes: 0,
+      source: "admin_report_edit_out",
+      updated_at: "2026-08-09 05:00:00",
+    },
+  ];
+
+  const resolved = reconcileAttendanceDay([baseRow, ...reportRows]);
+  assert.equal(resolved.clock_in_at, "2026-08-09T01:00:00.000Z");
+  assert.equal(resolved.break_at, "2026-08-09T03:00:00.000Z");
+  assert.equal(resolved.resume_at, "2026-08-09T04:00:00.000Z");
+  assert.equal(resolved.clock_out_at, null);
+  assert.equal(resolved.report_segments_effective, 1);
+  assert.equal(resolved.report_edited_clock_out, 1);
+});
+
+test("blank break does not promote resume to clock in", async () => {
+  const { reconcileAttendanceDay } = await loadReconciliation();
+  const reportRows = [
+    {
+      ...baseRow,
+      id: "report-1",
+      clock_in_at: "2026-08-09T01:00:00.000Z",
+      clock_out_at: null,
+      total_minutes: 0,
+      overtime_minutes: 0,
+      source: "admin_report_edit",
+      updated_at: "2026-08-09 05:00:00",
+    },
+    {
+      ...baseRow,
+      id: "report-2",
+      clock_in_at: "2026-08-09T04:00:00.000Z",
+      clock_out_at: "2026-08-09T06:00:00.000Z",
+      source: "admin_report_edit_resume",
+      updated_at: "2026-08-09 05:00:00",
+    },
+  ];
+
+  const resolved = reconcileAttendanceDay([baseRow, ...reportRows]);
+  assert.equal(resolved.clock_in_at, "2026-08-09T01:00:00.000Z");
+  assert.equal(resolved.break_at, null);
+  assert.equal(resolved.resume_at, "2026-08-09T04:00:00.000Z");
+  assert.equal(resolved.clock_out_at, "2026-08-09T06:00:00.000Z");
+  assert.equal(resolved.report_segments_effective, 1);
+});
+
+test("blank clock in keeps break resume and clock out in their own fields", async () => {
+  const { reconcileAttendanceDay } = await loadReconciliation();
+  const reportRows = [
+    {
+      ...baseRow,
+      id: "report-1",
+      clock_in_at: null,
+      clock_out_at: "2026-08-09T03:00:00.000Z",
+      total_minutes: 0,
+      overtime_minutes: 0,
+      source: "admin_report_edit",
+      updated_at: "2026-08-09 05:00:00",
+    },
+    {
+      ...baseRow,
+      id: "report-2",
+      clock_in_at: "2026-08-09T04:00:00.000Z",
+      clock_out_at: "2026-08-09T06:00:00.000Z",
+      source: "admin_report_edit_resume",
+      updated_at: "2026-08-09 05:00:00",
+    },
+    {
+      ...baseRow,
+      id: "blank-in",
+      clock_in_at: null,
+      clock_out_at: null,
+      total_minutes: 0,
+      overtime_minutes: 0,
+      source: "admin_report_edit_in",
+      updated_at: "2026-08-09 05:00:00",
+    },
+  ];
+
+  const resolved = reconcileAttendanceDay([baseRow, ...reportRows]);
+  assert.equal(resolved.clock_in_at, null);
+  assert.equal(resolved.break_at, "2026-08-09T03:00:00.000Z");
+  assert.equal(resolved.resume_at, "2026-08-09T04:00:00.000Z");
+  assert.equal(resolved.clock_out_at, "2026-08-09T06:00:00.000Z");
+  assert.equal(resolved.report_segments_effective, 1);
+  assert.equal(resolved.report_edited_clock_in, 1);
+});
+
+test("blank resume does not replace clock out with break", async () => {
+  const { reconcileAttendanceDay } = await loadReconciliation();
+  const reportRows = [
+    {
+      ...baseRow,
+      id: "report-1",
+      clock_in_at: "2026-08-09T01:00:00.000Z",
+      clock_out_at: "2026-08-09T03:00:00.000Z",
+      source: "admin_report_edit",
+      updated_at: "2026-08-09 05:00:00",
+    },
+    {
+      ...baseRow,
+      id: "report-2",
+      clock_in_at: null,
+      clock_out_at: "2026-08-09T06:00:00.000Z",
+      total_minutes: 0,
+      overtime_minutes: 0,
+      source: "admin_report_edit_resume",
+      updated_at: "2026-08-09 05:00:00",
+    },
+  ];
+
+  const resolved = reconcileAttendanceDay([baseRow, ...reportRows]);
+  assert.equal(resolved.clock_in_at, "2026-08-09T01:00:00.000Z");
+  assert.equal(resolved.break_at, "2026-08-09T03:00:00.000Z");
+  assert.equal(resolved.resume_at, null);
+  assert.equal(resolved.clock_out_at, "2026-08-09T06:00:00.000Z");
+  assert.equal(resolved.report_segments_effective, 1);
 });
 
 test("reconciliation returns one ordered row per employee and date", async () => {

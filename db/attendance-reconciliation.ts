@@ -12,6 +12,7 @@ type TimeCandidate = {
 
 const ARCHIVED_REPORT_SOURCE = "admin_report_edit_archived";
 const REPORT_SEGMENT_SOURCE = "admin_report_edit";
+const REPORT_RESUME_SEGMENT_SOURCE = "admin_report_edit_resume";
 const REPORT_IN_SOURCE = "admin_report_edit_in";
 const REPORT_OUT_SOURCE = "admin_report_edit_out";
 
@@ -47,31 +48,34 @@ export function reconcileAttendanceDay(rows: AttendanceRow[]) {
 
   const baseRows = activeRows.filter((row) => !isReportSource(row));
   const reportSegments = activeRows
-    .filter((row) => String(row.source || "") === REPORT_SEGMENT_SOURCE)
+    .filter((row) => {
+      const source = String(row.source || "");
+      return source === REPORT_SEGMENT_SOURCE || source === REPORT_RESUME_SEGMENT_SOURCE;
+    })
     .sort(compareSegments);
   const inMarkers = activeRows.filter((row) => String(row.source || "") === REPORT_IN_SOURCE);
   const outMarkers = activeRows.filter((row) => String(row.source || "") === REPORT_OUT_SOURCE);
   const baseRow = newestRow(baseRows);
   const inMarker = newestRow(inMarkers);
   const outMarker = newestRow(outMarkers);
-  const firstReportSegment = reportSegments.find((row) => Boolean(row.clock_in_at)) || null;
-  const lastReportSegment = [...reportSegments].reverse().find((row) => Boolean(row.clock_out_at)) || null;
+  const firstReportSegment = reportSegments[0] || null;
+  const lastReportSegment = reportSegments[reportSegments.length - 1] || null;
 
   const clockIn = newestCandidate([
     timeCandidate(baseRow, "clock_in_at", "base", 1, true),
-    timeCandidate(firstReportSegment, "clock_in_at", "report", 2),
+    timeCandidate(firstReportSegment, "clock_in_at", "report", 2, true),
     timeCandidate(inMarker, "clock_in_at", "override", 3, true),
   ]);
   const clockOut = newestCandidate([
     timeCandidate(baseRow, "clock_out_at", "base", 1, true),
-    timeCandidate(lastReportSegment, "clock_out_at", "report", 2),
+    timeCandidate(lastReportSegment, "clock_out_at", "report", 2, true),
     timeCandidate(outMarker, "clock_out_at", "override", 3, true),
   ]);
 
   const reportSegmentsEffective = Boolean(
     reportSegments.length &&
-      clockIn?.value &&
-      clockOut?.value &&
+      clockIn &&
+      clockOut &&
       clockIn.source !== "base" &&
       clockOut.source !== "base",
   );
@@ -184,8 +188,11 @@ function newestRow(rows: AttendanceRow[]) {
 }
 
 function compareSegments(left: AttendanceRow, right: AttendanceRow) {
-  const leftTime = parseAttendanceTimestamp(String(left.clock_in_at || ""));
-  const rightTime = parseAttendanceTimestamp(String(right.clock_in_at || ""));
+  const leftSlot = String(left.source || "") === REPORT_RESUME_SEGMENT_SOURCE ? 1 : 0;
+  const rightSlot = String(right.source || "") === REPORT_RESUME_SEGMENT_SOURCE ? 1 : 0;
+  if (leftSlot !== rightSlot) return leftSlot - rightSlot;
+  const leftTime = parseAttendanceTimestamp(String(left.clock_in_at || left.clock_out_at || ""));
+  const rightTime = parseAttendanceTimestamp(String(right.clock_in_at || right.clock_out_at || ""));
   if (leftTime !== rightTime) return leftTime - rightTime;
   return String(left.id || "").localeCompare(String(right.id || ""));
 }

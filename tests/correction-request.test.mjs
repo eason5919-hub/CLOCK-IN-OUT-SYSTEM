@@ -114,7 +114,13 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(patchReviewSection, /UPDATE attendance\s/);
   assert.match(patchReviewSection, /INSERT INTO attendance\s/);
   assert.match(adminRoute, /action: "save_report_attendance_times"/);
+  assert.match(adminRoute, /if \(breakMs != null \|\| resumeMs != null\)/);
+  assert.match(adminRoute, /\{ clockInAt: iso\(inMs\), clockOutAt: iso\(breakMs\) \}/);
+  assert.match(adminRoute, /\{ clockInAt: iso\(resumeMs\), clockOutAt: iso\(outMs\) \}/);
+  assert.match(adminRoute, /const completeSegment = Boolean/);
+  assert.match(adminRoute, /\? "pending_review"/);
   assert.match(adminRoute, /'admin_report_edit'/);
+  assert.match(adminRoute, /admin_report_edit_resume/);
   assert.match(adminRoute, /source = 'admin_report_edit_archived'/);
   assert.match(adminRoute, /source <> 'admin_report_edit_archived'/);
   assert.match(adminRoute, /function archiveReportAttendanceRows/);
@@ -178,7 +184,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /function calculatedReportValues/);
   assert.match(adminHtml, /ms < afterMs/);
   assert.match(adminRoute, /ms < afterMs/);
-  assert.match(adminRoute, /outMs >= inMs/);
+  assert.match(adminRoute, /Date\.parse\(segment\.clockOutAt\) > Date\.parse\(segment\.clockInAt\)/);
   assert.match(adminHtml, /hasTimes: false/);
   assert.match(adminHtml, /hasTimes: true/);
   assert.match(adminHtml, /const work = calculated\.hasTimes \? calculated\.work : reportHours\(attendanceRow\?\.actualMinutes\)/);
@@ -230,7 +236,8 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /action: "restore_report_attendance_times"/);
   assert.match(adminHtml, /data-cancel-report/);
   assert.match(adminHtml, /Cancelled edit \|/);
-  assert.match(adminHtml, /row\.source === "admin_report_edit"/);
+  assert.match(adminHtml, /row\.source === "admin_report_edit" \|\| row\.source === "admin_report_edit_resume"/);
+  assert.match(adminHtml, /function compareReportSegments/);
   assert.match(adminHtml, /editedFields: \["in", "break", "resume", "out"\]\.filter/);
   assert.match(adminHtml, /REPORT_TIME_FIELDS = new Set\(\["in", "break", "resume", "out"\]\)/);
   assert.match(adminHtml, /REPORT_LEAVE_VALUES = new Set\(\["", "ANNUAL LEAVE", "HALF ANNUAL LEAVE", "MC"\]\)/);
