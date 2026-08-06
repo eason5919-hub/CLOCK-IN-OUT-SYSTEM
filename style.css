@@ -691,6 +691,17 @@ th {
   font-variant-numeric: tabular-nums;
 }
 
+.history-time-cell.manualEdit,
+.history-time-cell.correctedTime,
+.history-time-cell.manualEdit .history-time-value,
+.history-time-cell.correctedTime .history-time-value {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: 0 !important;
+  color: inherit !important;
+  font-weight: inherit !important;
+}
+
 .form {
   display: grid;
   gap: 12px;

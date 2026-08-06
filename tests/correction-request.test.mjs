@@ -99,8 +99,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(script, /class="time-mark corrected"/);
   assert.match(css, /\.time-mark\.edited/);
   assert.match(css, /\.time-mark\.corrected/);
-  assert.doesNotMatch(css, /\.history-time-cell\.manualEdit/);
-  assert.doesNotMatch(css, /\.history-time-cell\.correctedTime/);
+  assert.match(css, /\.history-time-cell\.manualEdit,[\s\S]*\.history-time-cell\.correctedTime \.history-time-value \{\s+background: transparent !important;\s+box-shadow: none !important;\s+border: 0 !important;\s+color: inherit !important;\s+font-weight: inherit !important;/);
   assert.match(adminHtml, /\.editableCell\.manualEdit \{\s+background: #e9f2ff;\s+box-shadow: inset 0 0 0 1px #7aa7d9;\s+font-weight: 800;/);
   assert.match(adminHtml, /\.editableCell\.correctedTime \{\s+background: #fff2bf;\s+box-shadow: inset 0 0 0 1px #d2a310;[\s\S]*font-weight: 800;/);
   assert.match(script, /function employeeHistoryTimeCell\(value\) \{\s+const text = value \|\| "";/);
