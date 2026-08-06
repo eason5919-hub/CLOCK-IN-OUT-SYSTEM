@@ -240,7 +240,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /\["HALF ANNUAL LEAVE", "Half Annual Leave"\]/);
   assert.match(adminHtml, /\["MC", "MC"\]/);
   assert.match(adminHtml, /field === "leaveTaken"/);
-  assert.match(adminHtml, /picker \? picker\.value : cell\.textContent\.trim\(\) \|\| ""/);
+  assert.match(adminHtml, /picker \? picker\.value : timeInput \? timeInput\.value\.trim\(\) : cell\.textContent\.trim\(\) \|\| ""/);
   assert.match(adminHtml, /action: "save_report_leave_taken"/);
   assert.match(adminHtml, /leaveTaken: reportRowText\(row, "leaveTaken"\)/);
   assert.match(adminHtml, /data-report-leave-picker/);
@@ -256,6 +256,13 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminRoute, /leaveType: "leave", duration: "half_day", label: "HALF ANNUAL LEAVE"/);
   assert.match(adminRoute, /leaveType: "mc", duration: "full_day", label: "MC"/);
   assert.match(adminHtml, /contenteditable="\$\{editable \? "true" : "false"\}"/);
+  assert.match(adminHtml, /maximum-scale=1\.0, user-scalable=no/);
+  assert.match(adminHtml, /class="reportTimeEditor" data-report-time-input/);
+  assert.match(adminHtml, /class="clearReportTime" data-clear-report-time/);
+  assert.match(adminHtml, /timeInput \? timeInput\.value\.trim\(\) : cell\.textContent\.trim\(\)/);
+  assert.match(adminHtml, /timeInput\.value = "";\s+refreshReportRow\(cell\.closest\("tr"\), false\)/);
+  assert.match(adminHtml, /\.monthlyReportFullscreen \.reportLeavePicker \{\s+min-height: 0;\s+height: 16px;/);
+  assert.doesNotMatch(adminHtml, /\.monthlyReportFullscreen \.reportLeavePicker:disabled/);
   assert.match(adminHtml, /refreshReportRow\(cell\.closest\("tr"\), false\)/);
   assert.match(adminHtml, /refreshReportRow\(cell\.closest\("tr"\), true\)/);
   assert.match(adminHtml, /function originalReportValue/);
