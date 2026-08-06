@@ -338,6 +338,13 @@
       font-weight: 800;
     }
 
+    .editableCell.correctedTime {
+      background: #fff2bf;
+      box-shadow: inset 0 0 0 1px #d2a310;
+      color: #5f4700;
+      font-weight: 800;
+    }
+
     .editableCell[contenteditable="true"] {
       background: #fffdf2;
       cursor: text;
@@ -1316,6 +1323,7 @@
 
     function reportValue(employeeId, dateKey, field, fallback = "") {
       if (!isEditableReportField(field)) return fallback;
+      if (reportCorrectionWins(employeeId, dateKey, field)) return fallback;
       const key = reportEditKey(employeeId, dateKey, field);
       return Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) ? monthlyReportEdits[key] : fallback;
     }
@@ -1324,10 +1332,11 @@
       const editing = editingReportEmployeeId === employeeId;
       const key = reportEditKey(employeeId, dateKey, field);
       const editableField = isEditableReportField(field);
-      const manualEdit = editableField && (Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) || reportFieldWasEdited(employeeId, dateKey, field));
+      const correctionWins = reportCorrectionWins(employeeId, dateKey, field);
+      const manualEdit = editableField && !correctionWins && (Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) || reportFieldWasEdited(employeeId, dateKey, field));
       const value = reportValue(employeeId, dateKey, field, fallback);
       const editable = editing && editableField;
-      const classes = ["editableCell", className, manualEdit ? "manualEdit" : ""].filter(Boolean).join(" ");
+      const classes = ["editableCell", correctionWins ? "correctedTime" : className, manualEdit ? "manualEdit" : ""].filter(Boolean).join(" ");
       if (field === "leaveTaken") {
         const options = [
           ["", ""],
@@ -1340,12 +1349,40 @@
       return `<td class="${classes}" contenteditable="${editable ? "true" : "false"}" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
     }
 
+    function approvedCorrectionTimes(employeeId, dateKey) {
+      const approved = corrections
+        .filter(item => item.employee_id === employeeId && item.requested_date === dateKey && String(item.status || "").toLowerCase() === "approved")
+        .sort((a, b) => parseLiveTimestamp(b.reviewed_at || b.created_at) - parseLiveTimestamp(a.reviewed_at || a.created_at));
+      const clockIn = approved.find(item => item.requested_clock_in_at);
+      const clockOut = approved.find(item => item.requested_clock_out_at);
+      return {
+        clockIn: clockIn?.requested_clock_in_at || "",
+        clockInReviewedAt: clockIn?.reviewed_at || clockIn?.created_at || "",
+        clockOut: clockOut?.requested_clock_out_at || "",
+        clockOutReviewedAt: clockOut?.reviewed_at || clockOut?.created_at || ""
+      };
+    }
+
     function isSameOrNewer(left, right) {
       const leftMs = parseLiveTimestamp(left);
       const rightMs = parseLiveTimestamp(right);
       if (Number.isNaN(leftMs)) return false;
       if (Number.isNaN(rightMs)) return true;
       return leftMs >= rightMs;
+    }
+
+    function sameReportInstant(left, right) {
+      if (!left || !right) return false;
+      const leftMs = parseLiveTimestamp(left);
+      const rightMs = parseLiveTimestamp(right);
+      if (!Number.isNaN(leftMs) && !Number.isNaN(rightMs)) return leftMs === rightMs;
+      return String(left) === String(right);
+    }
+
+    function reportCorrectionWins(employeeId, dateKey, field) {
+      if (field !== "in" && field !== "out") return false;
+      const row = employeeAttendanceByDate(employeeId, dateKey);
+      return field === "in" ? Boolean(row?.correctedClockIn) : Boolean(row?.correctedClockOut);
     }
 
     function reportFieldWasEdited(employeeId, dateKey, field) {
@@ -1362,10 +1399,21 @@
       if (!hasResolvedAttendanceDays) return legacyEmployeeAttendanceByDate(employeeId, dateKey);
 
       const row = attendanceDays.find(item => item.employee_id === employeeId && item.work_date === dateKey);
-      if (!row) return null;
+      const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
+      if (!row && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
 
-      const firstIn = row.clock_in_at || "";
-      const lastOut = row.clock_out_at || "";
+      const rowFirstIn = row?.clock_in_at || approvedTimes.clockIn || "";
+      const rowLastOut = row?.clock_out_at || approvedTimes.clockOut || "";
+      const inUpdatedAt = row?.clock_in_updated_at || row?.updated_at || row?.created_at || "";
+      const outUpdatedAt = row?.clock_out_updated_at || row?.updated_at || row?.created_at || "";
+      const correctionInWins = Boolean(approvedTimes.clockIn) &&
+        sameReportInstant(approvedTimes.clockIn, rowFirstIn) &&
+        isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt);
+      const correctionOutWins = Boolean(approvedTimes.clockOut) &&
+        sameReportInstant(approvedTimes.clockOut, rowLastOut) &&
+        isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt);
+      const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;
+      const lastOut = correctionOutWins ? approvedTimes.clockOut : rowLastOut;
 
       return {
         dateKey,
@@ -1373,10 +1421,12 @@
         breakTime: row?.break_at || "",
         resumeTime: row?.resume_at || "",
         clockOut: lastOut,
-        reportEditedClockIn: Boolean(Number(row?.report_edited_clock_in || 0)),
+        correctedClockIn: correctionInWins,
+        correctedClockOut: correctionOutWins,
+        reportEditedClockIn: Boolean(Number(row?.report_edited_clock_in || 0)) && !correctionInWins,
         reportEditedBreak: Boolean(Number(row?.report_edited_break || 0)),
         reportEditedResume: Boolean(Number(row?.report_edited_resume || 0)),
-        reportEditedClockOut: Boolean(Number(row?.report_edited_clock_out || 0)),
+        reportEditedClockOut: Boolean(Number(row?.report_edited_clock_out || 0)) && !correctionOutWins,
         actualMinutes: reportPaidWorkMinutes(firstIn, lastOut, dateKey, dateParts(dateKey).getUTCDay()),
         totalMinutes: Number(row?.total_minutes || 0),
         lateMinutes: Number(row?.late_minutes || 0),
@@ -1390,7 +1440,8 @@
       const reportRows = dayRows.filter(isReportEditSource);
       const reportSegmentRows = reportRows.filter(row => row.source === "admin_report_edit");
       const baseRows = dayRows.filter(row => !isReportEditSource(row));
-      if (!dayRows.length) return null;
+      const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
+      if (!dayRows.length && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
       const reportSegments = [...reportSegmentRows].sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
       const inMarker = reportRows.find(row => row.source === "admin_report_edit_in");
       const outMarker = reportRows.find(row => row.source === "admin_report_edit_out");
@@ -1411,8 +1462,12 @@
       const rows = reportSegmentRows.length && !baseRows.some(row => isSameOrNewer(row.updated_at || row.created_at, reportSegments[0]?.updated_at || reportSegments[0]?.created_at)) ? reportSegmentRows : baseRows;
       const rowFirstIn = inCandidate?.value || "";
       const rowLastOut = outCandidate?.value || "";
-      const firstIn = rowFirstIn;
-      const lastOut = rowLastOut;
+      const inUpdatedAt = inCandidate?.updatedAt || "";
+      const outUpdatedAt = outCandidate?.updatedAt || "";
+      const correctionInWins = Boolean(approvedTimes.clockIn) && sameReportInstant(approvedTimes.clockIn, rowFirstIn) && isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt);
+      const correctionOutWins = Boolean(approvedTimes.clockOut) && sameReportInstant(approvedTimes.clockOut, rowLastOut) && isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt);
+      const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;
+      const lastOut = correctionOutWins ? approvedTimes.clockOut : rowLastOut;
       const breakTime = reportSegments.length > 1 ? reportSegments[0].clock_out_at || "" : "";
       const resumeTime = reportSegments.length > 1 ? reportSegments[1].clock_in_at || "" : "";
       return {
@@ -1421,10 +1476,12 @@
         breakTime,
         resumeTime,
         clockOut: lastOut,
-        reportEditedClockIn: Boolean(inMarker || reportSegmentRows.some(row => row.clock_in_at)),
+        correctedClockIn: correctionInWins,
+        correctedClockOut: correctionOutWins,
+        reportEditedClockIn: Boolean(inMarker || reportSegmentRows.some(row => row.clock_in_at)) && !correctionInWins,
         reportEditedBreak: Boolean(breakTime),
         reportEditedResume: Boolean(resumeTime),
-        reportEditedClockOut: Boolean(outMarker || reportSegmentRows.some(row => row.clock_out_at)),
+        reportEditedClockOut: Boolean(outMarker || reportSegmentRows.some(row => row.clock_out_at)) && !correctionOutWins,
         actualMinutes: reportPaidWorkMinutes(firstIn, lastOut, dateKey, dateParts(dateKey).getUTCDay()),
         totalMinutes: rows.reduce((sum, row) => sum + Number(row.total_minutes || 0), 0),
         lateMinutes: rows.reduce((sum, row) => sum + Number(row.late_minutes || 0), 0),
@@ -1734,10 +1791,10 @@
           <tr class="${day === 6 ? "weekEnd" : ""}" data-report-date="${escapeHtml(dateKey)}">
             <td>${escapeHtml(reportDateLabel(dateKey))}</td>
             ${editableReportCell(employee.id, dateKey, "dayType", dayType)}
-            ${editableReportCell(employee.id, dateKey, "in", reportTimes.in)}
+            ${editableReportCell(employee.id, dateKey, "in", reportTimes.in, attendanceRow?.correctedClockIn ? "correctedTime" : "")}
             ${editableReportCell(employee.id, dateKey, "break", reportTimes.break)}
             ${editableReportCell(employee.id, dateKey, "resume", reportTimes.resume)}
-            ${editableReportCell(employee.id, dateKey, "out", reportTimes.out)}
+            ${editableReportCell(employee.id, dateKey, "out", reportTimes.out, attendanceRow?.correctedClockOut ? "correctedTime" : "")}
             ${editableReportCell(employee.id, dateKey, "work", work)}
             ${editableReportCell(employee.id, dateKey, "overtime", overtime)}
             ${editableReportCell(employee.id, dateKey, "short", short)}

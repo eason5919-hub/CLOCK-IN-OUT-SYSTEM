@@ -553,22 +553,104 @@ async function reviewCorrectionRequest(
     .first<Record<string, string | null>>();
   if (!correction) return json(request, { error: "Pending correction was not found." }, 404);
 
-  const reviewedCorrection = {
-    ...correction,
-    status: payload.status,
-    reviewed_by_user_id: adminUserId,
-    admin_note: payload.adminNote?.trim() || null,
-  };
+  let newRecordJson: string | null = null;
+  let reviewedAttendanceId = correction.attendance_id;
+  if (payload.status === "approved") {
+    const existingRecord = await findTargetAttendanceForCorrection(db, correction);
+    const attendanceId = String(existingRecord?.id ?? correction.attendance_id ?? crypto.randomUUID());
+    reviewedAttendanceId = attendanceId;
+
+    if (existingRecord) {
+      await db
+        .prepare(
+          `UPDATE attendance
+           SET clock_in_at = COALESCE(?, clock_in_at),
+               clock_out_at = COALESCE(?, clock_out_at),
+               source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END,
+               status = 'pending_review',
+               updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
+           WHERE id = ?`,
+        )
+        .bind(correction.requested_clock_in_at, correction.requested_clock_out_at, attendanceId)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO attendance
+           (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at, source, status)
+           VALUES (?, ?, 'wh-main', ?, ?, ?, 'admin_adjustment', 'pending_review')`,
+        )
+        .bind(
+          attendanceId,
+          correction.employee_id,
+          correction.requested_date,
+          correction.requested_clock_in_at,
+          correction.requested_clock_out_at,
+        )
+        .run();
+    }
+
+    const updated = await db
+      .prepare(
+        `SELECT a.*, w.timezone
+         FROM attendance a
+         JOIN warehouses w ON w.id = a.warehouse_id
+         WHERE a.id = ?`,
+      )
+      .bind(attendanceId)
+      .first<Record<string, string | number | null>>();
+    if (updated?.clock_in_at && updated.clock_out_at) {
+      const timeZone = String(updated.timezone || "Asia/Kuala_Lumpur");
+      const schedule = await db
+        .prepare(
+          "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = ? AND day_of_week = ?",
+        )
+        .bind(updated.warehouse_id, localDayOfWeek(`${correction.requested_date}T12:00:00+08:00`, timeZone))
+        .first();
+      const previousRegularMinutes = await getPreviousRegularMinutes(
+        db,
+        String(updated.employee_id),
+        String(updated.work_date),
+        String(updated.id),
+      );
+      const totals = calculateAttendanceTotals(String(updated.clock_in_at), String(updated.clock_out_at), schedule, timeZone, {
+        previousRegularMinutes,
+      });
+      const status = totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
+      await db
+        .prepare(
+          `UPDATE attendance
+           SET total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
+               overtime_minutes = ?, status = ?,
+               updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
+           WHERE id = ?`,
+        )
+        .bind(
+          totals.totalMinutes,
+          totals.lateMinutes,
+          totals.earlyLeaveMinutes,
+          totals.overtimeMinutes,
+          status,
+          updated.id,
+        )
+        .run();
+    }
+    const recalculated = await db
+      .prepare("SELECT * FROM attendance WHERE id = ?")
+      .bind(attendanceId)
+      .first<Record<string, unknown>>();
+    newRecordJson = recalculated ? JSON.stringify(recalculated) : null;
+  }
 
   await db.batch([
     db
       .prepare(
         `UPDATE attendance_corrections
-         SET status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
-             admin_note = ?, new_record_json = NULL
+         SET attendance_id = ?, status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
+             admin_note = ?, new_record_json = ?
          WHERE id = ?`,
       )
-      .bind(payload.status, adminUserId, payload.adminNote?.trim() || null, payload.requestId),
+      .bind(reviewedAttendanceId, payload.status, adminUserId, payload.adminNote?.trim() || null, newRecordJson, payload.requestId),
     db
       .prepare(
         "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -580,11 +662,62 @@ async function reviewCorrectionRequest(
         "attendance_corrections",
         payload.requestId,
         JSON.stringify(correction),
-        JSON.stringify(reviewedCorrection),
+        newRecordJson,
       ),
   ]);
 
-  return json(request, { ok: true, attendanceChanged: false });
+  return json(request, { ok: true });
+}
+
+async function findTargetAttendanceForCorrection(db: D1Database, correction: Record<string, string | null>) {
+  if ((correction.missing_type === "clock_out" || correction.missing_type === "both") && correction.requested_clock_out_at) {
+    const openRecord = await db
+      .prepare(
+        `SELECT *
+         FROM attendance
+         WHERE employee_id = ? AND work_date = ?
+           AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
+         ORDER BY clock_in_at DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(correction.employee_id, correction.requested_date)
+      .first<Record<string, string | number | null>>();
+    if (openRecord) return openRecord;
+  }
+
+  if ((correction.missing_type === "clock_in" || correction.missing_type === "both") && correction.requested_clock_in_at) {
+    const missingInRecord = await db
+      .prepare(
+        `SELECT *
+         FROM attendance
+         WHERE employee_id = ? AND work_date = ?
+           AND clock_in_at IS NULL AND clock_out_at IS NOT NULL
+         ORDER BY clock_out_at DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .bind(correction.employee_id, correction.requested_date)
+      .first<Record<string, string | number | null>>();
+    if (missingInRecord) return missingInRecord;
+  }
+
+  if (correction.attendance_id) {
+    const linkedRecord = await db
+      .prepare("SELECT * FROM attendance WHERE id = ?")
+      .bind(correction.attendance_id)
+      .first<Record<string, string | number | null>>();
+    if (linkedRecord) return linkedRecord;
+  }
+
+  return db
+    .prepare(
+      `SELECT *
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ?
+       ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
+       LIMIT 1`,
+    )
+    .bind(correction.employee_id, correction.requested_date)
+    .first<Record<string, string | number | null>>();
 }
 
 async function saveReportAttendanceTimes(
@@ -896,6 +1029,25 @@ async function applyHalfDayLeaveAttendanceRule(db: D1Database, requestId: string
     .prepare("UPDATE attendance SET late_minutes = ?, status = 'late', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
     .bind(Math.max(Number(latest.late_minutes || 0), shortMinutes), latest.id)
     .run();
+}
+
+async function getPreviousRegularMinutes(
+  db: D1Database,
+  employeeId: string,
+  workDate: string,
+  currentAttendanceId: string,
+) {
+  const rows = await db
+    .prepare(
+      `SELECT total_minutes, overtime_minutes
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ? AND id <> ?`,
+    )
+    .bind(employeeId, workDate, currentAttendanceId)
+    .all<{ total_minutes: number | null; overtime_minutes: number | null }>();
+  return (rows.results ?? []).reduce((total, row) => {
+    return total + Math.max(0, Number(row.total_minutes || 0) - Number(row.overtime_minutes || 0));
+  }, 0);
 }
 
 async function requireAdmin(db: D1Database, request: Request, bodyToken = "") {
