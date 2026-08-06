@@ -109,6 +109,18 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /toLocaleTimeString\("en-MY", \{\s+timeZone: "Asia\/Kuala_Lumpur",\s+hour: "2-digit",\s+minute: "2-digit",\s+hour12: false\s+\}\)/);
   assert.doesNotMatch(adminReviewSection, /attendanceChanged: false/);
   assert.doesNotMatch(patchReviewSection, /attendanceChanged: false/);
+  assert.doesNotMatch(adminReviewSection, /COALESCE\(\?, clock_(?:in|out)_at\)/);
+  assert.doesNotMatch(patchReviewSection, /COALESCE\(\?, clock_(?:in|out)_at\)/);
+  assert.match(adminReviewSection, /approvedCorrectionTimes\(currentAttendance, correction\)/);
+  assert.match(patchReviewSection, /approvedCorrectionTimes\(currentAttendance, correction\)/);
+  assert.match(adminReviewSection, /SET clock_in_at = \?,\s+clock_out_at = \?/);
+  assert.match(patchReviewSection, /SET clock_in_at = \?,\s+clock_out_at = \?/);
+  assert.match(adminReviewSection, /total_minutes = 0, late_minutes = 0, early_leave_minutes = 0/);
+  assert.match(patchReviewSection, /total_minutes = 0, late_minutes = 0, early_leave_minutes = 0/);
+  assert.match(adminReviewSection, /source NOT LIKE 'admin_report_edit%'/);
+  assert.match(employeeRoute, /source NOT LIKE 'admin_report_edit%'/);
+  assert.match(employeeRoute, /effectiveAttendance \? JSON\.stringify\(effectiveAttendance\) : null/);
+  assert.match(employeeRoute, /A valid requested time is required for every missing clock field/);
   assert.match(adminReviewSection, /UPDATE attendance\s/);
   assert.match(adminReviewSection, /INSERT INTO attendance\s/);
   assert.match(patchReviewSection, /UPDATE attendance\s/);

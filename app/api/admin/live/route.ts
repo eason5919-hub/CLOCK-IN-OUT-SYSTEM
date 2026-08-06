@@ -1,6 +1,11 @@
 import { ensureDatabase, getD1, isAdminSession } from "../../../../db/runtime";
 import { calculateAttendanceTotals, localDayOfWeek } from "../../../../db/attendance-calculations";
-import { reconcileAttendanceRows, type AttendanceRow } from "../../../../db/attendance-reconciliation";
+import {
+  approvedCorrectionTimes,
+  reconcileAttendanceDay,
+  reconcileAttendanceRows,
+  type AttendanceRow,
+} from "../../../../db/attendance-reconciliation";
 
 type AdminAction =
   | { action: "load_live_data"; hrToken?: string; refresh?: number }
@@ -551,22 +556,24 @@ async function reviewCorrectionRequest(
   let newRecordJson: string | null = null;
   let reviewedAttendanceId = correction.attendance_id;
   if (payload.status === "approved") {
+    const currentAttendance = await effectiveAttendanceForCorrection(db, correction);
+    const approvedTimes = approvedCorrectionTimes(currentAttendance, correction);
     const existingRecord = await findTargetAttendanceForCorrection(db, correction);
-    const attendanceId = String(existingRecord?.id ?? correction.attendance_id ?? crypto.randomUUID());
+    const attendanceId = String(existingRecord?.id ?? crypto.randomUUID());
     reviewedAttendanceId = attendanceId;
 
     if (existingRecord) {
       await db
         .prepare(
           `UPDATE attendance
-           SET clock_in_at = COALESCE(?, clock_in_at),
-               clock_out_at = COALESCE(?, clock_out_at),
-               source = CASE WHEN source IN ('admin_report_edit', 'admin_report_edit_resume') THEN source ELSE 'admin_adjustment' END,
+           SET clock_in_at = ?,
+               clock_out_at = ?,
+               source = 'admin_adjustment',
                status = 'pending_review',
-               updated_at = CASE WHEN source IN ('admin_report_edit', 'admin_report_edit_resume') THEN updated_at ELSE CURRENT_TIMESTAMP END
+               updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
         )
-        .bind(correction.requested_clock_in_at, correction.requested_clock_out_at, attendanceId)
+        .bind(approvedTimes.clockInAt, approvedTimes.clockOutAt, attendanceId)
         .run();
     } else {
       await db
@@ -579,8 +586,8 @@ async function reviewCorrectionRequest(
           attendanceId,
           correction.employee_id,
           correction.requested_date,
-          correction.requested_clock_in_at,
-          correction.requested_clock_out_at,
+          approvedTimes.clockInAt,
+          approvedTimes.clockOutAt,
         )
         .run();
     }
@@ -617,7 +624,7 @@ async function reviewCorrectionRequest(
           `UPDATE attendance
            SET total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
                overtime_minutes = ?, status = ?,
-                updated_at = CASE WHEN source IN ('admin_report_edit', 'admin_report_edit_resume') THEN updated_at ELSE CURRENT_TIMESTAMP END
+               updated_at = CURRENT_TIMESTAMP
            WHERE id = ?`,
         )
         .bind(
@@ -628,6 +635,16 @@ async function reviewCorrectionRequest(
           status,
           updated.id,
         )
+        .run();
+    } else if (updated) {
+      await db
+        .prepare(
+          `UPDATE attendance
+           SET total_minutes = 0, late_minutes = 0, early_leave_minutes = 0,
+               overtime_minutes = 0, status = 'pending_review', updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+        )
+        .bind(updated.id)
         .run();
     }
     const recalculated = await db
@@ -664,6 +681,19 @@ async function reviewCorrectionRequest(
   return json(request, { ok: true });
 }
 
+async function effectiveAttendanceForCorrection(db: D1Database, correction: Record<string, string | null>) {
+  const rows = await db
+    .prepare(
+      `SELECT *
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ?
+         AND source <> 'admin_report_edit_archived'`,
+    )
+    .bind(correction.employee_id, correction.requested_date)
+    .all<AttendanceRow>();
+  return reconcileAttendanceDay((rows.results ?? []) as AttendanceRow[]);
+}
+
 async function findTargetAttendanceForCorrection(db: D1Database, correction: Record<string, string | null>) {
   if ((correction.missing_type === "clock_out" || correction.missing_type === "both") && correction.requested_clock_out_at) {
     const openRecord = await db
@@ -671,6 +701,7 @@ async function findTargetAttendanceForCorrection(db: D1Database, correction: Rec
         `SELECT *
          FROM attendance
          WHERE employee_id = ? AND work_date = ?
+           AND source NOT LIKE 'admin_report_edit%'
            AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
          ORDER BY clock_in_at DESC, updated_at DESC
          LIMIT 1`,
@@ -686,6 +717,7 @@ async function findTargetAttendanceForCorrection(db: D1Database, correction: Rec
         `SELECT *
          FROM attendance
          WHERE employee_id = ? AND work_date = ?
+           AND source NOT LIKE 'admin_report_edit%'
            AND clock_in_at IS NULL AND clock_out_at IS NOT NULL
          ORDER BY clock_out_at DESC, updated_at DESC
          LIMIT 1`,
@@ -697,7 +729,7 @@ async function findTargetAttendanceForCorrection(db: D1Database, correction: Rec
 
   if (correction.attendance_id) {
     const linkedRecord = await db
-      .prepare("SELECT * FROM attendance WHERE id = ?")
+      .prepare("SELECT * FROM attendance WHERE id = ? AND source NOT LIKE 'admin_report_edit%'")
       .bind(correction.attendance_id)
       .first<Record<string, string | number | null>>();
     if (linkedRecord) return linkedRecord;
@@ -708,6 +740,7 @@ async function findTargetAttendanceForCorrection(db: D1Database, correction: Rec
       `SELECT *
        FROM attendance
        WHERE employee_id = ? AND work_date = ?
+         AND source NOT LIKE 'admin_report_edit%'
        ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
        LIMIT 1`,
     )

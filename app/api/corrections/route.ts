@@ -1,5 +1,10 @@
 import { ensureDatabase, getD1, getSessionFromRequest, isAdminSession } from "../../../db/runtime";
 import { calculateAttendanceTotals, localDayOfWeek } from "../../../db/attendance-calculations";
+import {
+  approvedCorrectionTimes,
+  reconcileAttendanceDay,
+  type AttendanceRow,
+} from "../../../db/attendance-reconciliation";
 
 export async function POST(request: Request) {
   try {
@@ -48,12 +53,26 @@ export async function POST(request: Request) {
     if (payload.employeeId !== session.employee_id) {
       return json(request, { error: "Employees can only submit their own corrections." }, 403);
     }
-    const existing = await findTargetAttendanceForCorrection(
+    const requestedClockInAt = payload.missingType === "clock_in" || payload.missingType === "both"
+      ? validCorrectionTimestamp(payload.requestedClockInAt)
+      : null;
+    const requestedClockOutAt = payload.missingType === "clock_out" || payload.missingType === "both"
+      ? validCorrectionTimestamp(payload.requestedClockOutAt)
+      : null;
+    if (
+      ((payload.missingType === "clock_in" || payload.missingType === "both") && !requestedClockInAt) ||
+      ((payload.missingType === "clock_out" || payload.missingType === "both") && !requestedClockOutAt)
+    ) {
+      return json(request, { error: "A valid requested time is required for every missing clock field." }, 400);
+    }
+
+    const existingTarget = await findTargetAttendanceForCorrection(
       db,
       payload.employeeId,
       payload.requestedDate,
       payload.missingType,
     );
+    const effectiveAttendance = await effectiveAttendanceForDate(db, payload.employeeId, payload.requestedDate);
     const id = crypto.randomUUID();
 
     await db
@@ -65,14 +84,14 @@ export async function POST(request: Request) {
       )
       .bind(
         id,
-        existing?.id ?? null,
+        existingTarget?.id ?? null,
         payload.employeeId,
         payload.requestedDate,
         payload.missingType,
-        payload.requestedClockInAt ?? null,
-        payload.requestedClockOutAt ?? null,
+        requestedClockInAt,
+        requestedClockOutAt,
         payload.reason,
-        existing ? JSON.stringify(existing) : null,
+        effectiveAttendance ? JSON.stringify(effectiveAttendance) : null,
       )
       .run();
 
@@ -116,24 +135,36 @@ export async function PATCH(request: Request) {
     }
 
     let newRecordJson: string | null = null;
+    let reviewedAttendanceId = correction.attendance_id;
     if (payload.status === "approved") {
-      const attendanceId = correction.attendance_id ?? crypto.randomUUID();
-      const existingRecord = correction.attendance_id
-        ? await db.prepare("SELECT id FROM attendance WHERE id = ?").bind(correction.attendance_id).first()
-        : null;
+      const currentAttendance = await effectiveAttendanceForDate(
+        db,
+        String(correction.employee_id),
+        String(correction.requested_date),
+      );
+      const approvedTimes = approvedCorrectionTimes(currentAttendance, correction);
+      const existingRecord = await findTargetAttendanceForCorrection(
+        db,
+        String(correction.employee_id),
+        String(correction.requested_date),
+        String(correction.missing_type) as CorrectionMissingType,
+        correction.attendance_id,
+      );
+      const attendanceId = String(existingRecord?.id ?? crypto.randomUUID());
+      reviewedAttendanceId = attendanceId;
 
       if (existingRecord) {
         await db
           .prepare(
             `UPDATE attendance
-             SET clock_in_at = COALESCE(?, clock_in_at),
-                 clock_out_at = COALESCE(?, clock_out_at),
-                 source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END,
+             SET clock_in_at = ?,
+                 clock_out_at = ?,
+                 source = 'admin_adjustment',
                  status = 'pending_review',
-                 updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
+                 updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
           )
-          .bind(correction.requested_clock_in_at, correction.requested_clock_out_at, attendanceId)
+          .bind(approvedTimes.clockInAt, approvedTimes.clockOutAt, attendanceId)
           .run();
       } else {
         await db
@@ -146,8 +177,8 @@ export async function PATCH(request: Request) {
             attendanceId,
             correction.employee_id,
             correction.requested_date,
-            correction.requested_clock_in_at,
-            correction.requested_clock_out_at,
+            approvedTimes.clockInAt,
+            approvedTimes.clockOutAt,
           )
           .run();
       }
@@ -185,7 +216,7 @@ export async function PATCH(request: Request) {
             `UPDATE attendance
              SET total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
                  overtime_minutes = ?, status = ?,
-                 updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
+                 updated_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
           )
           .bind(
@@ -196,6 +227,16 @@ export async function PATCH(request: Request) {
             status,
             updated.id,
           )
+          .run();
+      } else if (updated) {
+        await db
+          .prepare(
+            `UPDATE attendance
+             SET total_minutes = 0, late_minutes = 0, early_leave_minutes = 0,
+                 overtime_minutes = 0, status = 'pending_review', updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+          )
+          .bind(updated.id)
           .run();
       }
       const recalculated = await db
@@ -208,11 +249,18 @@ export async function PATCH(request: Request) {
     await db
       .prepare(
         `UPDATE attendance_corrections
-         SET status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
+         SET attendance_id = ?, status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
              admin_note = ?, new_record_json = ?
          WHERE id = ?`,
       )
-      .bind(payload.status, payload.adminUserId, payload.adminNote ?? null, newRecordJson, payload.correctionId)
+      .bind(
+        reviewedAttendanceId,
+        payload.status,
+        payload.adminUserId,
+        payload.adminNote ?? null,
+        newRecordJson,
+        payload.correctionId,
+      )
       .run();
 
     await db
@@ -244,6 +292,7 @@ async function findTargetAttendanceForCorrection(
   employeeId: string,
   requestedDate: string,
   missingType: CorrectionMissingType,
+  linkedAttendanceId?: string | null,
 ) {
   if (missingType === "clock_out" || missingType === "both") {
     const openRecord = await db
@@ -251,6 +300,7 @@ async function findTargetAttendanceForCorrection(
         `SELECT *
          FROM attendance
          WHERE employee_id = ? AND work_date = ?
+           AND source NOT LIKE 'admin_report_edit%'
            AND clock_in_at IS NOT NULL AND clock_out_at IS NULL
          ORDER BY clock_in_at DESC, updated_at DESC
          LIMIT 1`,
@@ -266,6 +316,7 @@ async function findTargetAttendanceForCorrection(
         `SELECT *
          FROM attendance
          WHERE employee_id = ? AND work_date = ?
+           AND source NOT LIKE 'admin_report_edit%'
            AND clock_in_at IS NULL AND clock_out_at IS NOT NULL
          ORDER BY clock_out_at DESC, updated_at DESC
          LIMIT 1`,
@@ -275,16 +326,43 @@ async function findTargetAttendanceForCorrection(
     if (missingInRecord) return missingInRecord;
   }
 
+  if (linkedAttendanceId) {
+    const linkedRecord = await db
+      .prepare("SELECT * FROM attendance WHERE id = ? AND source NOT LIKE 'admin_report_edit%'")
+      .bind(linkedAttendanceId)
+      .first<Record<string, unknown>>();
+    if (linkedRecord) return linkedRecord;
+  }
+
   return db
     .prepare(
       `SELECT *
        FROM attendance
        WHERE employee_id = ? AND work_date = ?
+         AND source NOT LIKE 'admin_report_edit%'
        ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
        LIMIT 1`,
     )
     .bind(employeeId, requestedDate)
     .first<Record<string, unknown>>();
+}
+
+async function effectiveAttendanceForDate(db: D1Database, employeeId: string, requestedDate: string) {
+  const rows = await db
+    .prepare(
+      `SELECT *
+       FROM attendance
+       WHERE employee_id = ? AND work_date = ?
+         AND source <> 'admin_report_edit_archived'`,
+    )
+    .bind(employeeId, requestedDate)
+    .all<AttendanceRow>();
+  return reconcileAttendanceDay((rows.results ?? []) as AttendanceRow[]);
+}
+
+function validCorrectionTimestamp(value?: string) {
+  const text = String(value || "").trim();
+  return text && !Number.isNaN(Date.parse(text)) ? text : null;
 }
 
 function json(request: Request, data: unknown, status = 200) {

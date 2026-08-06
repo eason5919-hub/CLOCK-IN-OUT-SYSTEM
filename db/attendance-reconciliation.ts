@@ -42,6 +42,19 @@ export function reconcileAttendanceRows(rows: AttendanceRow[]) {
     });
 }
 
+export function approvedCorrectionTimes(current: AttendanceRow | null, correction: AttendanceRow) {
+  const missingType = String(correction.missing_type || "");
+  const requestedClockIn = stringOrNull(correction.requested_clock_in_at);
+  const requestedClockOut = stringOrNull(correction.requested_clock_out_at);
+  const appliesClockIn = (missingType === "clock_in" || missingType === "both") && Boolean(requestedClockIn);
+  const appliesClockOut = (missingType === "clock_out" || missingType === "both") && Boolean(requestedClockOut);
+
+  return {
+    clockInAt: appliesClockIn ? requestedClockIn : stringOrNull(current?.clock_in_at),
+    clockOutAt: appliesClockOut ? requestedClockOut : stringOrNull(current?.clock_out_at),
+  };
+}
+
 export function reconcileAttendanceDay(rows: AttendanceRow[]) {
   const activeRows = rows.filter((row) => String(row.source || "") !== ARCHIVED_REPORT_SOURCE);
   if (!activeRows.length) return null;
