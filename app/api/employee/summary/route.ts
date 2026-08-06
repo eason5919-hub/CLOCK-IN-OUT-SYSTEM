@@ -1,4 +1,9 @@
 import { ensureDatabase, getD1, getSessionFromRequest } from "../../../../db/runtime";
+import {
+  parseAttendanceTimestamp,
+  reconcileAttendanceRows,
+  type AttendanceRow,
+} from "../../../../db/attendance-reconciliation";
 
 export async function GET(request: Request) {
   const db = getD1();
@@ -36,214 +41,51 @@ export async function GET(request: Request) {
   const deviceFingerprint = request.headers.get("x-device-fingerprint")?.trim();
   if (deviceFingerprint) {
     const device = await db
-      .prepare("SELECT id, device_fingerprint FROM devices WHERE employee_id = ? AND status = 'registered'")
+      .prepare("SELECT id FROM devices WHERE employee_id = ? AND status = 'registered'")
       .bind(session.employee_id)
-      .first<{ id: string; device_fingerprint: string }>();
-
+      .first<{ id: string }>();
     if (!device) {
       return json(request, { error: "Employee phone access was deleted by HR." }, 401);
     }
   }
 
-  const attendance = await db
-    .prepare(
-      `WITH base_ranked AS (
-         SELECT *,
-                ROW_NUMBER() OVER (
-                  PARTITION BY work_date
-                  ORDER BY datetime(updated_at) DESC, datetime(created_at) DESC, id DESC
-                ) AS row_rank
+  const [rawAttendance, corrections, leaveRequests] = await Promise.all([
+    db
+      .prepare(
+        `SELECT *
          FROM attendance
-         WHERE employee_id = ? AND source NOT LIKE 'admin_report_edit%'
-       ),
-       base_rows AS (
-         SELECT id,
-                work_date,
-                clock_in_at,
-                clock_out_at,
-                COALESCE(total_minutes, 0) AS total_minutes,
-                COALESCE(late_minutes, 0) AS late_minutes,
-                COALESCE(early_leave_minutes, 0) AS early_leave_minutes,
-                COALESCE(overtime_minutes, 0) AS overtime_minutes,
-                status,
-                clock_in_accuracy,
-                clock_in_distance_meters,
-                clock_out_accuracy,
-                clock_out_distance_meters,
-                source,
-                created_at,
-                updated_at
-         FROM base_ranked
-         WHERE row_rank = 1
-       ),
-       report_rows AS (
-         SELECT MIN(id) AS id,
-                work_date,
-                MIN(clock_in_at) AS clock_in_at,
-                MAX(clock_out_at) AS clock_out_at,
-                SUM(COALESCE(total_minutes, 0)) AS total_minutes,
-                MAX(COALESCE(late_minutes, 0)) AS late_minutes,
-                MAX(COALESCE(early_leave_minutes, 0)) AS early_leave_minutes,
-                SUM(COALESCE(overtime_minutes, 0)) AS overtime_minutes,
-                CASE
-                  WHEN MAX(COALESCE(late_minutes, 0)) > 0 THEN 'late'
-                  WHEN MAX(COALESCE(early_leave_minutes, 0)) > 0 THEN 'early_leave'
-                  WHEN SUM(COALESCE(overtime_minutes, 0)) > 0 THEN 'ot'
-                  ELSE 'present'
-                END AS status,
-                MAX(clock_in_accuracy) AS clock_in_accuracy,
-                MAX(clock_in_distance_meters) AS clock_in_distance_meters,
-                MAX(clock_out_accuracy) AS clock_out_accuracy,
-                MAX(clock_out_distance_meters) AS clock_out_distance_meters,
-                'admin_report_edit' AS source,
-                MIN(created_at) AS created_at,
-                MAX(updated_at) AS updated_at,
-                MIN(CASE WHEN clock_in_at IS NOT NULL THEN updated_at END) AS clock_in_updated_at,
-                MAX(CASE WHEN clock_out_at IS NOT NULL THEN updated_at END) AS clock_out_updated_at
-         FROM attendance
-         WHERE employee_id = ? AND source = 'admin_report_edit'
-         GROUP BY work_date
-       ),
-       field_overrides AS (
-         SELECT MIN(id) AS id,
-                work_date,
-                MAX(CASE WHEN source = 'admin_report_edit_in' THEN 1 ELSE 0 END) AS has_clock_in_override,
-                MAX(CASE WHEN source = 'admin_report_edit_in' THEN clock_in_at END) AS override_clock_in_at,
-                MAX(CASE WHEN source = 'admin_report_edit_in' THEN updated_at END) AS clock_in_override_updated_at,
-                MAX(CASE WHEN source = 'admin_report_edit_out' THEN 1 ELSE 0 END) AS has_clock_out_override,
-                MAX(CASE WHEN source = 'admin_report_edit_out' THEN clock_out_at END) AS override_clock_out_at,
-                MAX(CASE WHEN source = 'admin_report_edit_out' THEN updated_at END) AS clock_out_override_updated_at,
-                MIN(created_at) AS created_at,
-                MAX(updated_at) AS updated_at
-         FROM attendance
-         WHERE employee_id = ? AND source IN ('admin_report_edit_in', 'admin_report_edit_out')
-         GROUP BY work_date
-       ),
-       live_open_rows AS (
-         SELECT work_date,
-                MAX(clock_in_at) AS live_open_clock_in_at
-         FROM attendance
+         WHERE employee_id = ? AND source <> 'admin_report_edit_archived'
+         ORDER BY work_date DESC, datetime(updated_at) DESC, datetime(created_at) DESC, id DESC`,
+      )
+      .bind(session.employee_id)
+      .all(),
+    db
+      .prepare(
+        `SELECT id, requested_date, missing_type, requested_clock_in_at, requested_clock_out_at, reason, status,
+                original_record_json, created_at, reviewed_at
+         FROM attendance_corrections
          WHERE employee_id = ?
-           AND source = 'qr_gps'
-           AND clock_in_at IS NOT NULL
-           AND clock_out_at IS NULL
-         GROUP BY work_date
-       ),
-       day_keys AS (
-         SELECT work_date FROM base_rows
-         UNION
-         SELECT work_date FROM report_rows
-         UNION
-         SELECT work_date FROM field_overrides
-       )
-       SELECT id, work_date, clock_in_at, clock_out_at, total_minutes, late_minutes,
-              early_leave_minutes, overtime_minutes, status, clock_in_accuracy,
-              clock_in_distance_meters, clock_out_accuracy, clock_out_distance_meters,
-              source, created_at, updated_at, clock_in_updated_at, clock_out_updated_at,
-              report_edited_clock_in, report_edited_clock_out, live_open_clock_in_at,
-              base_id, base_clock_in_at, base_clock_out_at, base_updated_at, base_created_at,
-              report_clock_in_at, report_clock_out_at, report_clock_in_updated_at, report_clock_out_updated_at, report_updated_at,
-              has_clock_in_override, override_clock_in_at, clock_in_override_updated_at,
-              has_clock_out_override, override_clock_out_at, clock_out_override_updated_at
-       FROM (
-         SELECT COALESCE(r.id, b.id, o.id) AS id,
-                d.work_date,
-                CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.override_clock_in_at ELSE COALESCE(r.clock_in_at, b.clock_in_at) END AS clock_in_at,
-                CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.override_clock_out_at ELSE COALESCE(r.clock_out_at, b.clock_out_at) END AS clock_out_at,
-                CASE
-                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
-                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 0
-                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.total_minutes
-                  ELSE b.total_minutes
-                END AS total_minutes,
-                CASE
-                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
-                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 0
-                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.late_minutes
-                  ELSE b.late_minutes
-                END AS late_minutes,
-                CASE
-                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
-                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 0
-                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.early_leave_minutes
-                  ELSE b.early_leave_minutes
-                END AS early_leave_minutes,
-                CASE
-                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
-                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 0
-                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.overtime_minutes
-                  ELSE b.overtime_minutes
-                END AS overtime_minutes,
-                CASE
-                  WHEN (COALESCE(o.has_clock_in_override, 0) = 1 AND o.override_clock_in_at IS NULL)
-                    OR (COALESCE(o.has_clock_out_override, 0) = 1 AND o.override_clock_out_at IS NULL) THEN 'pending_review'
-                  WHEN r.clock_in_at IS NOT NULL AND r.clock_out_at IS NOT NULL THEN r.status
-                  ELSE b.status
-                END AS status,
-                COALESCE(r.clock_in_accuracy, b.clock_in_accuracy) AS clock_in_accuracy,
-                COALESCE(r.clock_in_distance_meters, b.clock_in_distance_meters) AS clock_in_distance_meters,
-                COALESCE(r.clock_out_accuracy, b.clock_out_accuracy) AS clock_out_accuracy,
-                COALESCE(r.clock_out_distance_meters, b.clock_out_distance_meters) AS clock_out_distance_meters,
-                CASE WHEN r.work_date IS NOT NULL OR o.work_date IS NOT NULL THEN 'admin_report_edit' ELSE b.source END AS source,
-                COALESCE(r.created_at, b.created_at, o.created_at) AS created_at,
-                COALESCE(o.clock_in_override_updated_at, o.clock_out_override_updated_at, r.updated_at, b.updated_at, o.updated_at) AS updated_at,
-                CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.clock_in_override_updated_at ELSE COALESCE(r.clock_in_updated_at, b.updated_at) END AS clock_in_updated_at,
-                CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.clock_out_override_updated_at ELSE COALESCE(r.clock_out_updated_at, b.updated_at) END AS clock_out_updated_at,
-                CASE WHEN r.clock_in_at IS NOT NULL OR COALESCE(o.has_clock_in_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_in,
-                CASE WHEN r.clock_out_at IS NOT NULL OR COALESCE(o.has_clock_out_override, 0) = 1 THEN 1 ELSE 0 END AS report_edited_clock_out,
-                CASE
-                  WHEN (CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.override_clock_in_at ELSE COALESCE(r.clock_in_at, b.clock_in_at) END) IS NOT NULL
-                   AND (CASE WHEN COALESCE(o.has_clock_out_override, 0) = 1 THEN o.override_clock_out_at ELSE COALESCE(r.clock_out_at, b.clock_out_at) END) IS NULL
-                  THEN (CASE WHEN COALESCE(o.has_clock_in_override, 0) = 1 THEN o.override_clock_in_at ELSE COALESCE(r.clock_in_at, b.clock_in_at) END)
-                  ELSE l.live_open_clock_in_at
-                END AS live_open_clock_in_at,
-                b.id AS base_id,
-                b.clock_in_at AS base_clock_in_at,
-                b.clock_out_at AS base_clock_out_at,
-                b.updated_at AS base_updated_at,
-                b.created_at AS base_created_at,
-                r.clock_in_at AS report_clock_in_at,
-                r.clock_out_at AS report_clock_out_at,
-                r.clock_in_updated_at AS report_clock_in_updated_at,
-                r.clock_out_updated_at AS report_clock_out_updated_at,
-                r.updated_at AS report_updated_at,
-                COALESCE(o.has_clock_in_override, 0) AS has_clock_in_override,
-                o.override_clock_in_at,
-                o.clock_in_override_updated_at,
-                COALESCE(o.has_clock_out_override, 0) AS has_clock_out_override,
-                o.override_clock_out_at,
-                o.clock_out_override_updated_at
-         FROM day_keys d
-         LEFT JOIN base_rows b ON b.work_date = d.work_date
-         LEFT JOIN report_rows r ON r.work_date = d.work_date
-         LEFT JOIN field_overrides o ON o.work_date = d.work_date
-         LEFT JOIN live_open_rows l ON l.work_date = d.work_date
-       )
-       ORDER BY work_date DESC, updated_at DESC, clock_in_at DESC, created_at DESC`,
-    )
-    .bind(session.employee_id, session.employee_id, session.employee_id, session.employee_id)
-    .all();
+         ORDER BY COALESCE(reviewed_at, created_at) DESC, created_at DESC`,
+      )
+      .bind(session.employee_id)
+      .all(),
+    db
+      .prepare(
+        `SELECT id, leave_type, leave_date, duration, reason, status, admin_note, created_at
+         FROM leave_requests
+         WHERE employee_id = ?
+         ORDER BY COALESCE(reviewed_at, created_at) DESC, created_at DESC`,
+      )
+      .bind(session.employee_id)
+      .all(),
+  ]);
 
-  const corrections = await db
-    .prepare(
-      `SELECT id, requested_date, missing_type, requested_clock_in_at, requested_clock_out_at, reason, status,
-              original_record_json, created_at, reviewed_at
-       FROM attendance_corrections
-       WHERE employee_id = ?
-       ORDER BY COALESCE(reviewed_at, created_at) DESC, created_at DESC`,
-    )
-    .bind(session.employee_id)
-    .all();
-
-  const correctionRows = (corrections.results || []) as Array<Record<string, unknown>>;
-  const attendanceRows = ((attendance.results || []) as Array<Record<string, unknown>>).map((row) => {
-    const effectiveRow = applyLatestReportFields(row);
-    return {
-      ...effectiveRow,
-      report_clock_in_mark: reportClockMark(effectiveRow, "clock_in", correctionRows),
-      report_clock_out_mark: reportClockMark(effectiveRow, "clock_out", correctionRows),
-    };
-  });
+  const correctionRows = (corrections.results || []) as AttendanceRow[];
+  const attendanceRows = reconcileAttendanceRows((rawAttendance.results || []) as AttendanceRow[]).map((row) => ({
+    ...row,
+    report_clock_in_mark: reportClockMark(row, "clock_in", correctionRows),
+    report_clock_out_mark: reportClockMark(row, "clock_out", correctionRows),
+  }));
   const attendanceByDate = new Map(attendanceRows.map((row) => [String(row.work_date || ""), row]));
   const correctionsWithReportTimes = correctionRows.map((row) => {
     const reportRow = attendanceByDate.get(String(row.requested_date || ""));
@@ -253,16 +95,6 @@ export async function GET(request: Request) {
       report_clock_out_at: reportRow?.clock_out_at || null,
     };
   });
-
-  const leaveRequests = await db
-    .prepare(
-      `SELECT id, leave_type, leave_date, duration, reason, status, admin_note, created_at
-       FROM leave_requests
-       WHERE employee_id = ?
-       ORDER BY created_at DESC`,
-    )
-    .bind(session.employee_id)
-    .all();
 
   return json(request, {
     employee,
@@ -276,66 +108,7 @@ export async function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
 
-function json(request: Request, data: unknown, status = 200) {
-  return Response.json(data, { status, headers: corsHeaders(request) });
-}
-
-function applyLatestReportFields(row: Record<string, unknown>) {
-  const clockIn = newestFieldCandidate([
-    reportFieldCandidate(row, "base_clock_in_at", "base_updated_at", "base_created_at", "base"),
-    reportFieldCandidate(row, "report_clock_in_at", "report_clock_in_updated_at", "report_updated_at", "report"),
-    Number(row.has_clock_in_override || 0)
-      ? reportFieldCandidate(row, "override_clock_in_at", "clock_in_override_updated_at", "updated_at", "override", true)
-      : null,
-  ]);
-  const clockOut = newestFieldCandidate([
-    reportFieldCandidate(row, "base_clock_out_at", "base_updated_at", "base_created_at", "base"),
-    reportFieldCandidate(row, "report_clock_out_at", "report_clock_out_updated_at", "report_updated_at", "report"),
-    Number(row.has_clock_out_override || 0)
-      ? reportFieldCandidate(row, "override_clock_out_at", "clock_out_override_updated_at", "updated_at", "override", true)
-      : null,
-  ]);
-
-  return {
-    ...row,
-    clock_in_at: clockIn?.value || null,
-    clock_out_at: clockOut?.value || null,
-    clock_in_updated_at: clockIn?.updatedAt || row.clock_in_updated_at || row.updated_at || "",
-    clock_out_updated_at: clockOut?.updatedAt || row.clock_out_updated_at || row.updated_at || "",
-    report_edited_clock_in: clockIn?.source === "report" || clockIn?.source === "override" ? 1 : 0,
-    report_edited_clock_out: clockOut?.source === "report" || clockOut?.source === "override" ? 1 : 0,
-    live_open_clock_in_at: clockIn?.value && !clockOut?.value ? clockIn.value : row.live_open_clock_in_at,
-  };
-}
-
-function reportFieldCandidate(
-  row: Record<string, unknown>,
-  valueKey: string,
-  updatedKey: string,
-  fallbackUpdatedKey: string,
-  source: string,
-  includeBlank = false,
-) {
-  if (!includeBlank && !row[valueKey]) return null;
-  if (source === "base" && !row.base_id) return null;
-  return {
-    value: row[valueKey] ? String(row[valueKey]) : "",
-    updatedAt: String(row[updatedKey] || row[fallbackUpdatedKey] || row.updated_at || row.created_at || ""),
-    source,
-  };
-}
-
-function newestFieldCandidate(
-  candidates: Array<{ value: string; updatedAt: string; source: string } | null>,
-) {
-  return candidates.filter(Boolean).reduce<{ value: string; updatedAt: string; source: string } | null>((best, candidate) => {
-    if (!candidate) return best;
-    if (!best) return candidate;
-    return isSameOrNewer(candidate.updatedAt, best.updatedAt) ? candidate : best;
-  }, null);
-}
-
-function reportClockMark(row: Record<string, unknown>, field: "clock_in" | "clock_out", corrections: Array<Record<string, unknown>>) {
+function reportClockMark(row: AttendanceRow, field: "clock_in" | "clock_out", corrections: AttendanceRow[]) {
   const dateKey = String(row.work_date || "");
   const valueKey = field === "clock_in" ? "clock_in_at" : "clock_out_at";
   const editedKey = field === "clock_in" ? "report_edited_clock_in" : "report_edited_clock_out";
@@ -347,39 +120,41 @@ function reportClockMark(row: Record<string, unknown>, field: "clock_in" | "cloc
       String(item.status || "").toLowerCase() === "approved" &&
       Boolean(item[requestKey])
     ))
-    .sort((a, b) => parseLiveTimestamp(String(b.reviewed_at || b.created_at || "")) - parseLiveTimestamp(String(a.reviewed_at || a.created_at || "")))[0];
+    .sort((left, right) => (
+      parseAttendanceTimestamp(String(right.reviewed_at || right.created_at || "")) -
+      parseAttendanceTimestamp(String(left.reviewed_at || left.created_at || ""))
+    ))[0];
+
   if (correction) {
     const correctionTime = String(correction[requestKey] || "");
     const rowTime = String(row[valueKey] || "");
     const correctionReviewedAt = String(correction.reviewed_at || correction.created_at || "");
     const fieldUpdatedAt = String(row[updatedKey] || row.updated_at || row.created_at || "");
-    if (sameLiveInstant(correctionTime, rowTime) && isSameOrNewer(correctionReviewedAt, fieldUpdatedAt)) {
+    if (sameInstant(correctionTime, rowTime) && isSameOrNewer(correctionReviewedAt, fieldUpdatedAt)) {
       return "corrected";
     }
   }
   return Number(row[editedKey] || 0) && row[valueKey] ? "edited" : "";
 }
 
-function parseLiveTimestamp(value: string) {
-  const text = String(value || "").trim();
-  const ms = Date.parse(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text) ? `${text.replace(" ", "T")}Z` : text);
-  return Number.isNaN(ms) ? 0 : ms;
-}
-
 function isSameOrNewer(left: string, right: string) {
-  const leftMs = parseLiveTimestamp(left);
-  const rightMs = parseLiveTimestamp(right);
+  const leftMs = parseAttendanceTimestamp(left);
+  const rightMs = parseAttendanceTimestamp(right);
   if (!leftMs) return false;
   if (!rightMs) return true;
   return leftMs >= rightMs;
 }
 
-function sameLiveInstant(left: string, right: string) {
+function sameInstant(left: string, right: string) {
   if (!left || !right) return false;
-  const leftMs = parseLiveTimestamp(left);
-  const rightMs = parseLiveTimestamp(right);
+  const leftMs = parseAttendanceTimestamp(left);
+  const rightMs = parseAttendanceTimestamp(right);
   if (!leftMs || !rightMs) return left === right;
   return leftMs === rightMs;
+}
+
+function json(request: Request, data: unknown, status = 200) {
+  return Response.json(data, { status, headers: corsHeaders(request) });
 }
 
 function corsHeaders(request: Request) {

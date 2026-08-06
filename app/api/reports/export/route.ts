@@ -1,4 +1,5 @@
 import { ensureDatabase, getD1 } from "../../../../db/runtime";
+import { reconcileAttendanceRows, type AttendanceRow } from "../../../../db/attendance-reconciliation";
 
 export async function GET(request: Request) {
   try {
@@ -10,21 +11,26 @@ export async function GET(request: Request) {
     await ensureDatabase(db);
     const rows = await db
       .prepare(
-        `SELECT e.employee_code, e.full_name, a.work_date, a.clock_in_at, a.clock_out_at,
-                a.total_minutes, a.late_minutes, a.early_leave_minutes, a.overtime_minutes, a.status
+        `SELECT a.*, e.employee_code, e.full_name
          FROM attendance a
          JOIN employees e ON e.id = a.employee_id
-         WHERE a.work_date LIKE ?
-         ORDER BY a.work_date, e.employee_code, a.clock_in_at`,
+         WHERE a.work_date LIKE ? AND a.source <> 'admin_report_edit_archived'
+         ORDER BY a.work_date, e.employee_code, a.clock_in_at, a.updated_at`,
       )
       .bind(`${month}%`)
       .all<Record<string, unknown>>();
 
+    const reportRows = reconcileAttendanceRows((rows.results ?? []) as AttendanceRow[])
+      .sort((left, right) => {
+        const dateOrder = String(left.work_date || "").localeCompare(String(right.work_date || ""));
+        return dateOrder || String(left.employee_code || "").localeCompare(String(right.employee_code || ""));
+      });
+
     if (format === "pdf") {
-      const lines = (rows.results ?? [])
+      const lines = reportRows
         .map(
           (row) =>
-            `<tr><td>${row.employee_code}</td><td>${row.full_name}</td><td>${row.work_date}</td><td>${row.status}</td><td>${row.overtime_minutes}</td></tr>`,
+            `<tr><td>${htmlCell(row.employee_code)}</td><td>${htmlCell(row.full_name)}</td><td>${htmlCell(row.work_date)}</td><td>${htmlCell(row.status)}</td><td>${htmlCell(row.overtime_minutes)}</td></tr>`,
         )
         .join("");
       return new Response(
@@ -39,13 +45,15 @@ export async function GET(request: Request) {
     }
 
     const csv = [
-      "Employee Code,Name,Date,Clock In,Clock Out,Working Minutes,Late Minutes,Early Leave Minutes,OT Minutes,Status",
-      ...(rows.results ?? []).map((row) =>
+      "Employee Code,Name,Date,Clock In,Break,Resume,Clock Out,Working Minutes,Late Minutes,Early Leave Minutes,OT Minutes,Status",
+      ...reportRows.map((row) =>
         [
           row.employee_code,
           row.full_name,
           row.work_date,
           row.clock_in_at,
+          row.break_at,
+          row.resume_at,
           row.clock_out_at,
           row.total_minutes,
           row.late_minutes,
@@ -73,4 +81,13 @@ export async function GET(request: Request) {
 function csvCell(value: unknown) {
   const raw = String(value ?? "");
   return `"${raw.replaceAll('"', '""')}"`;
+}
+
+function htmlCell(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }

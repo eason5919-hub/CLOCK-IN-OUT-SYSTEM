@@ -1,4 +1,5 @@
 import { ensureDatabase, getD1, getSessionFromRequest, isAdminSession } from "../../../../db/runtime";
+import { reconcileAttendanceRows, type AttendanceRow } from "../../../../db/attendance-reconciliation";
 
 export async function GET(request: Request) {
   const db = getD1();
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
         `SELECT a.*, e.employee_code, e.full_name
          FROM attendance a
          JOIN employees e ON e.id = a.employee_id
+         WHERE a.source <> 'admin_report_edit_archived'
          ORDER BY a.work_date DESC, a.clock_in_at DESC, e.employee_code`,
       )
       .all(),
@@ -38,9 +40,11 @@ export async function GET(request: Request) {
     db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 30").all(),
   ]);
 
+  const attendanceRows = reconcileAttendanceRows((attendance.results ?? []) as AttendanceRow[]);
+
   return Response.json({
     employees: employees.results,
-    attendance: attendance.results,
+    attendance: attendanceRows,
     corrections: corrections.results,
     auditLogs: auditLogs.results,
   });

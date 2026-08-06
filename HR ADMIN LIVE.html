@@ -351,6 +351,28 @@
       box-shadow: inset 0 0 0 2px #d7ad1f;
     }
 
+    .reportLeavePicker {
+      width: 100%;
+      min-width: 142px;
+      min-height: 30px;
+      border: 1px solid #cbd8d3;
+      border-radius: 4px;
+      background: #fff;
+      color: var(--ink);
+      padding: 3px 24px 3px 6px;
+      font: inherit;
+      font-weight: 700;
+    }
+
+    .reportLeavePicker:disabled {
+      appearance: none;
+      border-color: transparent;
+      background: transparent;
+      color: var(--ink);
+      opacity: 1;
+      padding-right: 6px;
+    }
+
     .highlightTime {
       display: inline-block;
       padding: 2px 6px;
@@ -473,7 +495,7 @@
   <header>
     <div>
       <h1>Warehouse HR Attendance</h1>
-      <p>Live employee and attendance records from the shared warehouse database. Calc v20260805-shared-time-rules.</p>
+      <p>Live employee and attendance records from the shared warehouse database. Calc v20260805-shared-attendance-day.</p>
     </div>
     <div class="actions">
       <a class="buttonLink secondary" href="index.html">Employee App</a>
@@ -664,9 +686,10 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260805-shared-time-rules";
+    const REPORT_CALC_VERSION = "20260806-leave-picker-short";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "work", "overtime", "diffOt", "short"]);
     const REPORT_TIME_FIELDS = new Set(["in", "break", "resume", "out"]);
+    const REPORT_LEAVE_VALUES = new Set(["", "ANNUAL LEAVE", "HALF ANNUAL LEAVE", "MC"]);
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
     const loginForm = document.getElementById("loginForm");
@@ -705,6 +728,8 @@
 
     let employees = [];
     let attendance = [];
+    let attendanceDays = [];
+    let hasResolvedAttendanceDays = false;
     let leaveRequests = [];
     let corrections = [];
     let loading = false;
@@ -877,8 +902,12 @@
       let changed = localStorage.getItem(REPORT_CALC_VERSION_KEY) !== REPORT_CALC_VERSION;
       Object.keys(edits).forEach(key => {
         const field = key.split("|").pop();
-        if (!isEditableReportField(field)) {
+        const normalizedLeave = field === "leaveTaken" ? String(edits[key] || "").trim().toUpperCase() : "";
+        if (!isEditableReportField(field) || (field === "leaveTaken" && !REPORT_LEAVE_VALUES.has(normalizedLeave))) {
           delete edits[key];
+          changed = true;
+        } else if (field === "leaveTaken" && edits[key] !== normalizedLeave) {
+          edits[key] = normalizedLeave;
           changed = true;
         }
       });
@@ -1045,6 +1074,7 @@
     function reportOvertimeFromTimes(clockIn, clockOut, dateKey, day) {
       if (!clockOut) return 0;
       const elapsed = elapsedMinutes(clockIn, clockOut);
+      if (!elapsed) return 0;
       if (day === 0) return elapsed;
       const clockInMs = parseLiveTimestamp(clockIn);
       const clockOutMs = parseLiveTimestamp(clockOut);
@@ -1145,9 +1175,7 @@
       if (inMinutes == null) return 0;
       const start = 9 * 60;
       const end = day === 6 ? 13 * 60 : 18 * 60;
-      const inMs = parseLiveTimestamp(attendanceRow.clockIn);
       const endMs = attendanceRow.dateKey ? scheduledDateTimeMs(attendanceRow.dateKey, end) : null;
-      if (!Number.isNaN(inMs) && endMs != null && inMs >= endMs) return 0;
       let lateShort = Math.max(0, inMinutes - start);
       if (inMinutes <= start + 15) lateShort = 0;
       if (isHalfLeaveText(leaveTaken)) {
@@ -1181,6 +1209,15 @@
       const value = reportValue(employeeId, dateKey, field, fallback);
       const editable = editing && editableField;
       const classes = ["editableCell", correctionWins ? "correctedTime" : className, manualEdit ? "manualEdit" : ""].filter(Boolean).join(" ");
+      if (field === "leaveTaken") {
+        const options = [
+          ["", ""],
+          ["ANNUAL LEAVE", "Annual Leave"],
+          ["HALF ANNUAL LEAVE", "Half Annual Leave"],
+          ["MC", "MC"],
+        ];
+        return `<td class="${classes}" contenteditable="false" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="leaveTaken"><select class="reportLeavePicker" data-report-leave-picker aria-label="Leave Taken for ${escapeHtml(reportDateLabel(dateKey))}" ${editing ? "" : "disabled"}>${options.map(([optionValue, label]) => `<option value="${optionValue}" ${value === optionValue ? "selected" : ""}>${label}</option>`).join("")}</select></td>`;
+      }
       return `<td class="${classes}" contenteditable="${editable ? "true" : "false"}" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
     }
 
@@ -1231,6 +1268,46 @@
     }
 
     function employeeAttendanceByDate(employeeId, dateKey) {
+      if (!hasResolvedAttendanceDays) return legacyEmployeeAttendanceByDate(employeeId, dateKey);
+
+      const row = attendanceDays.find(item => item.employee_id === employeeId && item.work_date === dateKey);
+      const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
+      if (!row && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
+
+      const rowFirstIn = row?.clock_in_at || approvedTimes.clockIn || "";
+      const rowLastOut = row?.clock_out_at || approvedTimes.clockOut || "";
+      const inUpdatedAt = row?.clock_in_updated_at || row?.updated_at || row?.created_at || "";
+      const outUpdatedAt = row?.clock_out_updated_at || row?.updated_at || row?.created_at || "";
+      const correctionInWins = Boolean(approvedTimes.clockIn) &&
+        sameReportInstant(approvedTimes.clockIn, rowFirstIn) &&
+        isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt);
+      const correctionOutWins = Boolean(approvedTimes.clockOut) &&
+        sameReportInstant(approvedTimes.clockOut, rowLastOut) &&
+        isSameOrNewer(approvedTimes.clockOutReviewedAt, outUpdatedAt);
+      const firstIn = correctionInWins ? approvedTimes.clockIn : rowFirstIn;
+      const lastOut = correctionOutWins ? approvedTimes.clockOut : rowLastOut;
+
+      return {
+        dateKey,
+        clockIn: firstIn,
+        breakTime: row?.break_at || "",
+        resumeTime: row?.resume_at || "",
+        clockOut: lastOut,
+        correctedClockIn: correctionInWins,
+        correctedClockOut: correctionOutWins,
+        reportEditedClockIn: Boolean(Number(row?.report_edited_clock_in || 0)) && !correctionInWins,
+        reportEditedBreak: Boolean(Number(row?.report_edited_break || 0)),
+        reportEditedResume: Boolean(Number(row?.report_edited_resume || 0)),
+        reportEditedClockOut: Boolean(Number(row?.report_edited_clock_out || 0)) && !correctionOutWins,
+        actualMinutes: reportPaidWorkMinutes(firstIn, lastOut, dateKey, dateParts(dateKey).getUTCDay()),
+        totalMinutes: Number(row?.total_minutes || 0),
+        lateMinutes: Number(row?.late_minutes || 0),
+        overtimeMinutes: Number(row?.overtime_minutes || 0),
+        earlyLeaveMinutes: Number(row?.early_leave_minutes || 0),
+      };
+    }
+
+    function legacyEmployeeAttendanceByDate(employeeId, dateKey) {
       const dayRows = attendance.filter(row => row.employee_id === employeeId && row.work_date === dateKey);
       const reportRows = dayRows.filter(isReportEditSource);
       const reportSegmentRows = reportRows.filter(row => row.source === "admin_report_edit");
@@ -1321,7 +1398,8 @@
 
     function visibleAttendance() {
       const q = searchInput.value.trim().toLowerCase();
-      const dayRows = attendance.filter(item => item.work_date === selectedAttendanceDate && !isReportFieldMarker(item));
+      const sourceRows = hasResolvedAttendanceDays ? attendanceDays : attendance.filter(item => !isReportFieldMarker(item));
+      const dayRows = sourceRows.filter(item => item.work_date === selectedAttendanceDate);
       return q ? dayRows.filter(item => searchable(item).includes(q)) : dayRows;
     }
 
@@ -1351,8 +1429,9 @@
 
     function renderMetrics() {
       const today = todayKey();
-      const todayRows = attendance.filter(row => row.work_date === today);
-      const clockedIn = todayRows.filter(row => row.clock_in_at && !row.clock_out_at);
+      const sourceRows = hasResolvedAttendanceDays ? attendanceDays : attendance.filter(row => !isReportFieldMarker(row));
+      const todayRows = sourceRows.filter(row => row.work_date === today);
+      const clockedIn = todayRows.filter(row => row.live_open_clock_in_at || (row.clock_in_at && !row.clock_out_at));
       const ot = todayRows.reduce((sum, row) => sum + Number(row.overtime_minutes || 0), 0);
 
       document.getElementById("employeeCount").textContent = employees.length;
@@ -1534,7 +1613,8 @@
         </tr>
       `).join("");
       attendanceEmpty.hidden = rows.length > 0;
-      const dayTotal = attendance.filter(row => row.work_date === selectedAttendanceDate).length;
+      const sourceRows = hasResolvedAttendanceDays ? attendanceDays : attendance.filter(row => !isReportFieldMarker(row));
+      const dayTotal = sourceRows.filter(row => row.work_date === selectedAttendanceDate).length;
       attendanceCountText.textContent = `${rows.length} shown / ${dayTotal} records on ${selectedAttendanceDate}`;
     }
 
@@ -1663,6 +1743,7 @@
               tfoot td { border-top: 2px solid #111; font-weight: 700; }
               tr.weekEnd td { border-bottom: 2px dashed #111; }
               .editableCell { min-width: 0; }
+              .reportLeavePicker { appearance: none; border: 0; background: transparent; color: #111; font: inherit; font-weight: 700; }
             </style>
           </head>
           <body>${report.outerHTML}<script>window.onload=()=>window.print();<\/script></body>
@@ -1675,7 +1756,10 @@
     }
 
     function reportRowText(row, field) {
-      return reportCell(row, field)?.textContent.trim() || "";
+      const cell = reportCell(row, field);
+      if (!cell) return "";
+      const picker = cell.querySelector("select");
+      return picker ? picker.value : cell.textContent.trim() || "";
     }
 
     function originalReportValue(employeeId, dateKey, field) {
@@ -1733,14 +1817,15 @@
       cells.forEach(cell => {
         const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
         if (isEditableReportField(cell.dataset.reportField)) {
-          const value = cell.textContent.trim();
+          const picker = cell.querySelector("select");
+          const value = picker ? picker.value : cell.textContent.trim();
           const original = originalReportValue(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
           if (value === original) {
             delete nextEdits[key];
           } else {
             nextEdits[key] = value;
           }
-          if (REPORT_TIME_FIELDS.has(cell.dataset.reportField)) {
+          if (REPORT_TIME_FIELDS.has(cell.dataset.reportField) || cell.dataset.reportField === "leaveTaken") {
             const row = cell.closest("tr");
             const dateKey = cell.dataset.reportDate;
             if (row && dateKey) reportRows.set(dateKey, row);
@@ -1761,9 +1846,21 @@
           out: reportRowText(row, "out"),
           editedFields: ["in", "break", "resume", "out"].filter(field => reportFieldShouldSave(employeeId, dateKey, field, nextEdits)),
         }));
+      const leaveRows = [...reportRows.entries()]
+        .filter(([dateKey]) => reportFieldShouldSave(employeeId, dateKey, "leaveTaken", nextEdits))
+        .map(([dateKey, row]) => ({
+          dateKey,
+          leaveTaken: reportRowText(row, "leaveTaken"),
+        }));
+      const cancelledLeaveRows = leaveRows.filter(row => !row.leaveTaken && originalReportValue(employeeId, row.dateKey, "leaveTaken"));
+      if (cancelledLeaveRows.length && !confirm(`Cancel approved leave for ${cancelledLeaveRows.length} day${cancelledLeaveRows.length === 1 ? "" : "s"}? Any Annual Leave balance will be returned.`)) {
+        return;
+      }
       const liveRows = timeRows;
+      if (liveRows.length || leaveRows.length) {
+        setStatus(monthlyReportStatus, "Saving report changes to employee history...", "");
+      }
       if (liveRows.length) {
-        setStatus(monthlyReportStatus, "Saving report times to employee history...", "");
         await api("/api/admin/live", {
           method: "POST",
           body: JSON.stringify({
@@ -1778,10 +1875,23 @@
           });
         });
       }
+      if (leaveRows.length) {
+        await api("/api/admin/live", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "save_report_leave_taken",
+            employeeId,
+            rows: leaveRows,
+          }),
+        });
+        leaveRows.forEach(row => {
+          delete nextEdits[reportEditKey(employeeId, row.dateKey, "leaveTaken")];
+        });
+      }
       monthlyReportEdits = nextEdits;
       saveReportEdits();
       editingReportEmployeeId = "";
-      if (liveRows.length) await loadLiveData(true, true);
+      if (liveRows.length || leaveRows.length) await loadLiveData(true, true);
       else renderMonthlyReport();
       setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
     }
@@ -1833,6 +1943,8 @@
         });
         employees = Array.isArray(data.employees) ? data.employees : [];
         attendance = Array.isArray(data.attendance) ? data.attendance : [];
+        hasResolvedAttendanceDays = Object.prototype.hasOwnProperty.call(data, "attendanceDays");
+        attendanceDays = Array.isArray(data.attendanceDays) ? data.attendanceDays : [];
         leaveRequests = Array.isArray(data.leaveRequests) ? data.leaveRequests : [];
         corrections = Array.isArray(data.corrections) ? data.corrections : [];
         renderAll();
@@ -2050,7 +2162,7 @@
       const saveButton = event.target.closest("[data-save-report]");
       if (saveButton) {
         saveEmployeeMonthlyReport(saveButton.dataset.saveReport).catch(error => {
-          setStatus(monthlyReportStatus, error.message || "Unable to save report times", "error");
+          setStatus(monthlyReportStatus, error.message || "Unable to save report changes", "error");
         });
         return;
       }
@@ -2071,6 +2183,11 @@
       if (!cell || !REPORT_TIME_FIELDS.has(cell.dataset.reportField)) return;
       refreshReportRow(cell.closest("tr"), true);
     }, true);
+    monthlyReportArea.addEventListener("change", event => {
+      const picker = event.target.closest("[data-report-leave-picker]");
+      if (!picker) return;
+      refreshReportRow(picker.closest("tr"), false);
+    });
     refreshButton.addEventListener("click", () => loadLiveData(true, true));
     window.addEventListener("focus", () => token() && loadLiveData());
     document.addEventListener("visibilitychange", () => {

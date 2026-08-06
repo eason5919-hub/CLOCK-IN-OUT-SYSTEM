@@ -604,19 +604,20 @@ th {
   display: inline-block;
   padding: 3px 7px;
   border-radius: 7px;
-  font-weight: 900;
 }
 
-.time-mark.edited {
-  color: #0f4f7c;
-  background: rgba(23, 105, 170, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(23, 105, 170, 0.35);
+.time-mark.edited,
+.history-time-cell.manualEdit {
+  background: #e9f2ff;
+  box-shadow: inset 0 0 0 1px #7aa7d9;
+  font-weight: 800;
 }
 
-.time-mark.corrected {
-  color: #715300;
-  background: rgba(199, 162, 76, 0.24);
-  box-shadow: inset 0 0 0 1px rgba(199, 162, 76, 0.55);
+.time-mark.corrected,
+.history-time-cell.correctedTime {
+  background: #fff2bf;
+  box-shadow: inset 0 0 0 1px #d2a310;
+  font-weight: 800;
 }
 
 .form {
@@ -754,6 +755,13 @@ th {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
+}
+
+.leave-card-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .leave-card strong,

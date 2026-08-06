@@ -45,7 +45,24 @@ test("weekday overtime uses grace for eligibility and scheduled end for counting
   assert.equal(calculateAttendanceTotals("2026-08-03T09:00:00+08:00", "2026-08-03T14:00:00+08:00", weekday).lateMinutes, 240);
   assert.equal(calculateAttendanceTotals("2026-08-03T17:57:00+08:00", "2026-08-03T17:57:00+08:00", weekday).totalMinutes, 0);
   assert.equal(calculateAttendanceTotals("2026-08-03T17:57:00+08:00", "2026-08-03T17:57:00+08:00", weekday).overtimeMinutes, 0);
+  assert.equal(calculateAttendanceTotals("2026-08-03T07:00:00+08:00", "2026-08-03T07:00:00+08:00", weekday).overtimeMinutes, 0);
   assert.equal(calculateAttendanceTotals("2026-08-03T17:57:00+08:00", "2026-08-03T17:57:00+08:00", weekday).lateMinutes, 480);
+  assert.deepEqual(
+    calculateAttendanceTotals("2026-08-04T19:31:00+08:00", "2026-08-04T19:32:00+08:00", weekday),
+    { totalMinutes: 1, lateMinutes: 480, earlyLeaveMinutes: 0, overtimeMinutes: 1 },
+  );
+  assert.equal(
+    calculateAttendanceTotals("2026-08-04T19:31:00+08:00", "2026-08-04T19:32:00+08:00", weekday, undefined, {
+      previousRegularMinutes: 480,
+    }).lateMinutes,
+    0,
+  );
+  assert.equal(
+    calculateAttendanceTotals("2026-08-04T19:31:00+08:00", "2026-08-04T19:32:00+08:00", weekday, undefined, {
+      previousRegularMinutes: 120,
+    }).lateMinutes,
+    360,
+  );
   assert.equal(calculateAttendanceTotals("2026-08-03T09:00:00+08:00", "2026-08-04T05:00:00+08:00", weekday).lateMinutes, 0);
   assert.equal(
     calculateAttendanceTotals("2026-08-03T12:00:00+08:00", "2026-08-03T18:00:00+08:00", weekday, undefined, {
@@ -89,9 +106,11 @@ test("saturday and sunday overtime rules are applied", async () => {
 
   assert.equal(calculateOvertimeMinutes("2026-08-08T09:00:00+08:00", "2026-08-08T13:15:00+08:00", saturday), 0);
   assert.equal(calculateOvertimeMinutes("2026-08-08T09:00:00+08:00", "2026-08-08T13:16:00+08:00", saturday), 16);
+  assert.equal(calculateAttendanceTotals("2026-08-08T19:31:00+08:00", "2026-08-08T19:32:00+08:00", saturday).lateMinutes, 240);
   assert.equal(calculateAttendanceTotals("2026-08-08T09:00:00+08:00", "2026-08-08T13:00:00+08:00", saturday).totalMinutes, 240);
   assert.equal(calculateOvertimeMinutes("2026-08-01T09:00:00+08:00", "2026-08-02T07:00:00+08:00", saturday), 1080);
   assert.equal(calculateOvertimeMinutes("2026-08-09T10:00:00+08:00", "2026-08-09T12:30:00+08:00", sunday), 150);
+  assert.equal(calculateOvertimeMinutes("2026-08-09T10:00:00+08:00", "2026-08-09T10:00:00+08:00", sunday), 0);
   assert.equal(calculateAttendanceTotals("2026-08-09T10:00:00+08:00", "2026-08-09T12:30:00+08:00", sunday).totalMinutes, 150);
 });
 

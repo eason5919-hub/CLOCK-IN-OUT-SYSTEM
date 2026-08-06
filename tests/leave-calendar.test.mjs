@@ -39,7 +39,7 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /monthCalendar\(records, leaveRequests, corrections, historyDate, currentMonthDate\)/);
   assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
   assert.match(script, /function employeeAttendanceHeader/);
-  assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>OT<\/th><th>GPS<\/th>/);
+  assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Break<\/th><th>Resume<\/th><th>Clock Out<\/th><th>OT<\/th><th>GPS<\/th>/);
   assert.match(script, /function adminAttendanceHeader/);
   assert.match(script, /<th>Employee<\/th><th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>Working Hours<\/th><th>OT<\/th><th>Status<\/th><th>GPS<\/th>/);
   assert.match(script, /formatReportOtMinutes\(employeeHistoryOvertimeMinutes\(row, display\)\)/);
@@ -72,7 +72,8 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /script\.js\?v=20260805-neutral-rescan/);
+  assert.match(indexHtml, /style\.css\?v=20260806-leave-cancel/);
+  assert.match(indexHtml, /script\.js\?v=20260806-leave-cancel/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
@@ -159,6 +160,12 @@ test("employee leave requests use one date-range calendar and limit closed cards
   assert.match(script, /Sundays are skipped\./);
   assert.match(script, /Saturday in this range will be submitted as half day\./);
   assert.match(script, /function visibleEmployeeLeaveRequests/);
+  assert.match(script, /\["cancelled", "rejected"\]\.includes/);
+  assert.match(script, /leaveRequestStatusLabel/);
+  assert.match(script, /if \(status === "cancelled" \|\| note\.includes\("cancelled by employee"\)\) return "Cancelled"/);
+  assert.match(script, /const cancelled = request\.status === "Cancelled"/);
+  assert.match(script, /class="leave-card-title"/);
+  assert.match(script, /cancelled \? statusBadge : ""/);
   assert.match(script, /closedShown <= 5/);
   assert.match(script, /\["cancelled", "rejected"\]/);
   assert.doesNotMatch(script, /cancelledRequests\.slice/);
@@ -171,7 +178,8 @@ test("employee metric cards use selected month report data", async () => {
 
   assert.match(script, /const monthRecords = recordsForMonth\(records, selectedEmployeeMonthKey\)/);
   assert.match(script, /present: formatDayCount\(calculatePresentDays\(monthRecords, visibleCorrections\)\)/);
-  assert.match(script, /late: monthRecords\.filter\(\(row\) => row\.lateMinutes > 0\)\.length/);
+  assert.match(script, /late: monthRecords\.filter\(\(row\) => employeeHistoryLateMinutes\(row, attendanceDisplayTimes\(row, visibleCorrections\)\) > 0\)\.length/);
+  assert.match(script, /function employeeHistoryLateMinutes/);
   assert.match(script, /ot: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ employeeHistoryOvertimeMinutes\(row, attendanceDisplayTimes\(row, visibleCorrections\)\), 0\)\)/);
   assert.match(script, /corrections: correctedReportBoxCount\(monthRecords, visibleCorrections\)/);
   assert.match(script, /function recordsForMonth/);

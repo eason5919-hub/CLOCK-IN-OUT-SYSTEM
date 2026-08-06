@@ -199,7 +199,7 @@ function employeeScreen() {
     : "Scan the warehouse QR to clock in.";
   const stats = {
     present: formatDayCount(calculatePresentDays(monthRecords, visibleCorrections)),
-    late: monthRecords.filter((row) => row.lateMinutes > 0).length,
+    late: monthRecords.filter((row) => employeeHistoryLateMinutes(row, attendanceDisplayTimes(row, visibleCorrections)) > 0).length,
     ot: formatMetricDuration(monthRecords.reduce((total, row) => total + employeeHistoryOvertimeMinutes(row, attendanceDisplayTimes(row, visibleCorrections)), 0)),
     corrections: correctedReportBoxCount(monthRecords, visibleCorrections),
   };
@@ -490,6 +490,8 @@ function mapLiveAttendance(row) {
     employeeName: state.currentUser?.name,
     date: row.work_date,
     clockIn: formatLiveTime(row.clock_in_at),
+    breakTime: formatLiveTime(row.break_at),
+    resumeTime: formatLiveTime(row.resume_at),
     clockOut: formatLiveTime(row.clock_out_at),
     workingMinutes: Number(row.total_minutes || 0),
     lateMinutes: Number(row.late_minutes || 0),
@@ -502,6 +504,8 @@ function mapLiveAttendance(row) {
     clockInUpdatedAt: row.clock_in_updated_at || row.updated_at || "",
     clockOutUpdatedAt: row.clock_out_updated_at || row.updated_at || "",
     reportEditedClockIn: Boolean(Number(row.report_edited_clock_in || 0)),
+    reportEditedBreak: Boolean(Number(row.report_edited_break || 0)),
+    reportEditedResume: Boolean(Number(row.report_edited_resume || 0)),
     reportEditedClockOut: Boolean(Number(row.report_edited_clock_out || 0)),
     hasReportMarks: Object.prototype.hasOwnProperty.call(row, "report_clock_in_mark") || Object.prototype.hasOwnProperty.call(row, "report_clock_out_mark"),
     clockInMark: row.report_clock_in_mark || "",
@@ -1145,6 +1149,8 @@ function attendanceDisplayTimes(row, corrections = []) {
   const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
   return {
     clockIn: correctedIn?.requestedClockIn || row.clockIn,
+    breakTime: row.breakTime || null,
+    resumeTime: row.resumeTime || null,
     clockOut: correctedOut?.requestedClockOut || row.clockOut,
   };
 }
@@ -1153,6 +1159,8 @@ function attendanceEditMarks(row, corrections = []) {
   if (row.hasReportMarks) {
     return {
       clockIn: row.clockInMark || "",
+      breakTime: row.reportEditedBreak && row.breakTime ? "edited" : "",
+      resumeTime: row.reportEditedResume && row.resumeTime ? "edited" : "",
       clockOut: row.clockOutMark || "",
     };
   }
@@ -1160,6 +1168,8 @@ function attendanceEditMarks(row, corrections = []) {
   const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
   return {
     clockIn: correctedIn ? "corrected" : row.reportEditedClockIn && row.clockIn ? "edited" : "",
+    breakTime: row.reportEditedBreak && row.breakTime ? "edited" : "",
+    resumeTime: row.reportEditedResume && row.resumeTime ? "edited" : "",
     clockOut: correctedOut ? "corrected" : row.reportEditedClockOut && row.clockOut ? "edited" : "",
   };
 }
@@ -1168,6 +1178,12 @@ function timeCell(value, mark = "") {
   const text = value || "-";
   if (!mark || text === "-") return escapeHtml(text);
   return `<span class="time-mark ${mark}">${escapeHtml(text)}</span>`;
+}
+
+function employeeHistoryTimeCell(value, mark = "") {
+  const text = value || "";
+  const markClass = mark === "corrected" ? " correctedTime" : mark === "edited" ? " manualEdit" : "";
+  return `<td class="history-time-cell${markClass}">${escapeHtml(text)}</td>`;
 }
 
 function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []) {
@@ -1194,7 +1210,7 @@ function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []
 }
 
 function employeeAttendanceHeader() {
-  return "<th>Date</th><th>Clock In</th><th>Clock Out</th><th>OT</th><th>GPS</th>";
+  return "<th>Date</th><th>Clock In</th><th>Break</th><th>Resume</th><th>Clock Out</th><th>OT</th><th>GPS</th>";
 }
 
 function adminAttendanceHeader() {
@@ -1202,7 +1218,7 @@ function adminAttendanceHeader() {
 }
 
 function employeeAttendanceRow(row, display, marks) {
-  return `<tr><td>${row.date}</td><td>${timeCell(display.clockIn, marks.clockIn)}</td><td>${timeCell(display.clockOut, marks.clockOut)}</td><td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td>${row.gps || "-"}</td></tr>`;
+  return `<tr><td>${row.date}</td>${employeeHistoryTimeCell(display.clockIn, marks.clockIn)}${employeeHistoryTimeCell(display.breakTime, marks.breakTime)}${employeeHistoryTimeCell(display.resumeTime, marks.resumeTime)}${employeeHistoryTimeCell(display.clockOut, marks.clockOut)}<td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td>${row.gps || "-"}</td></tr>`;
 }
 
 function adminAttendanceRow(row, display, marks) {
@@ -1300,7 +1316,9 @@ function visibleEmployeeLeaveRequests(requests) {
 
 function leaveRequestCard(request) {
   const canCancel = !["Rejected", "Cancelled"].includes(request.status) && request.date >= malaysiaDateKey(new Date());
-  return `<div class="list-item leave-card"><div><strong>${request.date} - ${request.type}</strong><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div><div class="actions"><span class="badge ${request.status.toLowerCase()}">${request.status}</span>${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div></div>`;
+  const cancelled = request.status === "Cancelled";
+  const statusBadge = `<span class="badge ${request.status.toLowerCase()}">${request.status}</span>`;
+  return `<div class="list-item leave-card"><div><div class="leave-card-title"><strong>${request.date} - ${request.type}</strong>${cancelled ? statusBadge : ""}</div><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div>${cancelled ? "" : `<div class="actions">${statusBadge}${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div>`}</div>`;
 }
 
 function leaveRangeField(value) {
@@ -1880,9 +1898,9 @@ function normalizePhone(value) {
 }
 
 function formatLiveTime(value) {
-  if (!value) return null;
+  if (!value) return "";
   const date = new Date(parseLiveTimestamp(value));
-  if (Number.isNaN(date.getTime())) return String(value).slice(11, 16);
+  if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
@@ -1973,15 +1991,36 @@ function employeeHistoryOvertimeMinutes(row, display) {
   const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
   const inMinutes = toMinutes(display.clockIn);
   let outMinutes = toMinutes(display.clockOut);
-  if (outMinutes <= inMinutes) outMinutes += 24 * 60;
+  if (outMinutes < inMinutes) outMinutes += 24 * 60;
+  if (outMinutes === inMinutes) return 0;
 
-  if (day === 0) return Math.max(0, outMinutes - inMinutes);
+  if (day === 0) {
+    if (display.breakTime && display.resumeTime) {
+      return clockRangeMinutes(display.clockIn, display.breakTime) + clockRangeMinutes(display.resumeTime, display.clockOut);
+    }
+    return Math.max(0, outMinutes - inMinutes);
+  }
 
   const scheduledEnd = day === 6 ? 13 * 60 : 18 * 60;
   const threshold = scheduledEnd + 16;
   const earlyOt = inMinutes < 8 * 60 ? 8 * 60 - inMinutes : 0;
   const lateOt = outMinutes >= threshold ? Math.max(0, outMinutes - Math.max(inMinutes, scheduledEnd)) : 0;
   return earlyOt + lateOt;
+}
+
+function employeeHistoryLateMinutes(row, display) {
+  if (!display.clockIn) return 0;
+  const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
+  if (day === 0) return 0;
+  const clockInMinutes = toMinutes(display.clockIn);
+  return clockInMinutes > 9 * 60 + 15 ? clockInMinutes - 9 * 60 : 0;
+}
+
+function clockRangeMinutes(start, end) {
+  const startMinutes = toMinutes(start);
+  let endMinutes = toMinutes(end);
+  if (endMinutes < startMinutes) endMinutes += 24 * 60;
+  return Math.max(0, endMinutes - startMinutes);
 }
 
 function toMinutes(value) {

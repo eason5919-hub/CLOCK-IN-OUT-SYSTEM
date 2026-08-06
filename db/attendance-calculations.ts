@@ -34,7 +34,15 @@ export function calculateAttendanceTotals(
     timeZone,
     options.previousRegularMinutes ?? 0,
   );
-  const lateMinutes = calculateShortMinutes(clockInAt, clockOutAt, schedule, timeZone, totalMinutes);
+  const lateMinutes = calculateShortMinutes(
+    clockInAt,
+    clockOutAt,
+    schedule,
+    timeZone,
+    totalMinutes,
+    overtimeMinutes,
+    options.previousRegularMinutes ?? 0,
+  );
 
   return { totalMinutes, lateMinutes, earlyLeaveMinutes, overtimeMinutes };
 }
@@ -45,20 +53,22 @@ export function calculateOvertimeMinutes(
   schedule?: AttendanceSchedule | null,
   timeZone = DEFAULT_TIME_ZONE,
 ) {
+  const clockInMs = Date.parse(clockInAt);
+  const clockOutMs = Date.parse(clockOutAt);
+  if (Number.isNaN(clockInMs) || Number.isNaN(clockOutMs) || clockOutMs <= clockInMs) return 0;
   if (!schedule) return 0;
   if (schedule.is_off_day) {
-    return Math.max(0, Math.round((Date.parse(clockOutAt) - Date.parse(clockInAt)) / 60000));
+    return Math.max(0, Math.round((clockOutMs - clockInMs) / 60000));
   }
   if (!schedule.end_time || !schedule.overtime_starts_at) return 0;
 
   const workDate = localDateTimeParts(clockInAt, timeZone);
   const scheduledEndMs = localDateAndTimeToUtcMs(workDate, schedule.end_time, timeZone);
   const overtimeThresholdMs = localDateAndTimeToUtcMs(workDate, schedule.overtime_starts_at, timeZone);
-  const clockOutMs = Date.parse(clockOutAt);
   const earlyOvertimeMinutes = calculateEarlyOvertimeMinutes(clockInAt, schedule, timeZone);
   const lateOvertimeMinutes =
     clockOutMs >= overtimeThresholdMs
-      ? Math.max(0, Math.round((clockOutMs - Math.max(Date.parse(clockInAt), scheduledEndMs)) / 60000))
+      ? Math.max(0, Math.round((clockOutMs - Math.max(clockInMs, scheduledEndMs)) / 60000))
       : 0;
 
   return earlyOvertimeMinutes + lateOvertimeMinutes;
@@ -138,6 +148,8 @@ function calculateShortMinutes(
   schedule: AttendanceSchedule | null | undefined,
   timeZone: string,
   totalMinutes: number,
+  overtimeMinutes: number,
+  previousRegularMinutes: number,
 ) {
   if (!schedule?.start_time || !schedule.end_time || schedule.is_off_day) return 0;
 
@@ -152,12 +164,15 @@ function calculateShortMinutes(
   const scheduledEndMs = localDateAndTimeToUtcMs(workDate, schedule.end_time, timeZone);
   const clockInMs = Date.parse(clockInAt);
   const clockOutMs = Date.parse(clockOutAt);
-  if (Number.isNaN(clockInMs) || Number.isNaN(clockOutMs) || clockInMs >= scheduledEndMs) return 0;
+  if (Number.isNaN(clockInMs) || Number.isNaN(clockOutMs)) return 0;
 
   const requiredMinutes = calculateDailyRegularCap(schedule, clockInAt, timeZone) ?? 0;
   const earlyOutShort = clockOutMs < scheduledEndMs ? Math.max(0, Math.round((scheduledEndMs - clockOutMs) / 60000)) : 0;
-  const workShort = Math.max(0, requiredMinutes - totalMinutes);
-  return Math.min(requiredMinutes, Math.max(lateShort, earlyOutShort, workShort));
+  const currentRegularMinutes = Math.max(0, totalMinutes - overtimeMinutes);
+  const completedRegularMinutes = Math.min(requiredMinutes, Math.max(0, previousRegularMinutes) + currentRegularMinutes);
+  const workShort = Math.max(0, requiredMinutes - completedRegularMinutes);
+  const effectiveLateShort = previousRegularMinutes > 0 ? 0 : lateShort;
+  return Math.min(requiredMinutes, Math.max(effectiveLateShort, earlyOutShort, workShort));
 }
 
 function calculateRegularWindowMinutes(

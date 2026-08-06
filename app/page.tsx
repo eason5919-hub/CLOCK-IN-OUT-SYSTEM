@@ -346,13 +346,13 @@ function EmployeeApp({
 }) {
   const records = useMemo(() => data?.attendance ?? [], [data?.attendance]);
   const corrections = useMemo(() => data?.corrections ?? [], [data?.corrections]);
-  const openRecord = records.find((record) => record.clock_in_at && !record.clock_out_at && isOpenRecordStillActive(String(record.work_date ?? "")));
+  const openRecord = records.find((record) => record.live_open_clock_in_at && isOpenRecordStillActive(String(record.work_date ?? "")));
   const nextAction = openRecord ? "clock_out" : "clock_in";
   const nextLabel = openRecord ? "Clock out" : "Clock in";
   const stats = useMemo(
     () => ({
       presentDays: records.filter((record) => record.status !== "absent").length,
-      lateDays: records.filter((record) => Number(record.late_minutes ?? 0) > 0).length,
+      lateDays: records.filter((record) => employeeLateMinutes(record) > 0).length,
       otMinutes: records.reduce((total, record) => total + Number(record.overtime_minutes ?? 0), 0),
       correctionCount: corrections.length,
     }),
@@ -396,7 +396,7 @@ function EmployeeApp({
                 <i />
               </div>
             </div>
-            <p>{clockState === "idle" && openRecord ? `Clocked in at ${formatTime(openRecord.clock_in_at)}. Scan QR to clock out.` : gpsMessage}</p>
+            <p>{clockState === "idle" && openRecord ? `Clocked in at ${formatTime(openRecord.live_open_clock_in_at)}. Scan QR to clock out.` : gpsMessage}</p>
           </div>
 
           <div className="clock-actions single">
@@ -629,6 +629,8 @@ function AttendanceTable({
             {!employeeOnly ? <th>Employee</th> : null}
             <th>Date</th>
             <th>Clock In</th>
+            <th>Break</th>
+            <th>Resume</th>
             <th>Clock Out</th>
             <th>Working Hours</th>
             <th>OT</th>
@@ -642,6 +644,8 @@ function AttendanceTable({
               {!employeeOnly ? <td>{String(record.full_name ?? record.employee_code ?? "-")}</td> : null}
               <td>{String(record.work_date ?? "-")}</td>
               <td>{formatTime(record.clock_in_at)}</td>
+              <td>{formatTime(record.break_at)}</td>
+              <td>{formatTime(record.resume_at)}</td>
               <td>{formatTime(record.clock_out_at)}</td>
               <td>{formatMinutes(Number(record.total_minutes ?? 0))}</td>
               <td>{formatOtMinutes(Number(record.overtime_minutes ?? 0))}</td>
@@ -747,7 +751,23 @@ function formatOtMinutes(minutes: number) {
 }
 
 function localDateTimeToIso(date: string, time: string) {
-  return new Date(`${date}T${time}:00`).toISOString();
+  return new Date(`${date}T${time}:00+08:00`).toISOString();
+}
+
+function employeeLateMinutes(record: Record<string, string | number | null>) {
+  const clockIn = String(record.clock_in_at || "");
+  const workDate = String(record.work_date || "");
+  if (!clockIn || !workDate) return 0;
+  const day = new Date(`${workDate}T12:00:00+08:00`).getUTCDay();
+  if (day === 0) return 0;
+  const time = new Date(clockIn).toLocaleTimeString("en-GB", {
+    timeZone: "Asia/Kuala_Lumpur",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const minutes = toMinutes(time);
+  return minutes > 9 * 60 + 15 ? minutes - 9 * 60 : 0;
 }
 
 function isOpenRecordStillActive(workDate: string) {

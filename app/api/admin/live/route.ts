@@ -1,5 +1,6 @@
 import { ensureDatabase, getD1, isAdminSession } from "../../../../db/runtime";
 import { calculateAttendanceTotals, localDayOfWeek } from "../../../../db/attendance-calculations";
+import { reconcileAttendanceRows, type AttendanceRow } from "../../../../db/attendance-reconciliation";
 
 type AdminAction =
   | { action: "load_live_data"; hrToken?: string; refresh?: number }
@@ -33,6 +34,11 @@ type AdminAction =
       action: "save_report_attendance_times";
       employeeId?: string;
       rows?: Array<{ dateKey?: string; in?: string; break?: string; resume?: string; out?: string; editedFields?: string[] }>;
+    }
+  | {
+      action: "save_report_leave_taken";
+      employeeId?: string;
+      rows?: Array<{ dateKey?: string; leaveTaken?: string }>;
     }
   | { action: "restore_report_attendance_times"; employeeId?: string; monthKey?: string };
 
@@ -91,6 +97,9 @@ export async function POST(request: Request) {
     }
     if (payload.action === "save_report_attendance_times") {
       return saveReportAttendanceTimes(db, request, payload, auth.userId);
+    }
+    if (payload.action === "save_report_leave_taken") {
+      return saveReportLeaveTaken(db, request, payload, auth.userId);
     }
     if (payload.action === "restore_report_attendance_times") {
       return restoreReportAttendanceTimes(db, request, payload, auth.userId);
@@ -159,9 +168,12 @@ async function liveData(db: D1Database, request: Request) {
     db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 30").all(),
   ]);
 
+  const attendanceRows = (attendance.results ?? []) as AttendanceRow[];
+
   return json(request, {
     employees: employees.results ?? [],
-    attendance: attendance.results ?? [],
+    attendance: attendanceRows,
+    attendanceDays: reconcileAttendanceRows(attendanceRows),
     corrections: corrections.results ?? [],
     leaveRequests: leaveRequests.results ?? [],
     auditLogs: auditLogs.results ?? [],
@@ -209,7 +221,7 @@ async function addEmployee(db: D1Database, request: Request, payload: Extract<Ad
   await db.batch([
     db
       .prepare(
-        "INSERT INTO employees (id, employee_code, full_name, department_id, position, phone, email, leave_entitlement_days, status) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'active')",
+        "INSERT INTO employees (id, employee_code, full_name, department_id, position, phone, email, leave_entitlement_days, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')",
       )
       .bind(employeeId, code, name, departmentId, payload.position?.trim() || "Warehouse Associate", phone, email, leaveEntitlementDays),
     db
@@ -376,6 +388,153 @@ async function reviewLeaveRequest(
   }
 
   return json(request, { ok: true });
+}
+
+type ReportLeaveSelection = {
+  leaveType: "leave" | "mc";
+  duration: "full_day" | "half_day";
+  label: "ANNUAL LEAVE" | "HALF ANNUAL LEAVE" | "MC";
+};
+
+async function saveReportLeaveTaken(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "save_report_leave_taken" }>,
+  adminUserId: string,
+) {
+  if (!payload.employeeId || !Array.isArray(payload.rows)) {
+    return json(request, { error: "Employee and Leave Taken rows are required." }, 400);
+  }
+
+  const employee = await db
+    .prepare("SELECT id FROM employees WHERE id = ? AND status <> 'deleted'")
+    .bind(payload.employeeId)
+    .first<{ id: string }>();
+  if (!employee) return json(request, { error: "Employee was not found." }, 404);
+
+  const rows = payload.rows.map((row) => ({
+    dateKey: String(row.dateKey || "").trim(),
+    selection: reportLeaveSelection(row.leaveTaken),
+  }));
+  if (rows.some((row) => !/^\d{4}-\d{2}-\d{2}$/.test(row.dateKey) || row.selection === undefined)) {
+    return json(request, { error: "Leave Taken must be blank, Annual Leave, Half Annual Leave, or MC." }, 400);
+  }
+
+  for (const row of rows) {
+    const selection = row.selection;
+    const active = await db
+      .prepare(
+        `SELECT * FROM leave_requests
+         WHERE employee_id = ? AND leave_date = ? AND status IN ('approved', 'pending')
+         ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, created_at DESC`,
+      )
+      .bind(payload.employeeId, row.dateKey)
+      .all<AttendanceRow>();
+    const activeRequests = active.results || [];
+
+    if (!selection) {
+      for (const leaveRequest of activeRequests) {
+        await cancelReportLeaveRequest(db, leaveRequest, adminUserId);
+      }
+      continue;
+    }
+
+    const primary = activeRequests[0];
+    const requestId = String(primary?.id || crypto.randomUUID());
+    if (primary) {
+      await db
+        .prepare(
+          `UPDATE leave_requests
+           SET leave_type = ?, duration = ?, status = 'approved',
+               reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
+               admin_note = 'Set by admin from monthly report'
+           WHERE id = ?`,
+        )
+        .bind(selection.leaveType, selection.duration, adminUserId, requestId)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO leave_requests
+           (id, employee_id, leave_type, leave_date, duration, reason, status,
+            reviewed_by_user_id, reviewed_at, admin_note)
+           VALUES (?, ?, ?, ?, ?, 'Added by admin from monthly report', 'approved', ?, CURRENT_TIMESTAMP,
+                   'Set by admin from monthly report')`,
+        )
+        .bind(requestId, payload.employeeId, selection.leaveType, row.dateKey, selection.duration, adminUserId)
+        .run();
+    }
+
+    for (const duplicate of activeRequests.slice(1)) {
+      await cancelReportLeaveRequest(db, duplicate, adminUserId);
+    }
+    await writeReportLeaveAudit(db, adminUserId, requestId, primary || null, {
+      employeeId: payload.employeeId,
+      leaveDate: row.dateKey,
+      leaveType: selection.leaveType,
+      duration: selection.duration,
+      status: "approved",
+      label: selection.label,
+    });
+    if (selection.duration === "half_day") {
+      await applyHalfDayLeaveAttendanceRule(db, requestId);
+    }
+  }
+
+  return json(request, { ok: true });
+}
+
+function reportLeaveSelection(value: unknown): ReportLeaveSelection | null | undefined {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (!normalized || normalized === "NONE") return null;
+  if (normalized === "ANNUAL LEAVE") {
+    return { leaveType: "leave", duration: "full_day", label: "ANNUAL LEAVE" };
+  }
+  if (normalized === "HALF ANNUAL LEAVE") {
+    return { leaveType: "leave", duration: "half_day", label: "HALF ANNUAL LEAVE" };
+  }
+  if (normalized === "MC") {
+    return { leaveType: "mc", duration: "full_day", label: "MC" };
+  }
+  return undefined;
+}
+
+async function cancelReportLeaveRequest(db: D1Database, leaveRequest: AttendanceRow, adminUserId: string) {
+  const requestId = String(leaveRequest.id || "");
+  if (!requestId) return;
+  await db
+    .prepare(
+      `UPDATE leave_requests
+       SET status = 'cancelled', reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
+           admin_note = 'Cancelled by admin from monthly report'
+       WHERE id = ?`,
+    )
+    .bind(adminUserId, requestId)
+    .run();
+  await writeReportLeaveAudit(db, adminUserId, requestId, leaveRequest, { status: "cancelled" });
+}
+
+async function writeReportLeaveAudit(
+  db: D1Database,
+  adminUserId: string,
+  requestId: string,
+  before: AttendanceRow | null,
+  after: Record<string, unknown>,
+) {
+  await db
+    .prepare(
+      "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(
+      crypto.randomUUID(),
+      adminUserId,
+      "monthly_report_leave_edit",
+      "leave_request",
+      requestId,
+      before ? JSON.stringify(before) : null,
+      JSON.stringify(after),
+    )
+    .run();
 }
 
 async function reviewCorrectionRequest(
