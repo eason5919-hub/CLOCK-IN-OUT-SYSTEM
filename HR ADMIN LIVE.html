@@ -315,6 +315,17 @@
       white-space: nowrap;
     }
 
+    .reportTable [data-report-field="in"],
+    .reportTable [data-report-field="out"],
+    .reportTable [data-report-field="work"],
+    .reportTable [data-report-field="overtime"],
+    .reportTable [data-report-field="short"],
+    .reportTable [data-report-total="work"],
+    .reportTable [data-report-total="overtime"],
+    .reportTable [data-report-total="short"] {
+      text-align: center;
+    }
+
     .reportTable tfoot td {
       border-top: 2px solid var(--green-dark);
       background: #fff;
@@ -1914,6 +1925,7 @@
               table { width: 100%; border-collapse: collapse; font-size: 9px; }
               th, td { border: 1px dotted #777; padding: 3px 4px; text-align: left; vertical-align: middle; }
               th { border-bottom: 2px solid #111; text-align: center; white-space: nowrap; }
+              .reportTable [data-report-field="in"], .reportTable [data-report-field="out"], .reportTable [data-report-field="work"], .reportTable [data-report-field="overtime"], .reportTable [data-report-field="short"], .reportTable [data-report-total="work"], .reportTable [data-report-total="overtime"], .reportTable [data-report-total="short"] { text-align: center; }
               tfoot td { border-top: 2px solid #111; font-weight: 700; }
               tr.weekEnd td { border-bottom: 2px dashed #111; }
               .editableCell { min-width: 0; }
