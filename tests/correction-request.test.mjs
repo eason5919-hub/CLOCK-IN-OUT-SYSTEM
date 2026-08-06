@@ -130,7 +130,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminRoute, /admin_report_edit_out/);
   assert.match(adminRoute, /function reportTimeSegments/);
   assert.match(adminRoute, /monthly_report_time_edit/);
-  assert.match(adminRoute, /monthly_report_time_restore/);
+  assert.doesNotMatch(adminRoute, /restore_report_attendance_times|monthly_report_time_restore|restoreReportAttendanceTimes/);
   assert.match(adminReviewSection, /SET attendance_id = \?, status = \?/);
   assert.match(adminRoute, /action: "load_live_data"/);
   assert.match(adminRoute, /requireAdmin\(db, request, "hrToken" in payload \? payload\.hrToken : undefined\)/);
@@ -233,7 +233,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /delete nextEdits\[reportEditKey\(employeeId, row\.dateKey, field\)\]/);
   assert.doesNotMatch(adminHtml, /const restoreRows = \[\.\.\.reportRows\.keys\(\)\]/);
   assert.match(adminHtml, /action: "save_report_attendance_times"/);
-  assert.match(adminHtml, /action: "restore_report_attendance_times"/);
+  assert.doesNotMatch(adminHtml, /restore_report_attendance_times|restoreEmployeeMonthlyReport|data-restore-report/);
   assert.match(adminHtml, /data-cancel-report/);
   assert.match(adminHtml, /Cancelled edit \|/);
   assert.match(adminHtml, /row\.source === "admin_report_edit" \|\| row\.source === "admin_report_edit_resume"/);
@@ -272,9 +272,11 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /refreshReportRow\(cell\.closest\("tr"\), true\)/);
   assert.match(adminHtml, /function originalReportValue/);
   assert.match(adminHtml, /function reportFieldShouldSave/);
-  assert.match(adminHtml, /reportFieldWasEdited\(employeeId, dateKey, field\)/);
-  assert.match(adminHtml, /return reportFieldShouldSave\(employeeId, dateKey, field, nextEdits\)/);
-  assert.match(adminHtml, /editedFields: \["in", "break", "resume", "out"\]\.filter\(field => reportFieldShouldSave\(employeeId, dateKey, field, nextEdits\)\)/);
+  assert.match(adminHtml, /return reportEditDraftKeys\.has\(reportEditKey\(employeeId, dateKey, field\)\)/);
+  assert.doesNotMatch(adminHtml, /function reportFieldShouldSave[\s\S]{0,200}reportFieldWasEdited/);
+  assert.match(adminHtml, /return reportFieldShouldSave\(employeeId, dateKey, field\)/);
+  assert.match(adminHtml, /editedFields: \["in", "break", "resume", "out"\]\.filter\(field => reportFieldShouldSave\(employeeId, dateKey, field\)\)/);
+  assert.match(adminHtml, /reportEditDraftKeys\.add\(reportEditKey\(cell\.dataset\.reportEmployee, cell\.dataset\.reportDate, cell\.dataset\.reportField\)\)/);
   assert.match(adminHtml, /const regularSpan = Math\.max\(0, Math\.round/);
   assert.match(adminHtml, /function regularWindowStartMs/);
   assert.match(adminHtml, /clockInMs >= earlyStartMs && clockInMs <= graceEndMs \? startMs : Math\.max\(clockInMs, earlyStartMs\)/);

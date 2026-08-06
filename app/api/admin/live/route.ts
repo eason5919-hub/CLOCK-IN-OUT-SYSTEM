@@ -39,8 +39,7 @@ type AdminAction =
       action: "save_report_leave_taken";
       employeeId?: string;
       rows?: Array<{ dateKey?: string; leaveTaken?: string }>;
-    }
-  | { action: "restore_report_attendance_times"; employeeId?: string; monthKey?: string };
+    };
 
 export async function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -101,10 +100,6 @@ export async function POST(request: Request) {
     if (payload.action === "save_report_leave_taken") {
       return saveReportLeaveTaken(db, request, payload, auth.userId);
     }
-    if (payload.action === "restore_report_attendance_times") {
-      return restoreReportAttendanceTimes(db, request, payload, auth.userId);
-    }
-
     return json(request, { error: "Unknown admin action." }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
@@ -830,45 +825,6 @@ async function saveReportAttendanceTimes(
       )
       .run();
   }
-
-  return json(request, { ok: true });
-}
-
-async function restoreReportAttendanceTimes(
-  db: D1Database,
-  request: Request,
-  payload: Extract<AdminAction, { action: "restore_report_attendance_times" }>,
-  adminUserId: string,
-) {
-  if (!payload.employeeId || !payload.monthKey || !/^\d{4}-\d{2}$/.test(payload.monthKey)) {
-    return json(request, { error: "Employee and report month are required." }, 400);
-  }
-
-  await db
-    .prepare(
-      `UPDATE attendance
-       SET source = 'admin_report_edit_archived', updated_at = CURRENT_TIMESTAMP
-       WHERE employee_id = ?
-         AND work_date LIKE ?
-         AND source IN ('admin_report_edit', 'admin_report_edit_resume', 'admin_report_edit_in', 'admin_report_edit_out')`,
-    )
-    .bind(payload.employeeId, `${payload.monthKey}-%`)
-    .run();
-
-  await db
-    .prepare(
-      "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(
-      crypto.randomUUID(),
-      adminUserId,
-      "monthly_report_time_restore",
-      "attendance",
-      payload.employeeId,
-      null,
-      JSON.stringify({ monthKey: payload.monthKey }),
-    )
-    .run();
 
   return json(request, { ok: true });
 }

@@ -878,6 +878,7 @@
     let selectedReportEmployeeId = "";
     let monthlyReportEdits = migrateReportEdits(loadReportEdits());
     let editingReportEmployeeId = "";
+    const reportEditDraftKeys = new Set();
 
     emailInput.value = "d1_racing@yahoo.com";
     attendanceDateInput.value = selectedAttendanceDate;
@@ -1849,7 +1850,6 @@
             </div>
             <div class="actions">
               <button class="secondary" type="button" data-print-report="${escapeHtml(employee.id)}">Print A4</button>
-              <button class="secondary" type="button" data-restore-report="${escapeHtml(employee.id)}">Restore</button>
               <button class="${isEditing ? "blue" : "secondary"}" type="button" ${isEditing ? `data-save-report="${escapeHtml(employee.id)}"` : `data-edit-report="${escapeHtml(employee.id)}"`}>${isEditing ? "Save" : "Edit"}</button>
               ${isEditing ? `<button class="secondary" type="button" data-cancel-report="${escapeHtml(employee.id)}">Cancel</button>` : ""}
             </div>
@@ -1950,8 +1950,8 @@
       return "";
     }
 
-    function reportFieldShouldSave(employeeId, dateKey, field, edits) {
-      return Object.prototype.hasOwnProperty.call(edits, reportEditKey(employeeId, dateKey, field)) || reportFieldWasEdited(employeeId, dateKey, field);
+    function reportFieldShouldSave(employeeId, dateKey, field) {
+      return reportEditDraftKeys.has(reportEditKey(employeeId, dateKey, field));
     }
 
     function refreshReportRow(row, normalizeTimes = false) {
@@ -1997,7 +1997,7 @@
       const reportRows = new Map();
       cells.forEach(cell => {
         const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
-        if (isEditableReportField(cell.dataset.reportField)) {
+        if (isEditableReportField(cell.dataset.reportField) && reportEditDraftKeys.has(key)) {
           const picker = cell.querySelector("select");
           const timeInput = cell.querySelector("[data-report-time-input]");
           const value = picker ? picker.value : timeInput ? timeInput.value.trim() : cell.textContent.trim();
@@ -2012,13 +2012,13 @@
             const dateKey = cell.dataset.reportDate;
             if (row && dateKey) reportRows.set(dateKey, row);
           }
-        } else {
+        } else if (!isEditableReportField(cell.dataset.reportField)) {
           delete nextEdits[key];
         }
       });
       const timeRows = [...reportRows.entries()]
         .filter(([dateKey]) => ["in", "break", "resume", "out"].some(field => {
-          return reportFieldShouldSave(employeeId, dateKey, field, nextEdits);
+          return reportFieldShouldSave(employeeId, dateKey, field);
         }))
         .map(([dateKey, row]) => ({
           dateKey,
@@ -2026,10 +2026,10 @@
           break: reportRowText(row, "break"),
           resume: reportRowText(row, "resume"),
           out: reportRowText(row, "out"),
-          editedFields: ["in", "break", "resume", "out"].filter(field => reportFieldShouldSave(employeeId, dateKey, field, nextEdits)),
+          editedFields: ["in", "break", "resume", "out"].filter(field => reportFieldShouldSave(employeeId, dateKey, field)),
         }));
       const leaveRows = [...reportRows.entries()]
-        .filter(([dateKey]) => reportFieldShouldSave(employeeId, dateKey, "leaveTaken", nextEdits))
+        .filter(([dateKey]) => reportFieldShouldSave(employeeId, dateKey, "leaveTaken"))
         .map(([dateKey, row]) => ({
           dateKey,
           leaveTaken: reportRowText(row, "leaveTaken"),
@@ -2073,28 +2073,10 @@
       monthlyReportEdits = nextEdits;
       saveReportEdits();
       editingReportEmployeeId = "";
+      reportEditDraftKeys.clear();
       if (liveRows.length || leaveRows.length) await loadLiveData(true, true);
       else renderMonthlyReport();
       setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
-    }
-
-    async function restoreEmployeeMonthlyReport(employeeId) {
-      const prefix = `${selectedReportMonth}|${employeeId}|`;
-      Object.keys(monthlyReportEdits).forEach(key => {
-        if (key.startsWith(prefix)) delete monthlyReportEdits[key];
-      });
-      await api("/api/admin/live", {
-        method: "POST",
-        body: JSON.stringify({
-          action: "restore_report_attendance_times",
-          employeeId,
-          monthKey: selectedReportMonth,
-        }),
-      });
-      saveReportEdits();
-      if (editingReportEmployeeId === employeeId) editingReportEmployeeId = "";
-      await loadLiveData(true, true);
-      setStatus(monthlyReportStatus, `Restored original data | ${monthLabel(selectedReportMonth)}`, "ok");
     }
 
     function renderAll() {
@@ -2309,6 +2291,7 @@
     });
     closeMonthlyReportButton.addEventListener("click", () => {
       editingReportEmployeeId = "";
+      reportEditDraftKeys.clear();
       monthlyReportPanel.classList.remove("monthlyReportFullscreen");
       document.body.classList.remove("monthlyReportOpen");
       monthlyReportArea.classList.remove("singleEmployeeReport");
@@ -2319,26 +2302,19 @@
     reportMonthSelect.addEventListener("change", () => {
       selectedReportMonth = reportMonthSelect.value || selectedReportMonth;
       editingReportEmployeeId = "";
+      reportEditDraftKeys.clear();
       if (!monthlyReportArea.hidden) renderMonthlyReport();
     });
     reportEmployeeSelect.addEventListener("change", () => {
       selectedReportEmployeeId = reportEmployeeSelect.value || selectedReportEmployeeId;
       editingReportEmployeeId = "";
+      reportEditDraftKeys.clear();
       if (!monthlyReportArea.hidden) renderMonthlyReport();
     });
     monthlyReportArea.addEventListener("click", event => {
       const printButton = event.target.closest("[data-print-report]");
       if (printButton) {
         printEmployeeMonthlyReport(printButton.dataset.printReport);
-        return;
-      }
-      const restoreButton = event.target.closest("[data-restore-report]");
-      if (restoreButton) {
-        const ok = confirm("Restore this employee monthly report to original clock in/out, leave, and remark data?");
-        if (!ok) return;
-        restoreEmployeeMonthlyReport(restoreButton.dataset.restoreReport).catch(error => {
-          setStatus(monthlyReportStatus, error.message || "Unable to restore report", "error");
-        });
         return;
       }
       const editButton = event.target.closest("[data-edit-report]");
@@ -2348,6 +2324,7 @@
           if (!ok) return;
         }
         editingReportEmployeeId = editButton.dataset.editReport;
+        reportEditDraftKeys.clear();
         renderMonthlyReport();
         setStatus(monthlyReportStatus, "Editing. Click Save when finished.", "ok");
         return;
@@ -2362,6 +2339,7 @@
       const cancelButton = event.target.closest("[data-cancel-report]");
       if (cancelButton) {
         editingReportEmployeeId = "";
+        reportEditDraftKeys.clear();
         renderMonthlyReport();
         setStatus(monthlyReportStatus, `Cancelled edit | ${monthLabel(selectedReportMonth)}`, "");
       }
@@ -2369,6 +2347,7 @@
     monthlyReportArea.addEventListener("input", event => {
       const cell = event.target.closest("[data-report-field]");
       if (!cell || !REPORT_TIME_FIELDS.has(cell.dataset.reportField)) return;
+      reportEditDraftKeys.add(reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField));
       refreshReportRow(cell.closest("tr"), false);
     });
     monthlyReportArea.addEventListener("blur", event => {
@@ -2379,6 +2358,8 @@
     monthlyReportArea.addEventListener("change", event => {
       const picker = event.target.closest("[data-report-leave-picker]");
       if (!picker) return;
+      const cell = picker.closest("[data-report-field]");
+      if (cell) reportEditDraftKeys.add(reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField));
       refreshReportRow(picker.closest("tr"), false);
     });
     refreshButton.addEventListener("click", () => loadLiveData(true, true));
