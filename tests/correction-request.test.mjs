@@ -204,7 +204,11 @@ test("correction approvals record the decision without changing attendance", asy
   assert.match(adminHtml, /\.reportTable \{\s+width: 100%;\s+min-width: 0;\s+table-layout: fixed;/);
   assert.match(adminHtml, /\.employeeReport \.tableWrap \{\s+overflow-x: hidden;/);
   assert.match(adminHtml, /#monthlyReportPanel\.monthlyReportFullscreen \{[\s\S]*position: fixed;[\s\S]*inset: 0;/);
-  assert.match(adminHtml, /\.monthlyReportFullscreen \.reportTable \{\s+height: 100%;\s+font-size: 9px;/);
+  assert.match(adminHtml, /\.monthlyReportFullscreen \.reportTable \{\s+height: 100%;\s+font-size: 12px;/);
+  assert.match(adminHtml, /<select id="reportEmployeeSelect"><\/select>/);
+  assert.match(adminHtml, /function setupReportEmployeeOptions/);
+  assert.match(adminHtml, /const employeeRows = selectedIndex >= 0 \? \[activeEmployees\[selectedIndex\]\] : \[\]/);
+  assert.match(adminHtml, /reportEmployeeSelect\.addEventListener\("change"/);
   assert.match(adminHtml, /monthlyReportArea\.classList\.toggle\("singleEmployeeReport", employeeRows\.length === 1\)/);
   assert.match(adminHtml, /document\.body\.classList\.add\("monthlyReportOpen"\)/);
   assert.match(adminHtml, /<colgroup>[\s\S]*<col style="width:12%">[\s\S]*<col style="width:20\.5%">[\s\S]*<\/colgroup>/);

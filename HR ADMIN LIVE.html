@@ -401,8 +401,8 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      min-width: 270px;
-      font-size: 11px;
+      min-width: 260px;
+      font-size: 12px;
     }
 
     .monthlyReportFullscreen .reportControls select,
@@ -419,39 +419,38 @@
     }
 
     .monthlyReportFullscreen .employeeReportHead {
-      min-height: 28px;
-      padding: 2px 6px;
-      font-size: 10px;
+      min-height: 32px;
+      padding: 3px 8px;
+      font-size: 12px;
     }
 
     .monthlyReportFullscreen .employeeReportHead button {
       min-height: 24px;
-      height: 24px;
-      padding: 0 7px;
-      font-size: 10px;
+      height: 26px;
+      padding: 0 8px;
+      font-size: 11px;
     }
 
     .monthlyReportFullscreen .reportTable {
       height: 100%;
-      font-size: 9px;
-      line-height: 1;
+      font-size: 12px;
+      line-height: 1.15;
     }
 
     .monthlyReportFullscreen .reportTable th,
     .monthlyReportFullscreen .reportTable td {
-      height: 14px;
-      padding: 1px 2px;
+      padding: 1px 4px;
     }
 
     .monthlyReportFullscreen .editableCell {
-      min-height: 12px;
+      min-height: 16px;
     }
 
     .monthlyReportFullscreen .reportLeavePicker:disabled {
       min-height: 0;
-      height: 12px;
+      height: 16px;
       padding: 0 2px;
-      line-height: 1;
+      line-height: 1.15;
     }
 
     .monthlyReportFullscreen .monthlyReportArea.singleEmployeeReport {
@@ -662,6 +661,9 @@
         <label>Month / Year
           <select id="reportMonthSelect"></select>
         </label>
+        <label>Employee
+          <select id="reportEmployeeSelect"></select>
+        </label>
         <button id="openMonthlyReportButton" type="button">Monthly Report</button>
         <button id="closeMonthlyReportButton" class="secondary" type="button" hidden>Close Report</button>
       </div>
@@ -825,6 +827,7 @@
     const downloadQrLink = document.getElementById("downloadQrLink");
     const printQrButton = document.getElementById("printQrButton");
     const reportMonthSelect = document.getElementById("reportMonthSelect");
+    const reportEmployeeSelect = document.getElementById("reportEmployeeSelect");
     const monthlyReportPanel = document.getElementById("monthlyReportPanel");
     const openMonthlyReportButton = document.getElementById("openMonthlyReportButton");
     const closeMonthlyReportButton = document.getElementById("closeMonthlyReportButton");
@@ -842,6 +845,7 @@
     let editingEmployeeId = "";
     let selectedAttendanceDate = todayKey();
     let selectedReportMonth = todayKey().slice(0, 7);
+    let selectedReportEmployeeId = "";
     let monthlyReportEdits = migrateReportEdits(loadReportEdits());
     let editingReportEmployeeId = "";
 
@@ -1037,6 +1041,18 @@
       if ([...reportMonthSelect.options].some(option => option.value === selectedReportMonth)) {
         reportMonthSelect.value = selectedReportMonth;
       }
+    }
+
+    function setupReportEmployeeOptions() {
+      const activeEmployees = employees.filter(employee => employee.status !== "deleted");
+      if (!activeEmployees.some(employee => employee.id === selectedReportEmployeeId)) {
+        selectedReportEmployeeId = activeEmployees[0]?.id || "";
+      }
+      reportEmployeeSelect.innerHTML = activeEmployees
+        .map(employee => `<option value="${escapeHtml(employee.id)}">${escapeHtml(employee.employee_code || employee.id)} - ${escapeHtml(employee.full_name || "-")}</option>`)
+        .join("");
+      reportEmployeeSelect.value = selectedReportEmployeeId;
+      reportEmployeeSelect.disabled = activeEmployees.length === 0;
     }
 
     function monthLabel(monthKey) {
@@ -1676,9 +1692,13 @@
     function renderMonthlyReport() {
       if (monthlyReportArea.hidden) return;
       const dates = monthDates(selectedReportMonth);
-      const employeeRows = employees.filter(employee => employee.status !== "deleted");
+      const activeEmployees = employees.filter(employee => employee.status !== "deleted");
+      const selectedIndex = activeEmployees.findIndex(employee => employee.id === selectedReportEmployeeId);
+      const employeeRows = selectedIndex >= 0 ? [activeEmployees[selectedIndex]] : [];
       monthlyReportArea.classList.toggle("singleEmployeeReport", employeeRows.length === 1);
-      monthlyReportStatus.textContent = `${monthLabel(selectedReportMonth)} | ${employeeRows.length} employee table${employeeRows.length === 1 ? "" : "s"}`;
+      monthlyReportStatus.textContent = employeeRows.length
+        ? `${monthLabel(selectedReportMonth)} | ${employeeRows[0].employee_code || employeeRows[0].id} | ${selectedIndex + 1} of ${activeEmployees.length}`
+        : `${monthLabel(selectedReportMonth)} | No employee`;
 
       monthlyReportArea.innerHTML = employeeRows.map(employee => employeeMonthlyReport(employee, dates)).join("") ||
         `<div class="empty">No employees for this monthly report.</div>`;
@@ -1985,6 +2005,7 @@
       renderLeaveRequests();
       renderCorrections();
       renderAttendance();
+      setupReportEmployeeOptions();
       if (!editingReportEmployeeId) renderMonthlyReport();
     }
 
@@ -2199,6 +2220,11 @@
     });
     reportMonthSelect.addEventListener("change", () => {
       selectedReportMonth = reportMonthSelect.value || selectedReportMonth;
+      editingReportEmployeeId = "";
+      if (!monthlyReportArea.hidden) renderMonthlyReport();
+    });
+    reportEmployeeSelect.addEventListener("change", () => {
+      selectedReportEmployeeId = reportEmployeeSelect.value || selectedReportEmployeeId;
       editingReportEmployeeId = "";
       if (!monthlyReportArea.hidden) renderMonthlyReport();
     });
