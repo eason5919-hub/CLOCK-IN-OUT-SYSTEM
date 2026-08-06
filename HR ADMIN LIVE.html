@@ -359,12 +359,6 @@
       box-shadow: inset 0 0 0 2px #d7ad1f;
     }
 
-    .reportTimeEditorWrap {
-      position: relative;
-      min-width: 0;
-      height: 18px;
-    }
-
     .reportTimeEditor {
       width: 100%;
       min-width: 0;
@@ -373,7 +367,7 @@
       border: 0;
       border-radius: 0;
       background: transparent;
-      padding: 0 17px 0 2px;
+      padding: 0 2px;
       color: inherit;
       font-size: 12px;
       font-weight: inherit;
@@ -385,23 +379,6 @@
     .reportTimeEditor:focus {
       outline: 1px solid #d7ad1f;
       background: #fff9cf;
-    }
-
-    .clearReportTime {
-      position: absolute;
-      top: 1px;
-      right: 0;
-      width: 16px;
-      min-width: 16px;
-      height: 16px;
-      min-height: 16px;
-      padding: 0;
-      border: 0;
-      border-radius: 0;
-      background: transparent;
-      color: #8b342f;
-      font-size: 14px;
-      line-height: 16px;
     }
 
     .reportLeavePicker {
@@ -1394,7 +1371,7 @@
       }
       if (editable && REPORT_TIME_FIELDS.has(field)) {
         const label = `${field === "in" ? "Clock In" : field === "out" ? "Clock Out" : field[0].toUpperCase() + field.slice(1)} for ${reportDateLabel(dateKey)}`;
-        return `<td class="${classes}" contenteditable="false" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}"><div class="reportTimeEditorWrap"><input class="reportTimeEditor" data-report-time-input type="text" inputmode="numeric" maxlength="5" value="${escapeHtml(value)}" aria-label="${escapeHtml(label)}" placeholder="--:--"><button class="clearReportTime" data-clear-report-time type="button" title="Clear time" aria-label="Clear ${escapeHtml(label)}">&times;</button></div></td>`;
+        return `<td class="${classes}" contenteditable="false" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}"><input class="reportTimeEditor" data-report-time-input type="text" inputmode="numeric" maxlength="5" value="${escapeHtml(value)}" aria-label="${escapeHtml(label)}" placeholder="--:--"></td>`;
       }
       return `<td class="${classes}" contenteditable="${editable ? "true" : "false"}" data-report-employee="${escapeHtml(employeeId)}" data-report-date="${escapeHtml(dateKey)}" data-report-field="${escapeHtml(field)}">${escapeHtml(value)}</td>`;
     }
@@ -2350,17 +2327,6 @@
       if (!monthlyReportArea.hidden) renderMonthlyReport();
     });
     monthlyReportArea.addEventListener("click", event => {
-      const clearTimeButton = event.target.closest("[data-clear-report-time]");
-      if (clearTimeButton) {
-        const cell = clearTimeButton.closest("[data-report-field]");
-        const timeInput = cell?.querySelector("[data-report-time-input]");
-        if (timeInput) {
-          timeInput.value = "";
-          refreshReportRow(cell.closest("tr"), false);
-          timeInput.focus({ preventScroll: true });
-        }
-        return;
-      }
       const printButton = event.target.closest("[data-print-report]");
       if (printButton) {
         printEmployeeMonthlyReport(printButton.dataset.printReport);

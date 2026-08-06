@@ -264,9 +264,8 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /contenteditable="\$\{editable \? "true" : "false"\}"/);
   assert.match(adminHtml, /maximum-scale=1\.0, user-scalable=no/);
   assert.match(adminHtml, /class="reportTimeEditor" data-report-time-input/);
-  assert.match(adminHtml, /class="clearReportTime" data-clear-report-time/);
+  assert.doesNotMatch(adminHtml, /clearReportTime|data-clear-report-time/);
   assert.match(adminHtml, /timeInput \? timeInput\.value\.trim\(\) : cell\.textContent\.trim\(\)/);
-  assert.match(adminHtml, /timeInput\.value = "";\s+refreshReportRow\(cell\.closest\("tr"\), false\)/);
   assert.match(adminHtml, /\.monthlyReportFullscreen \.reportLeavePicker \{\s+min-height: 0;\s+height: 16px;/);
   assert.doesNotMatch(adminHtml, /\.monthlyReportFullscreen \.reportLeavePicker:disabled/);
   assert.match(adminHtml, /refreshReportRow\(cell\.closest\("tr"\), false\)/);
