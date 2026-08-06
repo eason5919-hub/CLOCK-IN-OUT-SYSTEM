@@ -576,6 +576,7 @@ table {
 .employee-history-table {
   min-width: 0;
   table-layout: fixed;
+  font-size: 15px;
 }
 
 .employee-history-table th,
@@ -586,19 +587,19 @@ table {
 
 .employee-history-table th:nth-child(1),
 .employee-history-table td:nth-child(1) {
-  width: 24%;
+  width: 32%;
 }
 
 .employee-history-table th:nth-child(2),
 .employee-history-table td:nth-child(2),
 .employee-history-table th:nth-child(3),
 .employee-history-table td:nth-child(3) {
-  width: 18%;
+  width: 25%;
 }
 
 .employee-history-table th:nth-child(4),
 .employee-history-table td:nth-child(4) {
-  width: 12%;
+  width: 18%;
 }
 
 .employee-history-table th:nth-child(2),
@@ -610,14 +611,8 @@ table {
   text-align: center;
 }
 
-.employee-history-table th:nth-child(5),
-.employee-history-table td:nth-child(5) {
-  width: 28%;
-}
-
-.history-gps-cell {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.employee-history-table th {
+  font-size: 13px;
 }
 
 th,
@@ -1013,7 +1008,7 @@ small,
   }
 
   .employee-history-table {
-    font-size: 12px;
+    font-size: 14px;
   }
 
   .employee-history-table th,
@@ -1022,7 +1017,7 @@ small,
   }
 
   .employee-history-table th {
-    font-size: 10px;
+    font-size: 12px;
   }
 
   .employee-content {

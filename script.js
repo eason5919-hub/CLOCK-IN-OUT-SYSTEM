@@ -1210,7 +1210,7 @@ function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []
 }
 
 function employeeAttendanceHeader() {
-  return "<th>Date</th><th>Clock In</th><th>Clock Out</th><th>OT</th><th>GPS</th>";
+  return "<th>Date</th><th>Clock In</th><th>Clock Out</th><th>OT</th>";
 }
 
 function adminAttendanceHeader() {
@@ -1218,8 +1218,7 @@ function adminAttendanceHeader() {
 }
 
 function employeeAttendanceRow(row, display) {
-  const gps = row.gps || "-";
-  return `<tr><td>${row.date}</td>${employeeHistoryTimeCell(display.clockIn)}${employeeHistoryTimeCell(display.clockOut)}<td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td><td class="history-gps-cell" title="${escapeHtml(gps)}">${escapeHtml(gps)}</td></tr>`;
+  return `<tr><td>${row.date}</td>${employeeHistoryTimeCell(display.clockIn)}${employeeHistoryTimeCell(display.clockOut)}<td>${formatReportOtMinutes(employeeHistoryOvertimeMinutes(row, display))}</td></tr>`;
 }
 
 function adminAttendanceRow(row, display, marks) {

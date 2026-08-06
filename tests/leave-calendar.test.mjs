@@ -39,12 +39,15 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /monthCalendar\(records, leaveRequests, corrections, historyDate, currentMonthDate\)/);
   assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
   assert.match(script, /function employeeAttendanceHeader/);
-  assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>OT<\/th><th>GPS<\/th>/);
+  assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>OT<\/th>/);
+  assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*<th>GPS<\/th>/);
+  assert.doesNotMatch(script, /function employeeAttendanceRow\([^)]*\) \{[\s\S]{0,400}history-gps-cell/);
   assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*<th>Break<\/th>/);
   assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*<th>Resume<\/th>/);
   assert.match(script, /class="table-wrap\$\{employeeOnly \? " employee-history-wrap" : ""\}"/);
   assert.match(script, /class="employee-history-table"/);
   assert.match(css, /\.employee-history-table \{\s+min-width: 0;\s+table-layout: fixed;/);
+  assert.match(css, /\.employee-history-table \{[\s\S]{0,120}font-size: 15px;/);
   assert.match(script, /function adminAttendanceHeader/);
   assert.match(script, /<th>Employee<\/th><th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>Working Hours<\/th><th>OT<\/th><th>Status<\/th><th>GPS<\/th>/);
   assert.match(script, /formatReportOtMinutes\(employeeHistoryOvertimeMinutes\(row, display\)\)/);
