@@ -158,7 +158,7 @@ test("employee QR scanner trims reads and scans multiple frame areas", async () 
   assert.match(script, /Already clocked in/);
 });
 
-test("employee leave requests use one date-range calendar and limit closed cards without reordering", async () => {
+test("employee leave requests use one date-range calendar and show five cards before view more", async () => {
   const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
   const css = await readFile(new URL("../style.css", import.meta.url), "utf8");
 
@@ -171,15 +171,17 @@ test("employee leave requests use one date-range calendar and limit closed cards
   assert.match(script, /Sundays are skipped\./);
   assert.match(script, /Saturday in this range will be submitted as half day\./);
   assert.match(script, /function visibleEmployeeLeaveRequests/);
-  assert.match(script, /\["cancelled", "rejected"\]\.includes/);
+  assert.match(script, /showAllEmployeeLeaveRequests/);
+  assert.match(script, /showAll \? items : items\.slice\(0, 5\)/);
+  assert.match(script, /leaveRequests\.length > 5/);
+  assert.match(script, /data-toggle-employee-leave/);
+  assert.match(script, /showAllEmployeeLeaveRequests \? "Show less" : "View more"/);
   assert.match(script, /leaveRequestStatusLabel/);
   assert.match(script, /if \(status === "cancelled" \|\| note\.includes\("cancelled by employee"\)\) return "Cancelled"/);
   assert.match(script, /const cancelled = request\.status === "Cancelled"/);
   assert.match(script, /class="leave-card-title"/);
   assert.match(script, /cancelled \? statusBadge : ""/);
-  assert.match(script, /closedShown <= 5/);
-  assert.match(script, /\["cancelled", "rejected"\]/);
-  assert.doesNotMatch(script, /cancelledRequests\.slice/);
+  assert.doesNotMatch(script, /closedShown/);
   assert.match(css, /\.calendar-day\.is-in-range/);
   assert.doesNotMatch(css, /\.date-range-fields/);
 });

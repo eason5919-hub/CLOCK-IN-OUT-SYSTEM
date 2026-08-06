@@ -42,6 +42,7 @@ let selectedHistoryDate = malaysiaDateKey(new Date());
 let selectedEmployeeMonthKey = employeeMonthKey(malaysiaToday());
 let selectedAdminAttendanceDate = malaysiaDateKey(new Date());
 let showAllEmployeeCorrections = false;
+let showAllEmployeeLeaveRequests = false;
 let optimisticLeaveSubmitInFlight = false;
 
 window.addEventListener("hashchange", () => {
@@ -175,7 +176,10 @@ function employeeScreen() {
   const records = state.attendance;
   const corrections = state.corrections;
   const leaveRequests = state.leaveRequests || [];
-  const visibleLeaveRequests = visibleEmployeeLeaveRequests(leaveRequests);
+  const visibleLeaveRequests = visibleEmployeeLeaveRequests(leaveRequests, showAllEmployeeLeaveRequests);
+  const leaveMoreButton = leaveRequests.length > 5
+    ? `<button class="secondary" type="button" data-toggle-employee-leave>${showAllEmployeeLeaveRequests ? "Show less" : "View more"}</button>`
+    : "";
   const leaveRemaining = formatLeaveDays(state.currentUser.leaveRemainingDays || 0);
   const leaveDefaultDate = defaultLeaveDate();
   selectedEmployeeMonthKey = normalizedEmployeeMonthKey(selectedEmployeeMonthKey);
@@ -260,7 +264,7 @@ function employeeScreen() {
           <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
           <button>Submit Annual Leave/MC</button>
         </form>
-        <div class="list" style="margin-top:14px">${visibleLeaveRequests.map(leaveRequestCard).join("") || `<small>No Annual Leave/MC requests.</small>`}</div>
+        <div class="list" style="margin-top:14px">${visibleLeaveRequests.map(leaveRequestCard).join("") || `<small>No Annual Leave/MC requests.</small>`}${leaveMoreButton ? `<div class="actions">${leaveMoreButton}</div>` : ""}</div>
       </section>
     </div>
     ${qrScannerModal()}
@@ -622,6 +626,16 @@ function bindEmployee() {
     if (shouldScrollBack) {
       requestAnimationFrame(() => {
         document.querySelector("#corrections")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  });
+  document.querySelector("[data-toggle-employee-leave]")?.addEventListener("click", () => {
+    const shouldScrollBack = showAllEmployeeLeaveRequests;
+    showAllEmployeeLeaveRequests = !showAllEmployeeLeaveRequests;
+    render();
+    if (shouldScrollBack) {
+      requestAnimationFrame(() => {
+        document.querySelector("#leave")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
   });
@@ -1306,14 +1320,9 @@ function correctionCalendarMarkup(selectedDate, monthKey) {
   `;
 }
 
-function visibleEmployeeLeaveRequests(requests) {
-  let closedShown = 0;
-  return (requests || []).filter((request) => {
-    const isClosed = ["cancelled", "rejected"].includes(String(request.status || "").toLowerCase());
-    if (!isClosed) return true;
-    closedShown += 1;
-    return closedShown <= 5;
-  });
+function visibleEmployeeLeaveRequests(requests, showAll = false) {
+  const items = requests || [];
+  return showAll ? items : items.slice(0, 5);
 }
 
 function leaveRequestCard(request) {
