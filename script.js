@@ -7,6 +7,8 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
+const APP_VERSION = "20260806-live-phone-refresh";
+const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
   name: "Main Warehouse",
@@ -36,6 +38,8 @@ let pendingScanAction = null;
 let qrScanController = null;
 let liveRefreshInFlight = false;
 let liveRefreshQueued = false;
+let liveRefreshRenderQueued = false;
+let renderedEmployeeLiveRevision = "";
 let gpsWatchId = null;
 let latestGpsSamples = [];
 let selectedHistoryDate = malaysiaDateKey(new Date());
@@ -83,6 +87,7 @@ function render() {
   }
 
   app.innerHTML = shell(employeeScreen(), "Employee attendance app");
+  renderedEmployeeLiveRevision = employeeLiveRevision();
   bindEmployee();
   startLocationWatch();
   loadEmployeeLive();
@@ -371,11 +376,12 @@ function bindLogin() {
   });
 }
 
-async function loadEmployeeLive(force = false) {
+async function loadEmployeeLive(force = false, renderWhenChanged = false) {
   if (optimisticLeaveSubmitInFlight && !force) return;
   if (!employeeToken()) return;
   if (liveRefreshInFlight) {
     if (force) liveRefreshQueued = true;
+    if (renderWhenChanged) liveRefreshRenderQueued = true;
     return;
   }
   liveRefreshInFlight = true;
@@ -395,6 +401,7 @@ async function loadEmployeeLive(force = false) {
     state.corrections = (result.corrections || []).map(mapLiveCorrection);
     state.leaveRequests = (result.leaveRequests || []).map(mapLiveLeaveRequest);
     saveState();
+    if (renderWhenChanged && employeeLiveRevision() !== renderedEmployeeLiveRevision) render();
   } catch (error) {
     if (error.status === 401 || error.status === 403 || error.status === 404) {
       clearEmployeeSession(error.message || "Employee account was deleted by HR.");
@@ -404,9 +411,36 @@ async function loadEmployeeLive(force = false) {
   } finally {
     liveRefreshInFlight = false;
     if (liveRefreshQueued) {
+      const renderQueuedRefresh = liveRefreshRenderQueued;
       liveRefreshQueued = false;
-      loadEmployeeLive(true);
+      liveRefreshRenderQueued = false;
+      loadEmployeeLive(true, renderQueuedRefresh);
     }
+  }
+}
+
+function employeeLiveRevision() {
+  return JSON.stringify({
+    currentUser: state.currentUser,
+    attendance: state.attendance,
+    corrections: state.corrections,
+    leaveRequests: state.leaveRequests,
+  });
+}
+
+async function refreshEmployeeAppVersion() {
+  try {
+    const versionUrl = new URL("app-version.json", window.location.href);
+    versionUrl.searchParams.set("refresh", Date.now());
+    const response = await fetch(versionUrl, { cache: "no-store" });
+    if (!response.ok) return;
+    const latest = await response.json();
+    if (!latest.version || latest.version === APP_VERSION) return;
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set("appVersion", latest.version);
+    window.location.replace(nextUrl.href);
+  } catch {
+    // The live data refresh continues if the static version check is unavailable.
   }
 }
 
@@ -2269,15 +2303,26 @@ async function clearEmployeeTokenIndexedDb() {
 
 setInterval(() => {
   if (state.currentUser && employeeToken() && !document.hidden) {
-    loadEmployeeLive(true);
+    loadEmployeeLive(true, true);
   }
 }, 3000);
 
 window.addEventListener("focus", () => {
+  refreshEmployeeAppVersion();
   if (state.currentUser && employeeToken()) {
-    loadEmployeeLive(true);
+    loadEmployeeLive(true, true);
   }
 });
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    refreshEmployeeAppVersion();
+    if (state.currentUser && employeeToken()) loadEmployeeLive(true, true);
+  }
+});
+
+setInterval(refreshEmployeeAppVersion, APP_VERSION_CHECK_MS);
+refreshEmployeeAppVersion();
 
 async function bootEmployeeApp() {
   if (!employeeToken()) {

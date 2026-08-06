@@ -77,14 +77,22 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
 });
 
 test("employee month dashboard can show current and previous month only", async () => {
-  const [script, indexHtml] = await Promise.all([
+  const [script, indexHtml, appVersion] = await Promise.all([
     readFile(new URL("../script.js", import.meta.url), "utf8"),
     readFile(new URL("../index.html", import.meta.url), "utf8"),
+    readFile(new URL("../app-version.json", import.meta.url), "utf8"),
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
   assert.match(indexHtml, /style\.css\?v=20260806-plain-history-all-dates/);
-  assert.match(indexHtml, /script\.js\?v=20260806-plain-history-all-dates/);
+  assert.match(indexHtml, /script\.js\?v=20260806-live-phone-refresh/);
+  assert.equal(JSON.parse(appVersion).version, "20260806-live-phone-refresh");
+  assert.match(script, /const APP_VERSION = "20260806-live-phone-refresh"/);
+  assert.match(script, /function employeeLiveRevision/);
+  assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
+  assert.match(script, /loadEmployeeLive\(true, true\)/);
+  assert.match(script, /document\.addEventListener\("visibilitychange"/);
+  assert.match(script, /window\.location\.replace\(nextUrl\.href\)/);
   assert.match(script, /data-employee-month/);
   assert.match(script, /function currentEmployeeMonthKey/);
   assert.match(script, /function previousEmployeeMonthKey/);
