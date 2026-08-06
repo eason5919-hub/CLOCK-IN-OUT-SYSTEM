@@ -207,7 +207,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /const workShort = Math\.max\(0, requiredMinutes - Number\(attendanceRow\.actualMinutes \|\| 0\)\)/);
   assert.match(adminHtml, /return Math\.min\(requiredMinutes, Math\.max\(lateShort, earlyOut, workShort\)\)/);
   assert.doesNotMatch(adminHtml, /inMs >= endMs\) return 0/);
-  assert.match(adminHtml, /REPORT_CALC_VERSION = "20260806-leave-picker-short"/);
+  assert.match(adminHtml, /REPORT_CALC_VERSION = "20260806-report-in-out-only"/);
   assert.match(adminHtml, /main \{\s+width: calc\(100% - 24px\)/);
   assert.match(adminHtml, /\.reportTable \{\s+width: 100%;\s+min-width: 0;\s+table-layout: fixed;/);
   assert.match(adminHtml, /\.employeeReport \.tableWrap \{\s+overflow-x: hidden;/);
@@ -219,7 +219,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /reportEmployeeSelect\.addEventListener\("change"/);
   assert.match(adminHtml, /monthlyReportArea\.classList\.toggle\("singleEmployeeReport", employeeRows\.length === 1\)/);
   assert.match(adminHtml, /document\.body\.classList\.add\("monthlyReportOpen"\)/);
-  assert.match(adminHtml, /<colgroup>[\s\S]*<col style="width:12%">[\s\S]*<col style="width:20\.5%">[\s\S]*<\/colgroup>/);
+  assert.match(adminHtml, /<colgroup>[\s\S]*<col style="width:13%">[\s\S]*<col style="width:22%">[\s\S]*<\/colgroup>/);
   assert.doesNotMatch(adminHtml, /return Math\.max\(lateShort, earlyOut\)/);
   assert.match(adminHtml, /function isEditableReportField/);
   assert.match(adminHtml, /function reportFieldWasEdited/);
@@ -230,8 +230,9 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /if \(reportCorrectionWins\(employeeId, dateKey, field\)\) return fallback/);
   assert.match(adminHtml, /const manualEdit = editableField && !correctionWins && \(Object\.prototype\.hasOwnProperty\.call\(monthlyReportEdits, key\) \|\| reportFieldWasEdited\(employeeId, dateKey, field\)\)/);
   assert.match(adminHtml, /if \(!isEditableReportField\(field\)\)/);
-  assert.match(adminHtml, /break: reportValue\(employee\.id, dateKey, "break", reportTime\(attendanceRow\?\.breakTime\)\)/);
-  assert.match(adminHtml, /resume: reportValue\(employee\.id, dateKey, "resume", reportTime\(attendanceRow\?\.resumeTime\)\)/);
+  assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "break"/);
+  assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "resume"/);
+  assert.doesNotMatch(adminHtml, /<th>Break<\/th>|<th>Resume<\/th>/);
   assert.match(adminHtml, /const liveRows = timeRows/);
   assert.match(adminHtml, /liveRows\.forEach\(row =>/);
   assert.match(adminHtml, /delete nextEdits\[reportEditKey\(employeeId, row\.dateKey, field\)\]/);
@@ -242,8 +243,8 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /Cancelled edit \|/);
   assert.match(adminHtml, /row\.source === "admin_report_edit" \|\| row\.source === "admin_report_edit_resume"/);
   assert.match(adminHtml, /function compareReportSegments/);
-  assert.match(adminHtml, /editedFields: \["in", "break", "resume", "out"\]\.filter/);
-  assert.match(adminHtml, /REPORT_TIME_FIELDS = new Set\(\["in", "break", "resume", "out"\]\)/);
+  assert.match(adminHtml, /editedFields: \["in", "out"\]\.filter/);
+  assert.match(adminHtml, /REPORT_TIME_FIELDS = new Set\(\["in", "out"\]\)/);
   assert.match(adminHtml, /REPORT_LEAVE_VALUES = new Set\(\["", "ANNUAL LEAVE", "HALF ANNUAL LEAVE", "MC"\]\)/);
   assert.match(adminHtml, /class="reportLeavePicker" data-report-leave-picker/);
   assert.match(adminHtml, /\["ANNUAL LEAVE", "Annual Leave"\]/);
@@ -279,7 +280,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /return reportEditDraftKeys\.has\(reportEditKey\(employeeId, dateKey, field\)\)/);
   assert.doesNotMatch(adminHtml, /function reportFieldShouldSave[\s\S]{0,200}reportFieldWasEdited/);
   assert.match(adminHtml, /return reportFieldShouldSave\(employeeId, dateKey, field\)/);
-  assert.match(adminHtml, /editedFields: \["in", "break", "resume", "out"\]\.filter\(field => reportFieldShouldSave\(employeeId, dateKey, field\)\)/);
+  assert.match(adminHtml, /editedFields: \["in", "out"\]\.filter\(field => reportFieldShouldSave\(employeeId, dateKey, field\)\)/);
   assert.match(adminHtml, /reportEditDraftKeys\.add\(reportEditKey\(cell\.dataset\.reportEmployee, cell\.dataset\.reportDate, cell\.dataset\.reportField\)\)/);
   assert.match(adminHtml, /const regularSpan = Math\.max\(0, Math\.round/);
   assert.match(adminHtml, /function regularWindowStartMs/);

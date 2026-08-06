@@ -822,9 +822,9 @@
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
-    const REPORT_CALC_VERSION = "20260806-leave-picker-short";
+    const REPORT_CALC_VERSION = "20260806-report-in-out-only";
     const REPORT_CALCULATED_FIELDS = new Set(["dayType", "schedule", "work", "overtime", "diffOt", "short"]);
-    const REPORT_TIME_FIELDS = new Set(["in", "break", "resume", "out"]);
+    const REPORT_TIME_FIELDS = new Set(["in", "out"]);
     const REPORT_LEAVE_VALUES = new Set(["", "ANNUAL LEAVE", "HALF ANNUAL LEAVE", "MC"]);
     const loginSection = document.getElementById("loginSection");
     const adminSection = document.getElementById("adminSection");
@@ -1417,8 +1417,6 @@
       const row = employeeAttendanceByDate(employeeId, dateKey);
       if (!row) return false;
       if (field === "in") return Boolean(row.reportEditedClockIn);
-      if (field === "break") return Boolean(row.reportEditedBreak);
-      if (field === "resume") return Boolean(row.reportEditedResume);
       if (field === "out") return Boolean(row.reportEditedClockOut);
       return false;
     }
@@ -1809,8 +1807,8 @@
         const dayType = day === 0 ? "Restday" : "Workday";
         const reportTimes = {
           in: reportValue(employee.id, dateKey, "in", reportTime(attendanceRow?.clockIn)),
-          break: reportValue(employee.id, dateKey, "break", reportTime(attendanceRow?.breakTime)),
-          resume: reportValue(employee.id, dateKey, "resume", reportTime(attendanceRow?.resumeTime)),
+          break: reportTime(attendanceRow?.breakTime),
+          resume: reportTime(attendanceRow?.resumeTime),
           out: reportValue(employee.id, dateKey, "out", reportTime(attendanceRow?.clockOut)),
           leaveTaken,
         };
@@ -1828,8 +1826,6 @@
             <td>${escapeHtml(reportDateLabel(dateKey))}</td>
             ${editableReportCell(employee.id, dateKey, "dayType", dayType)}
             ${editableReportCell(employee.id, dateKey, "in", reportTimes.in, attendanceRow?.correctedClockIn ? "correctedTime" : "")}
-            ${editableReportCell(employee.id, dateKey, "break", reportTimes.break)}
-            ${editableReportCell(employee.id, dateKey, "resume", reportTimes.resume)}
             ${editableReportCell(employee.id, dateKey, "out", reportTimes.out, attendanceRow?.correctedClockOut ? "correctedTime" : "")}
             ${editableReportCell(employee.id, dateKey, "work", work)}
             ${editableReportCell(employee.id, dateKey, "overtime", overtime)}
@@ -1857,20 +1853,18 @@
           <div class="tableWrap">
             <table class="reportTable">
               <colgroup>
-                <col style="width:12%">
-                <col style="width:9%">
-                <col span="4" style="width:6.5%">
-                <col span="3" style="width:6.5%">
                 <col style="width:13%">
-                <col style="width:20.5%">
+                <col style="width:10%">
+                <col span="2" style="width:8%">
+                <col span="3" style="width:8%">
+                <col style="width:15%">
+                <col style="width:22%">
               </colgroup>
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Day Type</th>
                   <th>In</th>
-                  <th>Break</th>
-                  <th>Resume</th>
                   <th>Out</th>
                   <th>Work</th>
                   <th>Overtime</th>
@@ -1882,7 +1876,7 @@
               <tbody>${body}</tbody>
               <tfoot>
                 <tr>
-                  <td colspan="6">Total</td>
+                  <td colspan="4">Total</td>
                   <td data-report-total="work">${reportHours(totalWork)}</td>
                   <td data-report-total="overtime">${reportHours(totalOt)}</td>
                   <td data-report-total="short">${reportHours(totalShort)}</td>
@@ -1942,8 +1936,6 @@
     function originalReportValue(employeeId, dateKey, field) {
       const attendanceRow = employeeAttendanceByDate(employeeId, dateKey);
       if (field === "in") return reportTime(attendanceRow?.clockIn);
-      if (field === "break") return reportTime(attendanceRow?.breakTime);
-      if (field === "resume") return reportTime(attendanceRow?.resumeTime);
       if (field === "remark") return "";
       if (field === "out") return reportTime(attendanceRow?.clockOut);
       if (field === "leaveTaken") return employeeLeaveForDate(employeeId, dateKey);
@@ -1964,10 +1956,12 @@
           else cell.textContent = normalizeReportTime(cell.textContent);
         }
       });
+      const reportEmployeeId = reportCell(row, "in")?.dataset.reportEmployee || "";
+      const attendanceRow = employeeAttendanceByDate(reportEmployeeId, row.dataset.reportDate);
       const calculated = calculatedReportValues(row.dataset.reportDate, {
         in: reportRowText(row, "in"),
-        break: reportRowText(row, "break"),
-        resume: reportRowText(row, "resume"),
+        break: reportTime(attendanceRow?.breakTime),
+        resume: reportTime(attendanceRow?.resumeTime),
         out: reportRowText(row, "out"),
         leaveTaken: reportRowText(row, "leaveTaken"),
       });
@@ -2017,17 +2011,20 @@
         }
       });
       const timeRows = [...reportRows.entries()]
-        .filter(([dateKey]) => ["in", "break", "resume", "out"].some(field => {
+        .filter(([dateKey]) => ["in", "out"].some(field => {
           return reportFieldShouldSave(employeeId, dateKey, field);
         }))
-        .map(([dateKey, row]) => ({
-          dateKey,
-          in: reportRowText(row, "in"),
-          break: reportRowText(row, "break"),
-          resume: reportRowText(row, "resume"),
-          out: reportRowText(row, "out"),
-          editedFields: ["in", "break", "resume", "out"].filter(field => reportFieldShouldSave(employeeId, dateKey, field)),
-        }));
+        .map(([dateKey, row]) => {
+          const attendanceRow = employeeAttendanceByDate(employeeId, dateKey);
+          return {
+            dateKey,
+            in: reportRowText(row, "in"),
+            break: reportTime(attendanceRow?.breakTime),
+            resume: reportTime(attendanceRow?.resumeTime),
+            out: reportRowText(row, "out"),
+            editedFields: ["in", "out"].filter(field => reportFieldShouldSave(employeeId, dateKey, field)),
+          };
+        });
       const leaveRows = [...reportRows.entries()]
         .filter(([dateKey]) => reportFieldShouldSave(employeeId, dateKey, "leaveTaken"))
         .map(([dateKey, row]) => ({
@@ -2052,7 +2049,7 @@
           }),
         });
         liveRows.forEach(row => {
-          ["in", "break", "resume", "out"].forEach(field => {
+          ["in", "out"].forEach(field => {
             delete nextEdits[reportEditKey(employeeId, row.dateKey, field)];
           });
         });
