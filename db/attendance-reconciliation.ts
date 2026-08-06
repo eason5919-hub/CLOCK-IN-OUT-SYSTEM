@@ -115,6 +115,18 @@ export function reconcileAttendanceDay(rows: AttendanceRow[]) {
     : sumMetric(metricRows, "early_leave_minutes");
   const clockInValue = clockIn?.value || null;
   const clockOutValue = clockOut?.value || null;
+  const reportEditedClockIn = Boolean(
+    clockIn && (
+      clockIn.source !== "base" ||
+      baseAdjustmentPreservesOverride(clockIn, inMarker, "clock_in_at")
+    ),
+  );
+  const reportEditedClockOut = Boolean(
+    clockOut && (
+      clockOut.source !== "base" ||
+      baseAdjustmentPreservesOverride(clockOut, outMarker, "clock_out_at")
+    ),
+  );
 
   return {
     ...anchor,
@@ -145,14 +157,30 @@ export function reconcileAttendanceDay(rows: AttendanceRow[]) {
     updated_at: newestTimestamp(activeRows),
     clock_in_updated_at: clockIn?.updatedAt || "",
     clock_out_updated_at: clockOut?.updatedAt || "",
-    report_edited_clock_in: clockIn && clockIn.source !== "base" ? 1 : 0,
+    report_edited_clock_in: reportEditedClockIn ? 1 : 0,
     report_edited_break: breakAt ? 1 : 0,
     report_edited_resume: resumeAt ? 1 : 0,
-    report_edited_clock_out: clockOut && clockOut.source !== "base" ? 1 : 0,
+    report_edited_clock_out: reportEditedClockOut ? 1 : 0,
     report_segments_effective: reportSegmentsEffective ? 1 : 0,
     report_segment_count: reportSegmentsEffective ? reportSegments.length : 0,
     live_open_clock_in_at: stringOrNull(latestOpenQrRow?.clock_in_at),
   };
+}
+
+function baseAdjustmentPreservesOverride(
+  candidate: TimeCandidate,
+  marker: AttendanceRow | null,
+  field: "clock_in_at" | "clock_out_at",
+) {
+  if (String(candidate.row.source || "") !== "admin_adjustment" || !marker) return false;
+  return sameTimeValue(candidate.value, stringOrNull(marker[field]));
+}
+
+function sameTimeValue(left: string | null, right: string | null) {
+  if (!left || !right) return left === right;
+  const leftTime = parseAttendanceTimestamp(left);
+  const rightTime = parseAttendanceTimestamp(right);
+  return leftTime && rightTime ? leftTime === rightTime : left === right;
 }
 
 function isReportSource(row: AttendanceRow) {

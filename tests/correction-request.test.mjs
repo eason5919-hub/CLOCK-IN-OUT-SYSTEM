@@ -51,6 +51,8 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(reconciliation, /live_open_clock_in_at/);
   assert.match(reconciliation, /clockIn\.source !== "base"/);
   assert.match(reconciliation, /clockOut\.source !== "base"/);
+  assert.match(reconciliation, /baseAdjustmentPreservesOverride\(clockIn, inMarker, "clock_in_at"\)/);
+  assert.match(reconciliation, /baseAdjustmentPreservesOverride\(clockOut, outMarker, "clock_out_at"\)/);
   assert.match(reconciliation, /priority > best\.priority/);
   assert.match(employeeSummaryRoute, /created_at, reviewed_at/);
   assert.match(script, /sort\(compareAttendanceLatest\)/);

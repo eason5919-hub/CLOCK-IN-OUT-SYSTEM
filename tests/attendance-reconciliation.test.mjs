@@ -186,6 +186,54 @@ test("approving only clock in preserves an admin-cleared clock out", async () =>
   assert.equal(resolved.clock_in_at, approved.clockInAt);
   assert.equal(resolved.clock_out_at, null);
   assert.equal(resolved.total_minutes, 0);
+  assert.equal(resolved.report_edited_clock_in, 0);
+  assert.equal(resolved.report_edited_clock_out, 1);
+});
+
+test("clock in approval keeps an unrelated manual clock out highlight separate", async () => {
+  const { approvedCorrectionTimes, reconcileAttendanceDay } = await loadReconciliation();
+  const editedAt = "2026-08-09 05:00:00";
+  const manualClockOut = "2026-08-09T11:00:00.000Z";
+  const reportRows = [
+    baseRow,
+    {
+      ...baseRow,
+      id: "edited-report",
+      clock_in_at: "2026-08-09T01:00:00.000Z",
+      clock_out_at: manualClockOut,
+      source: "admin_report_edit",
+      updated_at: editedAt,
+    },
+    {
+      ...baseRow,
+      id: "edited-out-marker",
+      clock_in_at: null,
+      clock_out_at: manualClockOut,
+      source: "admin_report_edit_out",
+      updated_at: editedAt,
+    },
+  ];
+  const current = reconcileAttendanceDay(reportRows);
+  const approved = approvedCorrectionTimes(current, {
+    missing_type: "clock_in",
+    requested_clock_in_at: "2026-08-09T01:30:00.000Z",
+    requested_clock_out_at: null,
+  });
+  const resolved = reconcileAttendanceDay([
+    ...reportRows.slice(1),
+    {
+      ...baseRow,
+      clock_in_at: approved.clockInAt,
+      clock_out_at: approved.clockOutAt,
+      source: "admin_adjustment",
+      updated_at: "2026-08-09 06:00:00",
+    },
+  ]);
+
+  assert.equal(resolved.clock_in_at, approved.clockInAt);
+  assert.equal(resolved.clock_out_at, manualClockOut);
+  assert.equal(resolved.report_edited_clock_in, 0);
+  assert.equal(resolved.report_edited_clock_out, 1);
 });
 
 test("blank clock out keeps break and resume in their own fields", async () => {
