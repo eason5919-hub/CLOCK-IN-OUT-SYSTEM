@@ -137,6 +137,10 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminRoute, /bodyToken\.trim\(\)/);
   assert.doesNotMatch(adminRoute, /searchParams\.get\("hrToken"\)/);
   assert.match(adminHtml, /function approvedCorrectionTimes/);
+  assert.match(adminHtml, /const rowFirstIn = row \? row\.clock_in_at \|\| "" : approvedTimes\.clockIn \|\| ""/);
+  assert.match(adminHtml, /const rowLastOut = row \? row\.clock_out_at \|\| "" : approvedTimes\.clockOut \|\| ""/);
+  assert.doesNotMatch(adminHtml, /row\?\.clock_in_at \|\| approvedTimes\.clockIn/);
+  assert.doesNotMatch(adminHtml, /row\?\.clock_out_at \|\| approvedTimes\.clockOut/);
   assert.match(adminHtml, /function correctionRequestedSummary/);
   assert.match(adminHtml, /function correctionRequestedField/);
   assert.match(adminHtml, /function correctionSourceTime/);

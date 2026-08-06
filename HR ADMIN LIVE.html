@@ -1430,8 +1430,8 @@
       const approvedTimes = approvedCorrectionTimes(employeeId, dateKey);
       if (!row && !approvedTimes.clockIn && !approvedTimes.clockOut) return null;
 
-      const rowFirstIn = row?.clock_in_at || approvedTimes.clockIn || "";
-      const rowLastOut = row?.clock_out_at || approvedTimes.clockOut || "";
+      const rowFirstIn = row ? row.clock_in_at || "" : approvedTimes.clockIn || "";
+      const rowLastOut = row ? row.clock_out_at || "" : approvedTimes.clockOut || "";
       const inUpdatedAt = row?.clock_in_updated_at || row?.updated_at || row?.created_at || "";
       const outUpdatedAt = row?.clock_out_updated_at || row?.updated_at || row?.created_at || "";
       const correctionInWins = Boolean(approvedTimes.clockIn) &&
