@@ -532,13 +532,13 @@ h3 {
 }
 
 .month-day.today {
-  border-color: var(--blue);
-  background: var(--blue);
-  color: #fff;
+  border-color: #7aa7d9;
+  background: #e9f2ff;
+  color: var(--ink);
 }
 
 .month-day.today small {
-  color: #fff;
+  color: var(--blue);
   font-weight: 900;
 }
 
@@ -629,11 +629,6 @@ th {
 }
 
 .time-mark.corrected,
-.history-time-cell.correctedTime {
-  background: #fff2bf;
-  box-shadow: inset 0 0 0 1px #d2a310;
-  font-weight: 800;
-}
 
 .form {
   display: grid;

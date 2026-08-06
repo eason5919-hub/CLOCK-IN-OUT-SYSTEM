@@ -596,13 +596,13 @@ textarea {
 }
 
 .day.today {
-  border-color: var(--blue);
-  background: var(--blue);
-  color: #fff;
+  border-color: #7aa7d9;
+  background: #e9f2ff;
+  color: var(--ink);
 }
 
 .day.today small {
-  color: #fff;
+  color: var(--blue);
   font-weight: 900;
 }
 

@@ -201,7 +201,7 @@ function employeeScreen() {
     present: formatDayCount(calculatePresentDays(monthRecords, visibleCorrections)),
     late: monthRecords.filter((row) => employeeHistoryLateMinutes(row, attendanceDisplayTimes(row, visibleCorrections)) > 0).length,
     ot: formatMetricDuration(monthRecords.reduce((total, row) => total + employeeHistoryOvertimeMinutes(row, attendanceDisplayTimes(row, visibleCorrections)), 0)),
-    corrections: correctedReportBoxCount(monthRecords, visibleCorrections),
+    corrections: correctedReportBoxCount(visibleCorrections),
   };
 
   return `
@@ -834,7 +834,6 @@ function bindAdmin() {
     button.addEventListener("click", () => {
       const correction = state.corrections.find((row) => row.id === button.dataset.id);
       correction.status = button.dataset.review;
-      if (correction.status === "Approved") applyCorrection(correction);
       saveState();
       render();
     });
@@ -1124,39 +1123,16 @@ function parseLiveTimestamp(value) {
   return Date.parse(text);
 }
 
-function isSameOrNewer(left, right) {
-  const leftMs = parseLiveTimestamp(left);
-  const rightMs = parseLiveTimestamp(right);
-  if (Number.isNaN(leftMs)) return false;
-  if (Number.isNaN(rightMs)) return true;
-  return leftMs >= rightMs;
-}
-
-function sameClockValue(left, right) {
-  return Boolean(left && right && String(left) === String(right));
-}
-
-function approvedCorrectionForField(row, field, corrections = []) {
-  const key = field === "clockIn" ? "requestedClockIn" : "requestedClockOut";
-  const fieldUpdatedAt = field === "clockIn" ? row.clockInUpdatedAt : row.clockOutUpdatedAt;
-  return corrections
-    .filter((correction) => correction.date === row.date && correction.status === "Approved" && correction[key])
-    .sort((a, b) => parseLiveTimestamp(b.reviewedAt || b.createdAt || "") - parseLiveTimestamp(a.reviewedAt || a.createdAt || ""))
-    .find((correction) => sameClockValue(correction[key], row[field]) && isSameOrNewer(correction.reviewedAt || correction.createdAt, fieldUpdatedAt || row.updatedAt || row.createdAt));
-}
-
-function attendanceDisplayTimes(row, corrections = []) {
-  const correctedIn = approvedCorrectionForField(row, "clockIn", corrections);
-  const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
+function attendanceDisplayTimes(row) {
   return {
-    clockIn: correctedIn?.requestedClockIn || row.clockIn,
+    clockIn: row.clockIn,
     breakTime: row.breakTime || null,
     resumeTime: row.resumeTime || null,
-    clockOut: correctedOut?.requestedClockOut || row.clockOut,
+    clockOut: row.clockOut,
   };
 }
 
-function attendanceEditMarks(row, corrections = []) {
+function attendanceEditMarks(row) {
   if (row.hasReportMarks) {
     return {
       clockIn: row.clockInMark || "",
@@ -1165,13 +1141,11 @@ function attendanceEditMarks(row, corrections = []) {
       clockOut: row.clockOutMark || "",
     };
   }
-  const correctedIn = approvedCorrectionForField(row, "clockIn", corrections);
-  const correctedOut = approvedCorrectionForField(row, "clockOut", corrections);
   return {
-    clockIn: correctedIn ? "corrected" : row.reportEditedClockIn && row.clockIn ? "edited" : "",
+    clockIn: row.reportEditedClockIn && row.clockIn ? "edited" : "",
     breakTime: row.reportEditedBreak && row.breakTime ? "edited" : "",
     resumeTime: row.reportEditedResume && row.resumeTime ? "edited" : "",
-    clockOut: correctedOut ? "corrected" : row.reportEditedClockOut && row.clockOut ? "edited" : "",
+    clockOut: row.reportEditedClockOut && row.clockOut ? "edited" : "",
   };
 }
 
@@ -1183,7 +1157,7 @@ function timeCell(value, mark = "") {
 
 function employeeHistoryTimeCell(value, mark = "") {
   const text = value || "";
-  const markClass = mark === "corrected" ? " correctedTime" : mark === "edited" ? " manualEdit" : "";
+  const markClass = mark === "edited" ? " manualEdit" : "";
   return `<td class="history-time-cell${markClass}">${escapeHtml(text)}</td>`;
 }
 
@@ -1646,35 +1620,6 @@ function adminCorrectionCard(correction) {
   return `<article class="list-item"><strong>${escapeHtml(correctionEmployeeLabel(correction))}</strong><span>${correction.date} ${correction.missing} ${correction.requestedTime}</span><p>${escapeHtml(correction.reason)}</p><span class="badge ${correction.status.toLowerCase()}">${correction.status}</span>${correction.status === "Pending" ? `<div class="actions"><button data-review="Approved" data-id="${correction.id}">Approve</button><button class="danger" data-review="Rejected" data-id="${correction.id}">Reject</button></div>` : ""}</article>`;
 }
 
-function applyCorrection(correction) {
-  let record = state.attendance.find((row) => row.employeeId === correction.employeeId && row.date === correction.date);
-  if (!record) {
-    record = {
-      id: `att-${Date.now()}`,
-      employeeId: correction.employeeId,
-      employeeCode: correction.employeeCode || employeeById(correction.employeeId).code,
-      employeeName: correction.employeeName || employeeById(correction.employeeId).name,
-      date: correction.date,
-      clockIn: null,
-      clockOut: null,
-      workingMinutes: 0,
-      lateMinutes: 0,
-      earlyLeaveMinutes: 0,
-      overtimeMinutes: 0,
-      status: "Present",
-      gps: "Admin approved",
-    };
-    state.attendance.push(record);
-  }
-  if (correction.missing !== "Clock Out") record.clockIn = correction.requestedTime;
-  if (correction.missing !== "Clock In") record.clockOut = correction.requestedTime;
-  if (record.clockIn && record.clockOut) {
-    record.workingMinutes = Math.max(0, toMinutes(record.clockOut) - toMinutes(record.clockIn));
-    record.overtimeMinutes = calculateOvertime(record.clockOut, "18:00", "18:16");
-    record.status = record.overtimeMinutes > 0 ? "OT" : "Present";
-  }
-}
-
 async function bestGpsSample() {
   return (await collectGpsSamples()).sort((a, b) => a.accuracy - b.accuracy)[0];
 }
@@ -1981,10 +1926,6 @@ function simpleHash(value) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function calculateOvertime(clockOut, scheduledEnd, threshold) {
-  return toMinutes(clockOut) >= toMinutes(threshold) ? Math.max(0, toMinutes(clockOut) - toMinutes(scheduledEnd)) : 0;
-}
-
 function employeeHistoryOvertimeMinutes(row, display) {
   if (!display.clockOut) return 0;
   if (!display.clockIn) return Number(row.overtimeMinutes || 0);
@@ -2075,11 +2016,10 @@ function calculatePresentDays(records, corrections = []) {
   return dates.size;
 }
 
-function correctedReportBoxCount(records, corrections = []) {
-  return records.reduce((total, row) => {
-    const marks = attendanceEditMarks(row, corrections);
-    return total + (marks.clockIn === "corrected" ? 1 : 0) + (marks.clockOut === "corrected" ? 1 : 0);
-  }, 0);
+function correctedReportBoxCount(corrections = []) {
+  return corrections
+    .filter((correction) => correction.status === "Approved")
+    .reduce((total, correction) => total + Number(Boolean(correction.requestedClockIn)) + Number(Boolean(correction.requestedClockOut)), 0);
 }
 
 function pendingCorrectionCount(corrections) {

@@ -1,9 +1,5 @@
 import { ensureDatabase, getD1, getSessionFromRequest } from "../../../../db/runtime";
-import {
-  parseAttendanceTimestamp,
-  reconcileAttendanceRows,
-  type AttendanceRow,
-} from "../../../../db/attendance-reconciliation";
+import { reconcileAttendanceRows, type AttendanceRow } from "../../../../db/attendance-reconciliation";
 
 export async function GET(request: Request) {
   const db = getD1();
@@ -83,8 +79,8 @@ export async function GET(request: Request) {
   const correctionRows = (corrections.results || []) as AttendanceRow[];
   const attendanceRows = reconcileAttendanceRows((rawAttendance.results || []) as AttendanceRow[]).map((row) => ({
     ...row,
-    report_clock_in_mark: reportClockMark(row, "clock_in", correctionRows),
-    report_clock_out_mark: reportClockMark(row, "clock_out", correctionRows),
+    report_clock_in_mark: reportClockMark(row, "clock_in"),
+    report_clock_out_mark: reportClockMark(row, "clock_out"),
   }));
   const attendanceByDate = new Map(attendanceRows.map((row) => [String(row.work_date || ""), row]));
   const correctionsWithReportTimes = correctionRows.map((row) => {
@@ -108,49 +104,10 @@ export async function OPTIONS(request: Request) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
 
-function reportClockMark(row: AttendanceRow, field: "clock_in" | "clock_out", corrections: AttendanceRow[]) {
-  const dateKey = String(row.work_date || "");
+function reportClockMark(row: AttendanceRow, field: "clock_in" | "clock_out") {
   const valueKey = field === "clock_in" ? "clock_in_at" : "clock_out_at";
   const editedKey = field === "clock_in" ? "report_edited_clock_in" : "report_edited_clock_out";
-  const updatedKey = field === "clock_in" ? "clock_in_updated_at" : "clock_out_updated_at";
-  const requestKey = field === "clock_in" ? "requested_clock_in_at" : "requested_clock_out_at";
-  const correction = corrections
-    .filter((item) => (
-      String(item.requested_date || "") === dateKey &&
-      String(item.status || "").toLowerCase() === "approved" &&
-      Boolean(item[requestKey])
-    ))
-    .sort((left, right) => (
-      parseAttendanceTimestamp(String(right.reviewed_at || right.created_at || "")) -
-      parseAttendanceTimestamp(String(left.reviewed_at || left.created_at || ""))
-    ))[0];
-
-  if (correction) {
-    const correctionTime = String(correction[requestKey] || "");
-    const rowTime = String(row[valueKey] || "");
-    const correctionReviewedAt = String(correction.reviewed_at || correction.created_at || "");
-    const fieldUpdatedAt = String(row[updatedKey] || row.updated_at || row.created_at || "");
-    if (sameInstant(correctionTime, rowTime) && isSameOrNewer(correctionReviewedAt, fieldUpdatedAt)) {
-      return "corrected";
-    }
-  }
   return Number(row[editedKey] || 0) && row[valueKey] ? "edited" : "";
-}
-
-function isSameOrNewer(left: string, right: string) {
-  const leftMs = parseAttendanceTimestamp(left);
-  const rightMs = parseAttendanceTimestamp(right);
-  if (!leftMs) return false;
-  if (!rightMs) return true;
-  return leftMs >= rightMs;
-}
-
-function sameInstant(left: string, right: string) {
-  if (!left || !right) return false;
-  const leftMs = parseAttendanceTimestamp(left);
-  const rightMs = parseAttendanceTimestamp(right);
-  if (!leftMs || !rightMs) return left === right;
-  return leftMs === rightMs;
 }
 
 function json(request: Request, data: unknown, status = 200) {

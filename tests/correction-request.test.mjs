@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("correction requests save Malaysia time and clock-out approvals target open rows", async () => {
+test("correction approvals record the decision without changing attendance", async () => {
   const [script, employeeRoute, employeeSummaryRoute, adminRoute, adminHtml, css, clockRoute, reconciliation] = await Promise.all([
     readFile(new URL("../script.js", import.meta.url), "utf8"),
     readFile(new URL("../app/api/corrections/route.ts", import.meta.url), "utf8"),
@@ -13,6 +13,14 @@ test("correction requests save Malaysia time and clock-out approvals target open
     readFile(new URL("../app/api/attendance/clock/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/attendance-reconciliation.ts", import.meta.url), "utf8"),
   ]);
+  const adminReviewSection = adminRoute.slice(
+    adminRoute.indexOf("async function reviewCorrectionRequest"),
+    adminRoute.indexOf("async function saveReportAttendanceTimes"),
+  );
+  const patchReviewSection = employeeRoute.slice(
+    employeeRoute.indexOf("export async function PATCH"),
+    employeeRoute.indexOf("type CorrectionMissingType"),
+  );
 
   assert.match(script, /`\$\{date\}T\$\{time\}:00\+08:00`/);
   assert.match(employeeRoute, /action\?: "cancel"/);
@@ -29,10 +37,10 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(employeeSummaryRoute, /source <> 'admin_report_edit_archived'/);
   assert.match(employeeSummaryRoute, /WHERE status = 'approved' AND leave_type = 'leave'/);
   assert.match(employeeSummaryRoute, /ORDER BY COALESCE\(reviewed_at, created_at\) DESC, created_at DESC/);
-  assert.match(employeeSummaryRoute, /report_clock_in_mark: reportClockMark\(row, "clock_in", correctionRows\)/);
-  assert.match(employeeSummaryRoute, /report_clock_out_mark: reportClockMark\(row, "clock_out", correctionRows\)/);
+  assert.match(employeeSummaryRoute, /report_clock_in_mark: reportClockMark\(row, "clock_in"\)/);
+  assert.match(employeeSummaryRoute, /report_clock_out_mark: reportClockMark\(row, "clock_out"\)/);
   assert.match(employeeSummaryRoute, /function reportClockMark/);
-  assert.match(employeeSummaryRoute, /return "corrected"/);
+  assert.doesNotMatch(employeeSummaryRoute, /return "corrected"/);
   assert.match(employeeSummaryRoute, /return Number\(row\[editedKey\] \|\| 0\) && row\[valueKey\] \? "edited" : ""/);
   assert.match(reconciliation, /function newestCandidate/);
   assert.match(reconciliation, /REPORT_IN_SOURCE/);
@@ -47,11 +55,11 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(employeeSummaryRoute, /created_at, reviewed_at/);
   assert.match(script, /sort\(compareAttendanceLatest\)/);
   assert.match(script, /function attendanceEditMarks/);
-  assert.match(script, /function approvedCorrectionForField/);
+  assert.doesNotMatch(script, /function approvedCorrectionForField/);
   assert.match(script, /function attendanceDisplayTimes/);
   assert.doesNotMatch(script, /if \(Number\.isFinite\(Number\(row\.overtimeMinutes\)\)\) return Number\(row\.overtimeMinutes \|\| 0\)/);
   assert.match(script, /function parseLiveTimestamp/);
-  assert.match(script, /function sameClockValue/);
+  assert.doesNotMatch(script, /function sameClockValue/);
   assert.match(script, /clockInUpdatedAt: row\.clock_in_updated_at \|\| row\.updated_at \|\| ""/);
   assert.match(script, /clockOutUpdatedAt: row\.clock_out_updated_at \|\| row\.updated_at \|\| ""/);
   assert.match(script, /reportEditedClockIn: Boolean\(Number\(row\.report_edited_clock_in \|\| 0\)\)/);
@@ -74,10 +82,8 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.doesNotMatch(clockRoute, /findLastCompletedSession/);
   assert.doesNotMatch(clockRoute, /calculateBreakReturnLateMinutes/);
   assert.doesNotMatch(clockRoute, /Clock out is required before the next clock in/);
-  assert.match(script, /const fieldUpdatedAt = field === "clockIn" \? row\.clockInUpdatedAt : row\.clockOutUpdatedAt/);
-  assert.match(script, /parseLiveTimestamp\(b\.reviewedAt \|\| b\.createdAt \|\| ""\)/);
-  assert.match(script, /sameClockValue\(correction\[key\], row\[field\]\) && isSameOrNewer\(correction\.reviewedAt \|\| correction\.createdAt, fieldUpdatedAt \|\| row\.updatedAt \|\| row\.createdAt\)/);
-  assert.match(employeeSummaryRoute, /sameInstant\(correctionTime, rowTime\) && isSameOrNewer\(correctionReviewedAt, fieldUpdatedAt\)/);
+  assert.doesNotMatch(script, /const fieldUpdatedAt = field === "clockIn"/);
+  assert.doesNotMatch(employeeSummaryRoute, /sameInstant\(correctionTime, rowTime\)/);
   assert.doesNotMatch(script, /return correction\[key\] === row\[field\]/);
   assert.match(reconciliation, /timeCandidate\(inMarker, "clock_in_at", "override", 3, true\)/);
   assert.match(reconciliation, /timeCandidate\(outMarker, "clock_out_at", "override", 3, true\)/);
@@ -94,16 +100,23 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(css, /\.time-mark\.edited/);
   assert.match(css, /\.time-mark\.corrected/);
   assert.match(css, /\.history-time-cell\.manualEdit \{\s+background: #e9f2ff;\s+box-shadow: inset 0 0 0 1px #7aa7d9;\s+font-weight: 800;/);
-  assert.match(css, /\.history-time-cell\.correctedTime \{\s+background: #fff2bf;\s+box-shadow: inset 0 0 0 1px #d2a310;\s+font-weight: 800;/);
+  assert.doesNotMatch(css, /\.history-time-cell\.correctedTime/);
   assert.match(adminHtml, /\.editableCell\.manualEdit \{\s+background: #e9f2ff;\s+box-shadow: inset 0 0 0 1px #7aa7d9;\s+font-weight: 800;/);
-  assert.match(adminHtml, /\.editableCell\.correctedTime \{\s+background: #fff2bf;\s+box-shadow: inset 0 0 0 1px #d2a310;\s+font-weight: 800;/);
+  assert.doesNotMatch(adminHtml, /\.editableCell\.correctedTime/);
   assert.match(script, /function employeeHistoryTimeCell\(value, mark = ""\) \{\s+const text = value \|\| "";/);
   assert.match(script, /function formatLiveTime\(value\) \{\s+if \(!value\) return "";\s+const date = new Date\(parseLiveTimestamp\(value\)\);\s+if \(Number\.isNaN\(date\.getTime\(\)\)\) return "";/);
   assert.match(script, /toLocaleTimeString\("en-MY", \{ timeZone: "Asia\/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false \}\)/);
   assert.match(adminHtml, /toLocaleTimeString\("en-MY", \{\s+timeZone: "Asia\/Kuala_Lumpur",\s+hour: "2-digit",\s+minute: "2-digit",\s+hour12: false\s+\}\)/);
-  assert.match(adminRoute, /const existingRecord = await findTargetAttendanceForCorrection\(db, correction\)/);
+  assert.match(adminReviewSection, /attendanceChanged: false/);
+  assert.match(patchReviewSection, /attendanceChanged: false/);
+  assert.match(adminReviewSection, /new_record_json = NULL/);
+  assert.match(patchReviewSection, /new_record_json = NULL/);
+  assert.doesNotMatch(adminReviewSection, /UPDATE attendance\s/);
+  assert.doesNotMatch(adminReviewSection, /INSERT INTO attendance\s/);
+  assert.doesNotMatch(patchReviewSection, /UPDATE attendance\s/);
+  assert.doesNotMatch(patchReviewSection, /INSERT INTO attendance\s/);
   assert.match(adminRoute, /action: "save_report_attendance_times"/);
-  assert.match(adminRoute, /source = 'admin_report_edit'/);
+  assert.match(adminRoute, /'admin_report_edit'/);
   assert.match(adminRoute, /source = 'admin_report_edit_archived'/);
   assert.match(adminRoute, /source <> 'admin_report_edit_archived'/);
   assert.match(adminRoute, /function archiveReportAttendanceRows/);
@@ -111,26 +124,15 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminRoute, /function reportFieldOverrides/);
   assert.match(adminRoute, /admin_report_edit_in/);
   assert.match(adminRoute, /admin_report_edit_out/);
-  assert.match(adminRoute, /source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END/);
-  assert.match(employeeRoute, /source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END/);
-  assert.equal(
-    (adminRoute.match(/updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END/g) || []).length,
-    2,
-  );
-  assert.equal(
-    (employeeRoute.match(/updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END/g) || []).length,
-    2,
-  );
   assert.match(adminRoute, /function reportTimeSegments/);
   assert.match(adminRoute, /monthly_report_time_edit/);
   assert.match(adminRoute, /monthly_report_time_restore/);
-  assert.match(adminRoute, /SET attendance_id = \?, status = \?/);
-  assert.match(adminRoute, /let reviewedAttendanceId = correction\.attendance_id/);
+  assert.doesNotMatch(adminReviewSection, /SET attendance_id/);
   assert.match(adminRoute, /action: "load_live_data"/);
   assert.match(adminRoute, /requireAdmin\(db, request, "hrToken" in payload \? payload\.hrToken : undefined\)/);
   assert.match(adminRoute, /bodyToken\.trim\(\)/);
   assert.doesNotMatch(adminRoute, /searchParams\.get\("hrToken"\)/);
-  assert.match(adminHtml, /function approvedCorrectionTimes/);
+  assert.doesNotMatch(adminHtml, /function approvedCorrectionTimes/);
   assert.match(adminHtml, /function correctionRequestedSummary/);
   assert.match(adminHtml, /function correctionRequestedField/);
   assert.match(adminHtml, /function correctionSourceTime/);
@@ -153,8 +155,6 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /}, 30000\)/);
   assert.match(adminHtml, /let refreshQueued = false/);
   assert.match(adminHtml, /if \(loading\) \{/);
-  assert.match(adminHtml, /const clockOut = approved\.find\(item => item\.requested_clock_out_at\)/);
-  assert.match(adminHtml, /clockOut: clockOut\?\.requested_clock_out_at \|\| ""/);
   assert.match(adminHtml, /function isReportFieldMarker/);
   assert.match(adminHtml, /const reportInRows = reportSegmentRows\.filter\(row => row\.clock_in_at\)/);
   assert.match(adminHtml, /const reportOutRows = reportSegmentRows\.filter\(row => row\.clock_out_at\)/);
@@ -165,14 +165,14 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /baseOutCandidate/);
   assert.match(adminHtml, /const rowFirstIn = inCandidate\?\.value \|\| ""/);
   assert.match(adminHtml, /function newestReportTimeCandidate/);
-  assert.match(adminHtml, /const lastOut = correctionOutWins \? approvedTimes\.clockOut : rowLastOut/);
+  assert.match(adminHtml, /const lastOut = rowLastOut/);
   assert.match(adminHtml, /manualEdit/);
-  assert.match(adminHtml, /correctedTime/);
-  assert.match(adminHtml, /function reportCorrectionWins/);
+  assert.doesNotMatch(adminHtml, /correctedTime/);
+  assert.doesNotMatch(adminHtml, /function reportCorrectionWins/);
   assert.match(adminHtml, /function isSameOrNewer/);
-  assert.match(adminHtml, /function sameReportInstant/);
-  assert.match(adminHtml, /const correctionInWins = Boolean\(approvedTimes\.clockIn\) && sameReportInstant\(approvedTimes\.clockIn, rowFirstIn\) && isSameOrNewer\(approvedTimes\.clockInReviewedAt, inUpdatedAt\)/);
-  assert.match(adminHtml, /const correctionOutWins = Boolean\(approvedTimes\.clockOut\) && sameReportInstant\(approvedTimes\.clockOut, rowLastOut\) && isSameOrNewer\(approvedTimes\.clockOutReviewedAt, outUpdatedAt\)/);
+  assert.doesNotMatch(adminHtml, /function sameReportInstant/);
+  assert.doesNotMatch(adminHtml, /const correctionInWins/);
+  assert.doesNotMatch(adminHtml, /const correctionOutWins/);
   assert.doesNotMatch(adminHtml, /clearCalculatedReportEdits\(approvedCorrection\.employee_id, approvedCorrection\.requested_date\)/);
   assert.match(adminHtml, /class="highlightTime"/);
   assert.match(adminHtml, /function reportPaidWorkMinutes/);
@@ -203,17 +203,20 @@ test("correction requests save Malaysia time and clock-out approvals target open
   assert.match(adminHtml, /main \{\s+width: calc\(100% - 24px\)/);
   assert.match(adminHtml, /\.reportTable \{\s+width: 100%;\s+min-width: 0;\s+table-layout: fixed;/);
   assert.match(adminHtml, /\.employeeReport \.tableWrap \{\s+overflow-x: hidden;/);
+  assert.match(adminHtml, /#monthlyReportPanel\.monthlyReportFullscreen \{[\s\S]*position: fixed;[\s\S]*inset: 0;/);
+  assert.match(adminHtml, /\.monthlyReportFullscreen \.reportTable \{\s+height: 100%;\s+font-size: 9px;/);
+  assert.match(adminHtml, /monthlyReportArea\.classList\.toggle\("singleEmployeeReport", employeeRows\.length === 1\)/);
+  assert.match(adminHtml, /document\.body\.classList\.add\("monthlyReportOpen"\)/);
   assert.match(adminHtml, /<colgroup>[\s\S]*<col style="width:12%">[\s\S]*<col style="width:20\.5%">[\s\S]*<\/colgroup>/);
   assert.doesNotMatch(adminHtml, /return Math\.max\(lateShort, earlyOut\)/);
   assert.match(adminHtml, /function isEditableReportField/);
   assert.match(adminHtml, /function reportFieldWasEdited/);
-  assert.match(adminHtml, /sameReportInstant\(approvedTimes\.clockIn, rowFirstIn\) && isSameOrNewer\(approvedTimes\.clockInReviewedAt, inUpdatedAt\)/);
-  assert.match(adminHtml, /sameReportInstant\(approvedTimes\.clockOut, rowLastOut\) && isSameOrNewer\(approvedTimes\.clockOutReviewedAt, outUpdatedAt\)/);
-  assert.match(adminHtml, /reportEditedClockIn: Boolean\(inMarker \|\| reportSegmentRows\.some\(row => row\.clock_in_at\)\) && !correctionInWins/);
+  assert.doesNotMatch(adminHtml, /sameReportInstant\(approvedTimes/);
+  assert.match(adminHtml, /reportEditedClockIn: Boolean\(inMarker \|\| reportSegmentRows\.some\(row => row\.clock_in_at\)\)/);
   assert.match(adminHtml, /reportEditedBreak: Boolean\(breakTime\)/);
   assert.match(adminHtml, /if \(!isEditableReportField\(field\)\) return fallback/);
-  assert.match(adminHtml, /if \(reportCorrectionWins\(employeeId, dateKey, field\)\) return fallback/);
-  assert.match(adminHtml, /const manualEdit = editableField && !correctionWins && \(Object\.prototype\.hasOwnProperty\.call\(monthlyReportEdits, key\) \|\| reportFieldWasEdited\(employeeId, dateKey, field\)\)/);
+  assert.doesNotMatch(adminHtml, /if \(reportCorrectionWins/);
+  assert.match(adminHtml, /const manualEdit = editableField && \(Object\.prototype\.hasOwnProperty\.call\(monthlyReportEdits, key\) \|\| reportFieldWasEdited\(employeeId, dateKey, field\)\)/);
   assert.match(adminHtml, /if \(!isEditableReportField\(field\)\)/);
   assert.match(adminHtml, /break: reportValue\(employee\.id, dateKey, "break", reportTime\(attendanceRow\?\.breakTime\)\)/);
   assert.match(adminHtml, /resume: reportValue\(employee\.id, dateKey, "resume", reportTime\(attendanceRow\?\.resumeTime\)\)/);

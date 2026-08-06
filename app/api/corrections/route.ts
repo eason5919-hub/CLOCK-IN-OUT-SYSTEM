@@ -1,5 +1,4 @@
 import { ensureDatabase, getD1, getSessionFromRequest, isAdminSession } from "../../../db/runtime";
-import { calculateAttendanceTotals, localDayOfWeek } from "../../../db/attendance-calculations";
 
 export async function POST(request: Request) {
   try {
@@ -115,104 +114,21 @@ export async function PATCH(request: Request) {
       return json(request, { error: "Pending correction was not found." }, 404);
     }
 
-    let newRecordJson: string | null = null;
-    if (payload.status === "approved") {
-      const attendanceId = correction.attendance_id ?? crypto.randomUUID();
-      const existingRecord = correction.attendance_id
-        ? await db.prepare("SELECT id FROM attendance WHERE id = ?").bind(correction.attendance_id).first()
-        : null;
-
-      if (existingRecord) {
-        await db
-          .prepare(
-            `UPDATE attendance
-             SET clock_in_at = COALESCE(?, clock_in_at),
-                 clock_out_at = COALESCE(?, clock_out_at),
-                 source = CASE WHEN source = 'admin_report_edit' THEN source ELSE 'admin_adjustment' END,
-                 status = 'pending_review',
-                 updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
-             WHERE id = ?`,
-          )
-          .bind(correction.requested_clock_in_at, correction.requested_clock_out_at, attendanceId)
-          .run();
-      } else {
-        await db
-          .prepare(
-            `INSERT INTO attendance
-             (id, employee_id, warehouse_id, work_date, clock_in_at, clock_out_at, source, status)
-             VALUES (?, ?, 'wh-main', ?, ?, ?, 'admin_adjustment', 'pending_review')`,
-          )
-          .bind(
-            attendanceId,
-            correction.employee_id,
-            correction.requested_date,
-            correction.requested_clock_in_at,
-            correction.requested_clock_out_at,
-          )
-          .run();
-      }
-
-      const updated = await db
-        .prepare(
-          `SELECT a.*, w.timezone
-           FROM attendance a
-           JOIN warehouses w ON w.id = a.warehouse_id
-           WHERE a.id = ?`,
-        )
-        .bind(attendanceId)
-        .first<Record<string, string | number | null>>();
-      if (updated?.clock_in_at && updated.clock_out_at) {
-        const timeZone = String(updated.timezone || "Asia/Kuala_Lumpur");
-        const schedule = await db
-          .prepare(
-            "SELECT start_time, end_time, overtime_starts_at, is_off_day FROM working_schedule WHERE warehouse_id = ? AND day_of_week = ?",
-          )
-          .bind(updated.warehouse_id, localDayOfWeek(`${correction.requested_date}T12:00:00+08:00`, timeZone))
-          .first();
-        const previousRegularMinutes = await getPreviousRegularMinutes(
-          db,
-          String(updated.employee_id),
-          String(updated.work_date),
-          String(updated.id),
-        );
-        const totals = calculateAttendanceTotals(String(updated.clock_in_at), String(updated.clock_out_at), schedule, timeZone, {
-          previousRegularMinutes,
-        });
-        const status =
-          totals.lateMinutes > 0 ? "late" : totals.earlyLeaveMinutes > 0 ? "early_leave" : "present";
-        await db
-          .prepare(
-            `UPDATE attendance
-             SET total_minutes = ?, late_minutes = ?, early_leave_minutes = ?,
-                 overtime_minutes = ?, status = ?,
-                 updated_at = CASE WHEN source = 'admin_report_edit' THEN updated_at ELSE CURRENT_TIMESTAMP END
-             WHERE id = ?`,
-          )
-          .bind(
-            totals.totalMinutes,
-            totals.lateMinutes,
-            totals.earlyLeaveMinutes,
-            totals.overtimeMinutes,
-            status,
-            updated.id,
-          )
-          .run();
-      }
-      const recalculated = await db
-        .prepare("SELECT * FROM attendance WHERE id = ?")
-        .bind(attendanceId)
-        .first<Record<string, unknown>>();
-      newRecordJson = recalculated ? JSON.stringify(recalculated) : null;
-    }
+    const reviewedCorrection = {
+      ...correction,
+      status: payload.status,
+      reviewed_by_user_id: payload.adminUserId,
+      admin_note: payload.adminNote ?? null,
+    };
 
     await db
       .prepare(
         `UPDATE attendance_corrections
          SET status = ?, reviewed_by_user_id = ?, reviewed_at = CURRENT_TIMESTAMP,
-             admin_note = ?, new_record_json = ?
+             admin_note = ?, new_record_json = NULL
          WHERE id = ?`,
       )
-      .bind(payload.status, payload.adminUserId, payload.adminNote ?? null, newRecordJson, payload.correctionId)
+      .bind(payload.status, payload.adminUserId, payload.adminNote ?? null, payload.correctionId)
       .run();
 
     await db
@@ -226,11 +142,11 @@ export async function PATCH(request: Request) {
         "attendance_corrections",
         payload.correctionId,
         JSON.stringify(correction),
-        newRecordJson,
+        JSON.stringify(reviewedCorrection),
       )
       .run();
 
-    return json(request, { ok: true });
+    return json(request, { ok: true, attendanceChanged: false });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
     return json(request, { error: message }, 500);
@@ -301,25 +217,4 @@ function corsHeaders(request: Request) {
     "access-control-max-age": "86400",
     vary: "Origin",
   };
-}
-
-async function getPreviousRegularMinutes(
-  db: D1Database,
-  employeeId: string,
-  workDate: string,
-  currentAttendanceId: string,
-) {
-  const rows = await db
-    .prepare(
-      `SELECT total_minutes, overtime_minutes
-       FROM attendance
-       WHERE employee_id = ? AND work_date = ? AND id <> ? AND clock_out_at IS NOT NULL`,
-    )
-    .bind(employeeId, workDate, currentAttendanceId)
-    .all<{ total_minutes: number; overtime_minutes: number }>();
-
-  return (rows.results ?? []).reduce(
-    (total, row) => total + Math.max(0, Number(row.total_minutes || 0) - Number(row.overtime_minutes || 0)),
-    0,
-  );
 }
