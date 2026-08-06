@@ -85,7 +85,10 @@ test("approved corrections update attendance and highlight changed times", async
   assert.doesNotMatch(clockRoute, /calculateBreakReturnLateMinutes/);
   assert.doesNotMatch(clockRoute, /Clock out is required before the next clock in/);
   assert.match(script, /const fieldUpdatedAt = field === "clockIn" \? row\.clockInUpdatedAt : row\.clockOutUpdatedAt/);
-  assert.match(employeeSummaryRoute, /sameInstant\(correctionTime, rowTime\) && isSameOrNewer\(correctionReviewedAt, fieldUpdatedAt\)/);
+  assert.match(employeeSummaryRoute, /approvedCorrectionMatchesField\(row, correction, field\)/);
+  assert.match(reconciliation, /const fieldUpdatedAt = Number\(row\[editedKey\] \|\| 0\)/);
+  assert.match(reconciliation, /report_clock_in_updated_at: reportEditedClockIn/);
+  assert.match(reconciliation, /report_clock_out_updated_at: reportEditedClockOut/);
   assert.doesNotMatch(script, /return correction\[key\] === row\[field\]/);
   assert.match(reconciliation, /timeCandidate\(inMarker, "clock_in_at", "override", 3, true\)/);
   assert.match(reconciliation, /timeCandidate\(outMarker, "clock_out_at", "override", 3, true\)/);

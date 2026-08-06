@@ -55,6 +55,27 @@ export function approvedCorrectionTimes(current: AttendanceRow | null, correctio
   };
 }
 
+export function approvedCorrectionMatchesField(
+  row: AttendanceRow,
+  correction: AttendanceRow,
+  field: "clock_in" | "clock_out",
+) {
+  const valueKey = field === "clock_in" ? "clock_in_at" : "clock_out_at";
+  const editedKey = field === "clock_in" ? "report_edited_clock_in" : "report_edited_clock_out";
+  const updatedKey = field === "clock_in" ? "clock_in_updated_at" : "clock_out_updated_at";
+  const reportUpdatedKey = field === "clock_in" ? "report_clock_in_updated_at" : "report_clock_out_updated_at";
+  const requestKey = field === "clock_in" ? "requested_clock_in_at" : "requested_clock_out_at";
+  const correctionTime = stringOrNull(correction[requestKey]);
+  const rowTime = stringOrNull(row[valueKey]);
+  if (!correctionTime || !sameTimeValue(correctionTime, rowTime)) return false;
+
+  const correctionReviewedAt = String(correction.reviewed_at || correction.created_at || "");
+  const fieldUpdatedAt = Number(row[editedKey] || 0)
+    ? String(row[reportUpdatedKey] || row[updatedKey] || row.updated_at || row.created_at || "")
+    : "";
+  return isSameOrNewerTime(correctionReviewedAt, fieldUpdatedAt);
+}
+
 export function reconcileAttendanceDay(rows: AttendanceRow[]) {
   const activeRows = rows.filter((row) => String(row.source || "") !== ARCHIVED_REPORT_SOURCE);
   if (!activeRows.length) return null;
@@ -71,6 +92,7 @@ export function reconcileAttendanceDay(rows: AttendanceRow[]) {
   const baseRow = newestRow(baseRows);
   const inMarker = newestRow(inMarkers);
   const outMarker = newestRow(outMarkers);
+  const hasFieldMarkers = Boolean(inMarker || outMarker);
   const firstReportSegment = reportSegments[0] || null;
   const lastReportSegment = reportSegments[reportSegments.length - 1] || null;
 
@@ -117,14 +139,16 @@ export function reconcileAttendanceDay(rows: AttendanceRow[]) {
   const clockOutValue = clockOut?.value || null;
   const reportEditedClockIn = Boolean(
     clockIn && (
-      clockIn.source !== "base" ||
-      baseAdjustmentPreservesOverride(clockIn, inMarker, "clock_in_at")
+      hasFieldMarkers
+        ? clockIn.source === "override" || baseAdjustmentPreservesOverride(clockIn, inMarker, "clock_in_at")
+        : clockIn.source === "report"
     ),
   );
   const reportEditedClockOut = Boolean(
     clockOut && (
-      clockOut.source !== "base" ||
-      baseAdjustmentPreservesOverride(clockOut, outMarker, "clock_out_at")
+      hasFieldMarkers
+        ? clockOut.source === "override" || baseAdjustmentPreservesOverride(clockOut, outMarker, "clock_out_at")
+        : clockOut.source === "report"
     ),
   );
 
@@ -157,6 +181,8 @@ export function reconcileAttendanceDay(rows: AttendanceRow[]) {
     updated_at: newestTimestamp(activeRows),
     clock_in_updated_at: clockIn?.updatedAt || "",
     clock_out_updated_at: clockOut?.updatedAt || "",
+    report_clock_in_updated_at: reportEditedClockIn ? String(inMarker?.updated_at || inMarker?.created_at || "") : "",
+    report_clock_out_updated_at: reportEditedClockOut ? String(outMarker?.updated_at || outMarker?.created_at || "") : "",
     report_edited_clock_in: reportEditedClockIn ? 1 : 0,
     report_edited_break: breakAt ? 1 : 0,
     report_edited_resume: resumeAt ? 1 : 0,
@@ -181,6 +207,14 @@ function sameTimeValue(left: string | null, right: string | null) {
   const leftTime = parseAttendanceTimestamp(left);
   const rightTime = parseAttendanceTimestamp(right);
   return leftTime && rightTime ? leftTime === rightTime : left === right;
+}
+
+function isSameOrNewerTime(left: string, right: string) {
+  const leftTime = parseAttendanceTimestamp(left);
+  const rightTime = parseAttendanceTimestamp(right);
+  if (!leftTime) return false;
+  if (!rightTime) return true;
+  return leftTime >= rightTime;
 }
 
 function isReportSource(row: AttendanceRow) {

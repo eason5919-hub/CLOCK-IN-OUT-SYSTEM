@@ -1,6 +1,6 @@
 import { ensureDatabase, getD1, getSessionFromRequest } from "../../../../db/runtime";
 import {
-  parseAttendanceTimestamp,
+  approvedCorrectionMatchesField,
   reconcileAttendanceRows,
   type AttendanceRow,
 } from "../../../../db/attendance-reconciliation";
@@ -112,7 +112,6 @@ function reportClockMark(row: AttendanceRow, field: "clock_in" | "clock_out", co
   const dateKey = String(row.work_date || "");
   const valueKey = field === "clock_in" ? "clock_in_at" : "clock_out_at";
   const editedKey = field === "clock_in" ? "report_edited_clock_in" : "report_edited_clock_out";
-  const updatedKey = field === "clock_in" ? "clock_in_updated_at" : "clock_out_updated_at";
   const requestKey = field === "clock_in" ? "requested_clock_in_at" : "requested_clock_out_at";
   const correction = corrections
     .filter((item) => (
@@ -125,32 +124,8 @@ function reportClockMark(row: AttendanceRow, field: "clock_in" | "clock_out", co
       parseAttendanceTimestamp(String(left.reviewed_at || left.created_at || ""))
     ))[0];
 
-  if (correction) {
-    const correctionTime = String(correction[requestKey] || "");
-    const rowTime = String(row[valueKey] || "");
-    const correctionReviewedAt = String(correction.reviewed_at || correction.created_at || "");
-    const fieldUpdatedAt = String(row[updatedKey] || row.updated_at || row.created_at || "");
-    if (sameInstant(correctionTime, rowTime) && isSameOrNewer(correctionReviewedAt, fieldUpdatedAt)) {
-      return "corrected";
-    }
-  }
+  if (correction && approvedCorrectionMatchesField(row, correction, field)) return "corrected";
   return Number(row[editedKey] || 0) && row[valueKey] ? "edited" : "";
-}
-
-function isSameOrNewer(left: string, right: string) {
-  const leftMs = parseAttendanceTimestamp(left);
-  const rightMs = parseAttendanceTimestamp(right);
-  if (!leftMs) return false;
-  if (!rightMs) return true;
-  return leftMs >= rightMs;
-}
-
-function sameInstant(left: string, right: string) {
-  if (!left || !right) return false;
-  const leftMs = parseAttendanceTimestamp(left);
-  const rightMs = parseAttendanceTimestamp(right);
-  if (!leftMs || !rightMs) return left === right;
-  return leftMs === rightMs;
 }
 
 function json(request: Request, data: unknown, status = 200) {

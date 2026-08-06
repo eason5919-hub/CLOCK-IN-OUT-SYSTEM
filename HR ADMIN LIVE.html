@@ -1430,8 +1430,12 @@
 
       const rowFirstIn = row ? row.clock_in_at || "" : approvedTimes.clockIn || "";
       const rowLastOut = row ? row.clock_out_at || "" : approvedTimes.clockOut || "";
-      const inUpdatedAt = row?.clock_in_updated_at || row?.updated_at || row?.created_at || "";
-      const outUpdatedAt = row?.clock_out_updated_at || row?.updated_at || row?.created_at || "";
+      const inUpdatedAt = Number(row?.report_edited_clock_in || 0)
+        ? row?.report_clock_in_updated_at || row?.clock_in_updated_at || row?.updated_at || row?.created_at || ""
+        : "";
+      const outUpdatedAt = Number(row?.report_edited_clock_out || 0)
+        ? row?.report_clock_out_updated_at || row?.clock_out_updated_at || row?.updated_at || row?.created_at || ""
+        : "";
       const correctionInWins = Boolean(approvedTimes.clockIn) &&
         sameReportInstant(approvedTimes.clockIn, rowFirstIn) &&
         isSameOrNewer(approvedTimes.clockInReviewedAt, inUpdatedAt);
