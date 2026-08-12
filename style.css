@@ -65,6 +65,10 @@ button.danger {
   background: var(--red);
 }
 
+.negative-leave {
+  color: var(--red);
+}
+
 input,
 select,
 textarea {

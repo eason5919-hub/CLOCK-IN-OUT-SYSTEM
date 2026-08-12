@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260812-stable-month-date";
+const APP_VERSION = "20260812-negative-leave-red";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -185,7 +185,8 @@ function employeeScreen() {
   const leaveMoreButton = leaveRequests.length > 5
     ? `<button class="secondary" type="button" data-toggle-employee-leave>${showAllEmployeeLeaveRequests ? "Show less" : "View more"}</button>`
     : "";
-  const leaveRemaining = formatLeaveDays(state.currentUser.leaveRemainingDays || 0);
+  const leaveRemainingDays = Number(state.currentUser.leaveRemainingDays || 0);
+  const leaveRemaining = formatLeaveDays(leaveRemainingDays);
   const leaveDefaultDate = defaultLeaveDate();
   selectedEmployeeMonthKey = normalizedEmployeeMonthKey(selectedEmployeeMonthKey);
   const currentMonthDate = monthDateFromKey(selectedEmployeeMonthKey);
@@ -260,7 +261,7 @@ function employeeScreen() {
       </section>
       <section class="panel" id="leave">
         <div class="heading">
-          <div><p class="eyebrow">Apply Annual Leave/MC</p><h3>Annual leave remaining: ${leaveRemaining}</h3></div>
+          <div><p class="eyebrow">Apply Annual Leave/MC</p><h3>Annual leave remaining: <span class="${leaveRemainingDays < 0 ? "negative-leave" : ""}">${leaveRemaining}</span></h3></div>
         </div>
         <form class="form" id="leave-form">
           <label>Type<select name="leaveType"><option value="leave">Annual Leave</option><option value="mc">MC</option></select></label>

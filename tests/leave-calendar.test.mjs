@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260806-plain-history-all-dates/);
-  assert.match(indexHtml, /script\.js\?v=20260812-stable-month-date/);
-  assert.equal(JSON.parse(appVersion).version, "20260812-stable-month-date");
-  assert.match(script, /const APP_VERSION = "20260812-stable-month-date"/);
+  assert.match(indexHtml, /style\.css\?v=20260812-negative-leave-red/);
+  assert.match(indexHtml, /script\.js\?v=20260812-negative-leave-red/);
+  assert.equal(JSON.parse(appVersion).version, "20260812-negative-leave-red");
+  assert.match(script, /const APP_VERSION = "20260812-negative-leave-red"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -204,15 +204,22 @@ test("employee leave requests use one date-range calendar and show five cards be
 });
 
 test("annual leave remaining can show a negative balance", async () => {
-  const [employeeRoute, adminRoute] = await Promise.all([
+  const [employeeRoute, adminRoute, script, css, adminHtml] = await Promise.all([
     readFile(new URL("../app/api/employee/summary/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/admin/live/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../script.js", import.meta.url), "utf8"),
+    readFile(new URL("../style.css", import.meta.url), "utf8"),
+    readFile(new URL("../HR ADMIN LIVE.html", import.meta.url), "utf8"),
   ]);
 
   for (const route of [employeeRoute, adminRoute]) {
     assert.match(route, /\(e\.leave_entitlement_days - COALESCE\(leave_totals\.taken_days, 0\)\) AS leave_remaining_days/);
     assert.doesNotMatch(route, /MAX\(e\.leave_entitlement_days - COALESCE\(leave_totals\.taken_days, 0\), 0\)/);
   }
+  assert.match(script, /leaveRemainingDays < 0 \? "negative-leave" : ""/);
+  assert.match(css, /\.negative-leave \{\s+color: var\(--red\);/);
+  assert.match(adminHtml, /Number\(employee\.leave_remaining_days \|\| 0\) < 0 \? "negativeLeave" : ""/);
+  assert.match(adminHtml, /\.negativeLeave \{ color: var\(--danger\); \}/);
 });
 
 test("admin employee list shows approved MC days instead of status", async () => {

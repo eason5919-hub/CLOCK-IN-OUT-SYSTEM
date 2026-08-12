@@ -602,6 +602,7 @@
 
     .pill.warn { background: #fff3cd; color: #866400; }
     .pill.bad { background: #fde7e5; color: var(--danger); }
+    .negativeLeave { color: var(--danger); }
 
     .actions {
       display: flex;
@@ -1643,7 +1644,7 @@
                 <small>Annual taken ${escapeHtml(formatLeaveDays(employee.leave_taken_days))}</small>
               </div>
             </td>
-            <td><strong>${escapeHtml(formatLeaveDays(employee.leave_remaining_days))}</strong></td>
+            <td><strong class="${Number(employee.leave_remaining_days || 0) < 0 ? "negativeLeave" : ""}">${escapeHtml(formatLeaveDays(employee.leave_remaining_days))}</strong></td>
             <td>
               <div class="actions">
                 ${editing ? `
