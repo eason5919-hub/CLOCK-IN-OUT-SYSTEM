@@ -121,6 +121,7 @@ async function liveData(db: D1Database, request: Request) {
                 e.position, e.phone,
                 e.leave_entitlement_days,
                 COALESCE(leave_totals.taken_days, 0) AS leave_taken_days,
+                COALESCE(leave_totals.mc_taken_days, 0) AS mc_taken_days,
                 (e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0)) AS leave_remaining_days,
                 e.email, e.status, e.created_at,
                 d.id AS device_id, d.device_model, d.status AS device_status,
@@ -130,9 +131,10 @@ async function liveData(db: D1Database, request: Request) {
          LEFT JOIN devices d ON d.employee_id = e.id AND d.status = 'registered'
          LEFT JOIN (
            SELECT employee_id,
-                  SUM(CASE duration WHEN 'half_day' THEN 0.5 ELSE 1 END) AS taken_days
+                  SUM(CASE WHEN leave_type = 'leave' THEN CASE duration WHEN 'half_day' THEN 0.5 ELSE 1 END ELSE 0 END) AS taken_days,
+                  SUM(CASE WHEN leave_type = 'mc' THEN CASE duration WHEN 'half_day' THEN 0.5 ELSE 1 END ELSE 0 END) AS mc_taken_days
            FROM leave_requests
-           WHERE status = 'approved' AND leave_type = 'leave'
+           WHERE status = 'approved'
            GROUP BY employee_id
          ) leave_totals ON leave_totals.employee_id = e.id
          WHERE e.status <> 'deleted'

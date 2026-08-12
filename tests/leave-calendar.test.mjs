@@ -206,6 +206,20 @@ test("annual leave remaining can show a negative balance", async () => {
   }
 });
 
+test("admin employee list shows approved MC days instead of status", async () => {
+  const [adminRoute, adminHtml] = await Promise.all([
+    readFile(new URL("../app/api/admin/live/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../HR ADMIN LIVE.html", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(adminRoute, /COALESCE\(leave_totals\.mc_taken_days, 0\) AS mc_taken_days/);
+  assert.match(adminRoute, /SUM\(CASE WHEN leave_type = 'mc' THEN CASE duration WHEN 'half_day' THEN 0\.5 ELSE 1 END ELSE 0 END\) AS mc_taken_days/);
+  assert.match(adminRoute, /WHERE status = 'approved'/);
+  assert.match(adminHtml, /<th>MC Taken<\/th>/);
+  assert.match(adminHtml, /formatLeaveDays\(employee\.mc_taken_days\)/);
+  assert.doesNotMatch(adminHtml, /<th>Status<\/th>\s*<th>Device<\/th>/);
+});
+
 test("employee metric cards use selected month report data", async () => {
   const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
 

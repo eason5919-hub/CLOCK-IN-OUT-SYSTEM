@@ -736,7 +736,7 @@
               <th>Phone</th>
               <th>Department</th>
               <th>Position</th>
-              <th>Status</th>
+              <th>MC Taken</th>
               <th>Device</th>
               <th>Leave</th>
               <th>Remaining</th>
@@ -1622,7 +1622,6 @@
     function renderEmployees() {
       const rows = visibleEmployees();
       employeesBody.innerHTML = rows.map((employee, index) => {
-        const active = employee.status === "active";
         const hasDevice = Boolean(employee.device_id);
         const editing = editingEmployeeId === employee.id;
         return `
@@ -1633,7 +1632,7 @@
             <td>${editing ? `<input class="inlineInput" data-field="phone" value="${escapeHtml(employee.phone || "")}">` : escapeHtml(employee.phone || "-")}</td>
             <td>${editing ? `<input class="inlineInput" data-field="department" value="${escapeHtml(employee.department_name || employee.department_id || "")}">` : escapeHtml(employee.department_name || employee.department_id || "-")}</td>
             <td>${editing ? `<input class="inlineInput" data-field="position" value="${escapeHtml(employee.position || "")}">` : escapeHtml(employee.position || "-")}</td>
-            <td><span class="pill ${active ? "" : "bad"}">${escapeHtml(employee.status || "-")}</span></td>
+            <td><strong>${escapeHtml(formatLeaveDays(employee.mc_taken_days))}</strong></td>
             <td>
               ${hasDevice ? escapeHtml(employee.device_model || "Registered phone") : "Not registered"}
               ${employee.last_seen_at ? `<small>Last seen ${escapeHtml(formatDateTime(employee.last_seen_at))}</small>` : ""}
