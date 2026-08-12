@@ -85,9 +85,9 @@ test("employee month dashboard can show current and previous month only", async 
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
   assert.match(indexHtml, /style\.css\?v=20260806-plain-history-all-dates/);
-  assert.match(indexHtml, /script\.js\?v=20260806-live-phone-refresh/);
-  assert.equal(JSON.parse(appVersion).version, "20260806-live-phone-refresh");
-  assert.match(script, /const APP_VERSION = "20260806-live-phone-refresh"/);
+  assert.match(indexHtml, /script\.js\?v=20260812-effective-clock-state/);
+  assert.equal(JSON.parse(appVersion).version, "20260812-effective-clock-state");
+  assert.match(script, /const APP_VERSION = "20260812-effective-clock-state"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -192,6 +192,18 @@ test("employee leave requests use one date-range calendar and show five cards be
   assert.doesNotMatch(script, /closedShown/);
   assert.match(css, /\.calendar-day\.is-in-range/);
   assert.doesNotMatch(css, /\.date-range-fields/);
+});
+
+test("annual leave remaining can show a negative balance", async () => {
+  const [employeeRoute, adminRoute] = await Promise.all([
+    readFile(new URL("../app/api/employee/summary/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/live/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  for (const route of [employeeRoute, adminRoute]) {
+    assert.match(route, /\(e\.leave_entitlement_days - COALESCE\(leave_totals\.taken_days, 0\)\) AS leave_remaining_days/);
+    assert.doesNotMatch(route, /MAX\(e\.leave_entitlement_days - COALESCE\(leave_totals\.taken_days, 0\), 0\)/);
+  }
 });
 
 test("employee metric cards use selected month report data", async () => {

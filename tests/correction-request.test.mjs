@@ -71,11 +71,11 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(script, /hasReportMarks: Object\.prototype\.hasOwnProperty\.call\(row, "report_clock_in_mark"\) \|\| Object\.prototype\.hasOwnProperty\.call\(row, "report_clock_out_mark"\)/);
   assert.match(script, /clockInMark: row\.report_clock_in_mark \|\| ""/);
   assert.match(script, /clockOutMark: row\.report_clock_out_mark \|\| ""/);
-  assert.match(script, /canClockOut: Boolean\(row\.live_open_clock_in_at\)/);
-  assert.match(script, /liveClockIn: formatLiveTime\(row\.live_open_clock_in_at\)/);
-  assert.match(script, /Object\.prototype\.hasOwnProperty\.call\(row, "canClockOut"\)/);
-  assert.match(script, /row\.canClockOut && isOpenRecordStillActive\(row\.date\)/);
+  assert.match(script, /const canClockOut = Boolean\(row\.clock_in_at && !row\.clock_out_at\)/);
+  assert.match(script, /liveClockIn: formatLiveTime\(canClockOut \? row\.clock_in_at : null\)/);
+  assert.match(script, /row\.clockIn && !row\.clockOut && isOpenRecordStillActive\(row\.date\)/);
   assert.match(clockRoute, /AND source = 'qr_gps'/);
+  assert.match(clockRoute, /AND source IN \('qr_gps', 'admin_adjustment'\)/);
   assert.match(clockRoute, /CASE WHEN COALESCE\(f\.has_clock_in_override, 0\) = 1 THEN f\.override_clock_in_at ELSE q\.clock_in_at END AS clock_in_at/);
   assert.match(clockRoute, /CASE WHEN COALESCE\(f\.has_clock_out_override, 0\) = 1 THEN f\.override_clock_out_at ELSE q\.clock_out_at END AS clock_out_at/);
   assert.match(clockRoute, /action: "clock_in_existing"/);

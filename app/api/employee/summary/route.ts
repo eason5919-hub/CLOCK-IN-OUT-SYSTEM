@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       `SELECT e.id, e.employee_code, e.full_name, e.department_id, e.position, e.phone,
               e.leave_entitlement_days,
               COALESCE(leave_totals.taken_days, 0) AS leave_taken_days,
-              MAX(e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0), 0) AS leave_remaining_days,
+              (e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0)) AS leave_remaining_days,
               d.device_model, d.status AS device_status
        FROM employees e
        LEFT JOIN devices d ON d.employee_id = e.id AND d.status = 'registered'

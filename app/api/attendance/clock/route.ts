@@ -435,7 +435,7 @@ async function findQrAttendanceForDate(db: D1Database, employeeId: string, workD
          FROM attendance
          WHERE employee_id = ?
            AND work_date = ?
-           AND source = 'qr_gps'
+           AND source IN ('qr_gps', 'admin_adjustment')
          ORDER BY updated_at DESC, clock_in_at DESC, clock_out_at DESC
          LIMIT 1
        ),

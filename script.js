@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260806-live-phone-refresh";
+const APP_VERSION = "20260812-effective-clock-state";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -521,6 +521,7 @@ function clearEmployeeSession(message) {
 }
 
 function mapLiveAttendance(row) {
+  const canClockOut = Boolean(row.clock_in_at && !row.clock_out_at);
   return {
     id: row.id,
     employeeId: state.currentUser?.employeeId,
@@ -548,8 +549,8 @@ function mapLiveAttendance(row) {
     hasReportMarks: Object.prototype.hasOwnProperty.call(row, "report_clock_in_mark") || Object.prototype.hasOwnProperty.call(row, "report_clock_out_mark"),
     clockInMark: row.report_clock_in_mark || "",
     clockOutMark: row.report_clock_out_mark || "",
-    canClockOut: Boolean(row.live_open_clock_in_at),
-    liveClockIn: formatLiveTime(row.live_open_clock_in_at),
+    canClockOut,
+    liveClockIn: formatLiveTime(canClockOut ? row.clock_in_at : null),
     gps: liveGpsLabel(row),
   };
 }
@@ -2135,11 +2136,7 @@ function localDateTimeToIso(date, time) {
 }
 
 function currentOpenRecord(records) {
-  return records.find((row) =>
-    Object.prototype.hasOwnProperty.call(row, "canClockOut")
-      ? row.canClockOut && isOpenRecordStillActive(row.date)
-      : row.clockIn && !row.clockOut && isOpenRecordStillActive(row.date),
-  );
+  return records.find((row) => row.clockIn && !row.clockOut && isOpenRecordStillActive(row.date));
 }
 
 function isOpenRecordStillActive(workDate) {

@@ -346,7 +346,9 @@ function EmployeeApp({
 }) {
   const records = useMemo(() => data?.attendance ?? [], [data?.attendance]);
   const corrections = useMemo(() => data?.corrections ?? [], [data?.corrections]);
-  const openRecord = records.find((record) => record.live_open_clock_in_at && isOpenRecordStillActive(String(record.work_date ?? "")));
+  const openRecord = records.find((record) => (
+    record.clock_in_at && !record.clock_out_at && isOpenRecordStillActive(String(record.work_date ?? ""))
+  ));
   const today = malaysiaDateKey(new Date());
   const [calendarYear, calendarMonth] = today.split("-").map(Number);
   const calendarDays = new Date(Date.UTC(calendarYear, calendarMonth, 0)).getUTCDate();
@@ -404,7 +406,7 @@ function EmployeeApp({
                 <i />
               </div>
             </div>
-            <p>{clockState === "idle" && openRecord ? `Clocked in at ${formatTime(openRecord.live_open_clock_in_at)}. Scan QR to clock out.` : gpsMessage}</p>
+            <p>{clockState === "idle" && openRecord ? `Clocked in at ${formatTime(openRecord.clock_in_at)}. Scan QR to clock out.` : gpsMessage}</p>
           </div>
 
           <div className="clock-actions single">

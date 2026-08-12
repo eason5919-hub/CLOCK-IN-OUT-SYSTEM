@@ -121,7 +121,7 @@ async function liveData(db: D1Database, request: Request) {
                 e.position, e.phone,
                 e.leave_entitlement_days,
                 COALESCE(leave_totals.taken_days, 0) AS leave_taken_days,
-                MAX(e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0), 0) AS leave_remaining_days,
+                (e.leave_entitlement_days - COALESCE(leave_totals.taken_days, 0)) AS leave_remaining_days,
                 e.email, e.status, e.created_at,
                 d.id AS device_id, d.device_model, d.status AS device_status,
                 d.registered_at, d.last_seen_at

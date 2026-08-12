@@ -116,11 +116,6 @@ export function reconcileAttendanceDay(rows: AttendanceRow[]) {
   );
   const metricRows = reportSegmentsEffective ? reportSegments : baseRow ? [baseRow] : [];
   const anchor = (reportSegmentsEffective ? reportSegments[0] : baseRow) || inMarker || outMarker || activeRows[0];
-  const latestOpenQrRow = newestRow(
-    activeRows.filter(
-      (row) => String(row.source || "") === "qr_gps" && Boolean(row.clock_in_at) && !row.clock_out_at,
-    ),
-  );
   const breakAt = reportSegmentsEffective && reportSegments.length > 1
     ? stringOrNull(reportSegments[0].clock_out_at)
     : null;
@@ -189,7 +184,7 @@ export function reconcileAttendanceDay(rows: AttendanceRow[]) {
     report_edited_clock_out: reportEditedClockOut ? 1 : 0,
     report_segments_effective: reportSegmentsEffective ? 1 : 0,
     report_segment_count: reportSegmentsEffective ? reportSegments.length : 0,
-    live_open_clock_in_at: stringOrNull(latestOpenQrRow?.clock_in_at),
+    live_open_clock_in_at: clockInValue && !clockOutValue ? clockInValue : null,
   };
 }
 

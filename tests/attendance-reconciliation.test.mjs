@@ -103,6 +103,41 @@ test("a newer open base punch clears stale report out and break fields", async (
   assert.equal(resolved.resume_at, null);
   assert.equal(resolved.report_segments_effective, 0);
   assert.equal(resolved.overtime_minutes, 0);
+  assert.equal(resolved.live_open_clock_in_at, openBase.clock_in_at);
+});
+
+test("effective clock fields control the employee clock button", async () => {
+  const { reconcileAttendanceDay } = await loadReconciliation();
+  const correctedClockIn = {
+    ...baseRow,
+    id: "approved-clock-in",
+    clock_out_at: null,
+    source: "admin_adjustment",
+    updated_at: "2026-08-09 06:00:00",
+  };
+
+  const open = reconcileAttendanceDay([correctedClockIn]);
+  assert.equal(open.live_open_clock_in_at, correctedClockIn.clock_in_at);
+
+  const adminEditedClockIn = {
+    ...correctedClockIn,
+    id: "admin-clock-in",
+    source: "admin_report_edit_in",
+    updated_at: "2026-08-09 06:30:00",
+  };
+  const openFromAdminEdit = reconcileAttendanceDay([adminEditedClockIn]);
+  assert.equal(openFromAdminEdit.live_open_clock_in_at, adminEditedClockIn.clock_in_at);
+
+  const adminClockOut = {
+    ...baseRow,
+    id: "admin-clock-out",
+    clock_in_at: null,
+    source: "admin_report_edit_out",
+    updated_at: "2026-08-09 07:00:00",
+  };
+  const closed = reconcileAttendanceDay([correctedClockIn, adminClockOut]);
+  assert.equal(closed.clock_out_at, adminClockOut.clock_out_at);
+  assert.equal(closed.live_open_clock_in_at, null);
 });
 
 test("blank field overrides win deterministic timestamp ties", async () => {
