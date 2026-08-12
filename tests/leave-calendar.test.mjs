@@ -36,6 +36,15 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
   assert.match(script, /\["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"\]/);
   assert.match(script, /monthDateFromKey\(selectedEmployeeMonthKey\)/);
   assert.match(script, /data-history-date/);
+  assert.match(script, /data-history-title/);
+  assert.match(script, /data-history-content/);
+  assert.match(script, /updateSelectedEmployeeHistory\(button\.dataset\.historyDate\)/);
+  assert.match(script, /function updateSelectedEmployeeHistory\(date\)/);
+  const dateClickHandler = script.slice(
+    script.indexOf('document.querySelectorAll("[data-history-date]")'),
+    script.indexOf('document.querySelectorAll("[data-employee-month]")'),
+  );
+  assert.doesNotMatch(dateClickHandler, /render\(\)/);
   assert.match(script, /monthCalendar\(records, leaveRequests, corrections, historyDate, currentMonthDate\)/);
   assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
   assert.match(script, /function employeeAttendanceHeader/);
@@ -85,9 +94,9 @@ test("employee month dashboard can show current and previous month only", async 
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
   assert.match(indexHtml, /style\.css\?v=20260806-plain-history-all-dates/);
-  assert.match(indexHtml, /script\.js\?v=20260812-effective-clock-state/);
-  assert.equal(JSON.parse(appVersion).version, "20260812-effective-clock-state");
-  assert.match(script, /const APP_VERSION = "20260812-effective-clock-state"/);
+  assert.match(indexHtml, /script\.js\?v=20260812-stable-month-date/);
+  assert.equal(JSON.parse(appVersion).version, "20260812-stable-month-date");
+  assert.match(script, /const APP_VERSION = "20260812-stable-month-date"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);

@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260812-effective-clock-state";
+const APP_VERSION = "20260812-stable-month-date";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -244,8 +244,8 @@ function employeeScreen() {
         <div class="month-calendar">${monthCalendar(records, leaveRequests, corrections, historyDate, currentMonthDate)}</div>
       </section>
       <section class="panel wide" id="history">
-        <div class="heading"><div><p class="eyebrow">Clock history</p><h3>My attendance - ${formatLeaveDateDisplay(historyDate)}</h3></div></div>
-        ${attendanceTable(historyRecords, true, historyDate, corrections)}
+        <div class="heading"><div><p class="eyebrow">Clock history</p><h3 data-history-title>My attendance - ${formatLeaveDateDisplay(historyDate)}</h3></div></div>
+        <div data-history-content>${attendanceTable(historyRecords, true, historyDate, corrections)}</div>
       </section>
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
@@ -619,8 +619,7 @@ function bindEmployee() {
   });
   document.querySelectorAll("[data-history-date]").forEach((button) => {
     button.addEventListener("click", () => {
-      selectedHistoryDate = button.dataset.historyDate;
-      render();
+      updateSelectedEmployeeHistory(button.dataset.historyDate);
     });
   });
   document.querySelectorAll("[data-employee-month]").forEach((button) => {
@@ -924,6 +923,21 @@ async function completeQrScan(qr) {
     return;
   }
   await clock(action, token);
+}
+
+function updateSelectedEmployeeHistory(date) {
+  selectedHistoryDate = date;
+  document.querySelectorAll("[data-history-date]").forEach((button) => {
+    button.classList.toggle("selected", button.dataset.historyDate === date);
+  });
+  const title = document.querySelector("[data-history-title]");
+  const content = document.querySelector("[data-history-content]");
+  if (title) title.textContent = `My attendance - ${formatLeaveDateDisplay(date)}`;
+  if (content) {
+    const records = state.attendance.filter((row) => row.date === date).sort(compareAttendanceLatest);
+    const corrections = correctionsForMonth(state.corrections, selectedEmployeeMonthKey);
+    content.innerHTML = attendanceTable(records, true, date, corrections);
+  }
 }
 
 async function startQrScanner() {
