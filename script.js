@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260814-tyre-one-location";
+const APP_VERSION = "20260814-auto-torch";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -22,6 +22,8 @@ const MAX_GPS_ACCURACY_METERS = 30;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
 const QR_SCAN_INTERVAL_MS = 45;
 const QR_CANVAS_MAX_SIDE = 900;
+const QR_DARK_FRAME_LUMA = 70;
+const QR_TORCH_CHECK_MS = 700;
 
 const defaultState = {
   currentUser: null,
@@ -708,6 +710,7 @@ function bindEmployee() {
     const qr = prompt("Enter the warehouse QR code shown by HR");
     if (qr) completeQrScan(qr.trim());
   });
+  document.querySelector("[data-toggle-torch]")?.addEventListener("click", toggleQrTorch);
   if (pendingScanAction) startQrScanner();
   setupCorrectionCalendar(document.querySelector("#correction-form"));
   document.querySelector("#correction-form").addEventListener("submit", async (event) => {
@@ -965,7 +968,7 @@ async function startQrScanner() {
       audio: false,
     });
     await configureQrCamera(stream);
-    qrScanController = { active: true, stream, processing: false, lastScanAt: 0 };
+    qrScanController = { active: true, stream, processing: false, lastScanAt: 0, lastTorchCheckAt: 0, torchOn: false };
     video.srcObject = stream;
     await video.play();
     message.textContent = "Point the camera at the warehouse QR code.";
@@ -978,6 +981,7 @@ async function startQrScanner() {
       }
       qrScanController.lastScanAt = Date.now();
       try {
+        await enableTorchIfDark(video, canvas, context, message);
         const qr = await detectQrCode(video, detector, canvas, context);
         if (qr) {
           if (qrScanController.processing) return;
@@ -1008,6 +1012,80 @@ async function configureQrCamera(stream) {
   } catch {
     // Camera tuning is optional. Scanning still works when a browser ignores these constraints.
   }
+}
+
+async function enableTorchIfDark(video, canvas, context, message) {
+  if (!qrScanController?.active || qrScanController.torchOn || !context) return;
+  if (Date.now() - qrScanController.lastTorchCheckAt < QR_TORCH_CHECK_MS) return;
+  qrScanController.lastTorchCheckAt = Date.now();
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
+
+  const brightness = averageFrameLuma(video, canvas, context);
+  if (brightness >= QR_DARK_FRAME_LUMA) return;
+
+  const track = qrScanController.stream?.getVideoTracks()[0];
+  if (!cameraTorchSupported(track)) return;
+  try {
+    await setQrTorch(true);
+    message.textContent = "Flash on for low light. Point the camera at the warehouse QR code.";
+  } catch {
+    // Torch control is device/browser dependent; scanning continues without it.
+  }
+}
+
+async function toggleQrTorch() {
+  const message = document.querySelector("#qr-scan-message");
+  const button = document.querySelector("[data-toggle-torch]");
+  const track = qrScanController?.stream?.getVideoTracks()[0];
+  if (!cameraTorchSupported(track)) {
+    if (message) message.textContent = "Torch light is not supported on this phone/browser. Use Manual QR if needed.";
+    return;
+  }
+
+  try {
+    const nextTorch = !qrScanController.torchOn;
+    await setQrTorch(nextTorch);
+    if (button) button.textContent = nextTorch ? "Torch On" : "Torch Light";
+    if (message) {
+      message.textContent = nextTorch
+        ? "Torch light on. Point the camera at the warehouse QR code."
+        : "Torch light off. Point the camera at the warehouse QR code.";
+    }
+  } catch {
+    if (message) message.textContent = "Unable to control torch light on this phone/browser.";
+  }
+}
+
+async function setQrTorch(enabled) {
+  const track = qrScanController?.stream?.getVideoTracks()[0];
+  if (!cameraTorchSupported(track)) throw new Error("Torch is not supported.");
+  await track.applyConstraints({ advanced: [{ torch: enabled }] });
+  qrScanController.torchOn = enabled;
+  const button = document.querySelector("[data-toggle-torch]");
+  if (button) button.textContent = enabled ? "Torch On" : "Torch Light";
+}
+
+function cameraTorchSupported(track) {
+  if (!track?.getCapabilities || !track.applyConstraints) return false;
+  try {
+    return Boolean(track.getCapabilities().torch);
+  } catch {
+    return false;
+  }
+}
+
+function averageFrameLuma(video, canvas, context) {
+  const width = 24;
+  const height = 24;
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(video, 0, 0, width, height);
+  const data = context.getImageData(0, 0, width, height).data;
+  let total = 0;
+  for (let index = 0; index < data.length; index += 4) {
+    total += data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+  }
+  return total / (data.length / 4);
 }
 
 async function detectQrCode(video, detector, canvas, context) {
@@ -1947,6 +2025,7 @@ function qrScannerModal() {
         <p id="qr-scan-message">Starting camera...</p>
         <div class="actions">
           <button class="secondary" data-cancel-scan>Cancel</button>
+          <button class="secondary" data-toggle-torch>Torch Light</button>
           <button class="secondary" data-manual-qr>Manual QR</button>
         </div>
       </section>
