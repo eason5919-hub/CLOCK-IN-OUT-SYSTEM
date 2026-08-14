@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260812-negative-leave-red/);
-  assert.match(indexHtml, /script\.js\?v=20260812-negative-leave-red/);
-  assert.equal(JSON.parse(appVersion).version, "20260812-negative-leave-red");
-  assert.match(script, /const APP_VERSION = "20260812-negative-leave-red"/);
+  assert.match(indexHtml, /style\.css\?v=20260814-tyre-one-location/);
+  assert.match(indexHtml, /script\.js\?v=20260814-tyre-one-location/);
+  assert.equal(JSON.parse(appVersion).version, "20260814-tyre-one-location");
+  assert.match(script, /const APP_VERSION = "20260814-tyre-one-location"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);

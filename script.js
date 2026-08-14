@@ -7,13 +7,13 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260812-negative-leave-red";
+const APP_VERSION = "20260814-tyre-one-location";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
   name: "Main Warehouse",
-  lat: 2.9850965,
-  lng: 101.7700882,
+  lat: 2.9989616,
+  lng: 101.7412234,
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
 };

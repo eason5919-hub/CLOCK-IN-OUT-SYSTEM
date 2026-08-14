@@ -58,7 +58,7 @@ export async function ensureDatabase(db: D1Database) {
       .prepare(
         "INSERT INTO warehouses (id, name, latitude, longitude, allowed_radius_meters, timezone) VALUES (?, ?, ?, ?, ?, ?)",
       )
-      .bind("wh-main", "Main Warehouse", 2.9850965, 101.7700882, 100, "Asia/Kuala_Lumpur"),
+      .bind("wh-main", "Main Warehouse", 2.9989616, 101.7412234, 100, "Asia/Kuala_Lumpur"),
     db
       .prepare(
         "INSERT INTO users (id, email, password_hash, role, employee_id, is_active) VALUES (?, ?, ?, ?, ?, ?)",
@@ -104,7 +104,7 @@ async function ensureWarehouseConfig(db: D1Database) {
        SET latitude = ?, longitude = ?, allowed_radius_meters = ?, timezone = ?
        WHERE id = ?`,
     )
-    .bind(2.9850965, 101.7700882, 100, "Asia/Kuala_Lumpur", "wh-main")
+    .bind(2.9989616, 101.7412234, 100, "Asia/Kuala_Lumpur", "wh-main")
     .run();
 }
 

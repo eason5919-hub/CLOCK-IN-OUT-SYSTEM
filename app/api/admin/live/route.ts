@@ -181,8 +181,8 @@ async function liveData(db: D1Database, request: Request) {
     auditLogs: auditLogs.results ?? [],
     qrToken: "WAREHOUSE-MAIN-QR",
     warehouse: {
-      latitude: 2.9850965,
-      longitude: 101.7700882,
+      latitude: 2.9989616,
+      longitude: 101.7412234,
       radiusMeters: 100,
     },
     generatedAt: new Date().toISOString(),
