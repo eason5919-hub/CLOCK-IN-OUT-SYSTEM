@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260814-torch-action-d1";
+const APP_VERSION = "20260814-manual-d1-blank";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -708,7 +708,7 @@ function bindEmployee() {
   });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
-    const qr = prompt("Enter the manual QR code", MANUAL_QR_CODE);
+    const qr = prompt("Enter the manual QR code");
     if (qr) completeQrScan(qr.trim());
   });
   document.querySelector("[data-toggle-torch]")?.addEventListener("click", toggleQrTorch);

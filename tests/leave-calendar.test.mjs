@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260814-torch-action-d1/);
-  assert.match(indexHtml, /script\.js\?v=20260814-torch-action-d1/);
-  assert.equal(JSON.parse(appVersion).version, "20260814-torch-action-d1");
-  assert.match(script, /const APP_VERSION = "20260814-torch-action-d1"/);
+  assert.match(indexHtml, /style\.css\?v=20260814-manual-d1-blank/);
+  assert.match(indexHtml, /script\.js\?v=20260814-manual-d1-blank/);
+  assert.equal(JSON.parse(appVersion).version, "20260814-manual-d1-blank");
+  assert.match(script, /const APP_VERSION = "20260814-manual-d1-blank"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -187,7 +187,8 @@ test("employee QR scanner trims reads and scans multiple frame areas", async () 
   assert.match(script, /Torch light is not supported/);
   assert.match(css, /\.scan-modal \[data-toggle-torch\][\s\S]*inline-size: 104px/);
   assert.match(script, /const MANUAL_QR_CODE = "D1"/);
-  assert.match(script, /prompt\("Enter the manual QR code", MANUAL_QR_CODE\)/);
+  assert.match(script, /prompt\("Enter the manual QR code"\)/);
+  assert.doesNotMatch(script, /prompt\("Enter the manual QR code", MANUAL_QR_CODE\)/);
   assert.match(script, /scannedQr\.toUpperCase\(\) === MANUAL_QR_CODE/);
 });
 
