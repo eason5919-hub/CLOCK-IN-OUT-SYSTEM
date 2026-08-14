@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260814-torch-toggle/);
-  assert.match(indexHtml, /script\.js\?v=20260814-torch-toggle/);
-  assert.equal(JSON.parse(appVersion).version, "20260814-torch-toggle");
-  assert.match(script, /const APP_VERSION = "20260814-torch-toggle"/);
+  assert.match(indexHtml, /style\.css\?v=20260814-torch-action-d1/);
+  assert.match(indexHtml, /script\.js\?v=20260814-torch-action-d1/);
+  assert.equal(JSON.parse(appVersion).version, "20260814-torch-action-d1");
+  assert.match(script, /const APP_VERSION = "20260814-torch-action-d1"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -171,7 +171,7 @@ test("employee QR scanner trims reads and scans multiple frame areas", async () 
   assert.match(script, /\[0\.9, 0\.78, 0\.62\]\.map/);
   assert.match(script, /canvas\.width - sideScan/);
   assert.match(script, /String\(window\.jsQR\(image\.data, image\.width, image\.height/);
-  assert.match(script, /if \(String\(qr \|\| ""\)\.trim\(\) !== WAREHOUSE\.qr\)/);
+  assert.match(script, /scannedQr !== WAREHOUSE\.qr && !isManualQr/);
   assert.match(script, /result\.action === "clock_in_existing"/);
   assert.match(script, /Already clocked in/);
   assert.match(script, /function enableTorchIfDark/);
@@ -186,6 +186,9 @@ test("employee QR scanner trims reads and scans multiple frame areas", async () 
   assert.doesNotMatch(script, /Torch Light/);
   assert.match(script, /Torch light is not supported/);
   assert.match(css, /\.scan-modal \[data-toggle-torch\][\s\S]*inline-size: 104px/);
+  assert.match(script, /const MANUAL_QR_CODE = "D1"/);
+  assert.match(script, /prompt\("Enter the manual QR code", MANUAL_QR_CODE\)/);
+  assert.match(script, /scannedQr\.toUpperCase\(\) === MANUAL_QR_CODE/);
 });
 
 test("employee leave requests use one date-range calendar and show five cards before view more", async () => {

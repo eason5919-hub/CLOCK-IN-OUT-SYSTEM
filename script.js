@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260814-torch-toggle";
+const APP_VERSION = "20260814-torch-action-d1";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -17,6 +17,7 @@ const WAREHOUSE = {
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
 };
+const MANUAL_QR_CODE = "D1";
 const WHATSAPP_NOTIFY_NUMBER = "60122159225";
 const MAX_GPS_ACCURACY_METERS = 30;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
@@ -707,7 +708,7 @@ function bindEmployee() {
   });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
-    const qr = prompt("Enter the warehouse QR code shown by HR");
+    const qr = prompt("Enter the manual QR code", MANUAL_QR_CODE);
     if (qr) completeQrScan(qr.trim());
   });
   document.querySelector("[data-toggle-torch]")?.addEventListener("click", toggleQrTorch);
@@ -1045,7 +1046,7 @@ async function toggleQrTorch() {
   try {
     const nextTorch = !qrScanController.torchOn;
     await setQrTorch(nextTorch);
-    if (button) button.textContent = nextTorch ? "Torch On" : "Torch Off";
+    if (button) button.textContent = nextTorch ? "Torch Off" : "Torch On";
     if (message) {
       message.textContent = nextTorch
         ? "Torch light on. Point the camera at the warehouse QR code."
@@ -1062,7 +1063,7 @@ async function setQrTorch(enabled) {
   await track.applyConstraints({ advanced: [{ torch: enabled }] });
   qrScanController.torchOn = enabled;
   const button = document.querySelector("[data-toggle-torch]");
-  if (button) button.textContent = enabled ? "Torch On" : "Torch Off";
+  if (button) button.textContent = enabled ? "Torch Off" : "Torch On";
 }
 
 function cameraTorchSupported(track) {
@@ -1134,7 +1135,9 @@ async function clock(action, qr) {
   const scanner = document.querySelector("#scanner");
   const message = document.querySelector("#gps-message");
   scanner.className = "scanner";
-  if (String(qr || "").trim() !== WAREHOUSE.qr) {
+  const scannedQr = String(qr || "").trim();
+  const isManualQr = scannedQr.toUpperCase() === MANUAL_QR_CODE;
+  if (scannedQr !== WAREHOUSE.qr && !isManualQr) {
     scanner.className = "scanner rejected";
     message.textContent = "Invalid warehouse QR code.";
     return;
@@ -2025,7 +2028,7 @@ function qrScannerModal() {
         <p id="qr-scan-message">Starting camera...</p>
         <div class="actions">
           <button class="secondary" data-cancel-scan>Cancel</button>
-          <button class="secondary" data-toggle-torch>Torch Off</button>
+          <button class="secondary" data-toggle-torch>Torch On</button>
           <button class="secondary" data-manual-qr>Manual QR</button>
         </div>
       </section>
