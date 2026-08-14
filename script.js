@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260814-auto-torch";
+const APP_VERSION = "20260814-torch-toggle";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -1045,7 +1045,7 @@ async function toggleQrTorch() {
   try {
     const nextTorch = !qrScanController.torchOn;
     await setQrTorch(nextTorch);
-    if (button) button.textContent = nextTorch ? "Torch On" : "Torch Light";
+    if (button) button.textContent = nextTorch ? "Torch On" : "Torch Off";
     if (message) {
       message.textContent = nextTorch
         ? "Torch light on. Point the camera at the warehouse QR code."
@@ -1062,7 +1062,7 @@ async function setQrTorch(enabled) {
   await track.applyConstraints({ advanced: [{ torch: enabled }] });
   qrScanController.torchOn = enabled;
   const button = document.querySelector("[data-toggle-torch]");
-  if (button) button.textContent = enabled ? "Torch On" : "Torch Light";
+  if (button) button.textContent = enabled ? "Torch On" : "Torch Off";
 }
 
 function cameraTorchSupported(track) {
@@ -2025,7 +2025,7 @@ function qrScannerModal() {
         <p id="qr-scan-message">Starting camera...</p>
         <div class="actions">
           <button class="secondary" data-cancel-scan>Cancel</button>
-          <button class="secondary" data-toggle-torch>Torch Light</button>
+          <button class="secondary" data-toggle-torch>Torch Off</button>
           <button class="secondary" data-manual-qr>Manual QR</button>
         </div>
       </section>

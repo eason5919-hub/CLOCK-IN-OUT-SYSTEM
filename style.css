@@ -921,6 +921,10 @@ th {
   width: min(520px, 100%);
 }
 
+.scan-modal [data-toggle-torch] {
+  inline-size: 104px;
+}
+
 .camera-box {
   position: relative;
   overflow: hidden;

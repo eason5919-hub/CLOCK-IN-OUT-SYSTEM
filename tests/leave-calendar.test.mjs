@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260814-auto-torch/);
-  assert.match(indexHtml, /script\.js\?v=20260814-auto-torch/);
-  assert.equal(JSON.parse(appVersion).version, "20260814-auto-torch");
-  assert.match(script, /const APP_VERSION = "20260814-auto-torch"/);
+  assert.match(indexHtml, /style\.css\?v=20260814-torch-toggle/);
+  assert.match(indexHtml, /script\.js\?v=20260814-torch-toggle/);
+  assert.equal(JSON.parse(appVersion).version, "20260814-torch-toggle");
+  assert.match(script, /const APP_VERSION = "20260814-torch-toggle"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -162,6 +162,7 @@ test("employee GPS display shows warehouse distance and does not fake fallback s
 
 test("employee QR scanner trims reads and scans multiple frame areas", async () => {
   const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
+  const css = await readFile(new URL("../style.css", import.meta.url), "utf8");
 
   assert.match(script, /const QR_SCAN_INTERVAL_MS = 45/);
   assert.match(script, /const QR_CANVAS_MAX_SIDE = 900/);
@@ -181,7 +182,10 @@ test("employee QR scanner trims reads and scans multiple frame areas", async () 
   assert.match(script, /function toggleQrTorch/);
   assert.match(script, /function cameraTorchSupported/);
   assert.match(script, /Torch On/);
+  assert.match(script, /Torch Off/);
+  assert.doesNotMatch(script, /Torch Light/);
   assert.match(script, /Torch light is not supported/);
+  assert.match(css, /\.scan-modal \[data-toggle-torch\][\s\S]*inline-size: 104px/);
 });
 
 test("employee leave requests use one date-range calendar and show five cards before view more", async () => {
