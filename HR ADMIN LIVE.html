@@ -1594,7 +1594,7 @@
       const today = todayKey();
       const active = leaveRequests.filter(item => {
         const status = leaveRequestStatusText(item).toLowerCase();
-        return item.leave_date >= today && status !== "rejected" && status !== "cancelled";
+        return (status === "pending" || item.leave_date >= today) && status !== "rejected" && status !== "cancelled";
       });
       const q = searchInput.value.trim().toLowerCase();
       return q ? active.filter(item => searchable(item).includes(q)) : active;

@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260814-manual-d1-blank";
+const APP_VERSION = "20260818-pending-mc-actions";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -1457,7 +1457,7 @@ function visibleEmployeeLeaveRequests(requests, showAll = false) {
 }
 
 function leaveRequestCard(request) {
-  const canCancel = !["Rejected", "Cancelled"].includes(request.status) && request.date >= malaysiaDateKey(new Date());
+  const canCancel = request.status === "Pending" || (!["Rejected", "Cancelled"].includes(request.status) && request.date >= malaysiaDateKey(new Date()));
   const cancelled = request.status === "Cancelled";
   const statusBadge = `<span class="badge ${request.status.toLowerCase()}">${request.status}</span>`;
   return `<div class="list-item leave-card"><div><div class="leave-card-title"><strong>${request.date} - ${request.type}</strong>${cancelled ? statusBadge : ""}</div><span>${request.duration}${request.reason ? ` | ${escapeHtml(request.reason)}` : ""}</span></div>${cancelled ? "" : `<div class="actions">${statusBadge}${canCancel ? `<button class="secondary" type="button" data-cancel-leave="${request.id}">Cancel</button>` : ""}</div>`}</div>`;

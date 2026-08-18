@@ -180,19 +180,20 @@ async function cancelLeaveRequest(request: Request, payload: LeavePayload) {
 
   const existing = await db
     .prepare(
-      `SELECT id, employee_id, leave_date, status
+      `SELECT id, employee_id, leave_type, leave_date, status
        FROM leave_requests
        WHERE id = ?`,
     )
     .bind(payload.requestId)
-    .first<{ id: string; employee_id: string; leave_date: string; status: string }>();
+    .first<{ id: string; employee_id: string; leave_type: string; leave_date: string; status: string }>();
 
   if (!existing || existing.employee_id !== session.employee_id) {
     return json(request, { error: "Leave/MC request was not found." }, 404);
   }
   if (existing.status === "cancelled") return json(request, { ok: true });
   if (existing.status === "rejected") return json(request, { error: "Rejected Leave/MC cannot be cancelled." }, 409);
-  if (existing.leave_date < malaysiaTodayKey()) {
+  const canCancelPastPendingMc = existing.leave_type === "mc" && existing.status === "pending";
+  if (existing.leave_date < malaysiaTodayKey() && !canCancelPastPendingMc) {
     return json(request, { error: "Past Leave/MC cannot be cancelled." }, 409);
   }
 

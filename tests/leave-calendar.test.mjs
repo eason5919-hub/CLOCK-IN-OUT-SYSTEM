@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260814-manual-d1-blank/);
-  assert.match(indexHtml, /script\.js\?v=20260814-manual-d1-blank/);
-  assert.equal(JSON.parse(appVersion).version, "20260814-manual-d1-blank");
-  assert.match(script, /const APP_VERSION = "20260814-manual-d1-blank"/);
+  assert.match(indexHtml, /style\.css\?v=20260818-pending-mc-actions/);
+  assert.match(indexHtml, /script\.js\?v=20260818-pending-mc-actions/);
+  assert.equal(JSON.parse(appVersion).version, "20260818-pending-mc-actions");
+  assert.match(script, /const APP_VERSION = "20260818-pending-mc-actions"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -212,6 +212,7 @@ test("employee leave requests use one date-range calendar and show five cards be
   assert.match(script, /showAllEmployeeLeaveRequests \? "Show less" : "View more"/);
   assert.match(script, /leaveRequestStatusLabel/);
   assert.match(script, /if \(status === "cancelled" \|\| note\.includes\("cancelled by employee"\)\) return "Cancelled"/);
+  assert.match(script, /const canCancel = request\.status === "Pending" \|\|/);
   assert.match(script, /const cancelled = request\.status === "Cancelled"/);
   assert.match(script, /class="leave-card-title"/);
   assert.match(script, /cancelled \? statusBadge : ""/);
@@ -240,8 +241,9 @@ test("annual leave remaining can show a negative balance", async () => {
 });
 
 test("admin employee list shows approved MC days instead of status", async () => {
-  const [adminRoute, adminHtml] = await Promise.all([
+  const [adminRoute, employeeLeaveRoute, adminHtml] = await Promise.all([
     readFile(new URL("../app/api/admin/live/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/leave-requests/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../HR ADMIN LIVE.html", import.meta.url), "utf8"),
   ]);
 
@@ -250,6 +252,11 @@ test("admin employee list shows approved MC days instead of status", async () =>
   assert.match(adminRoute, /WHERE status = 'approved'/);
   assert.match(adminHtml, /<th>MC Taken<\/th>/);
   assert.match(adminHtml, /formatLeaveDays\(employee\.mc_taken_days\)/);
+  assert.match(adminHtml, /return \(status === "pending" \|\| item\.leave_date >= today\) && status !== "rejected" && status !== "cancelled"/);
+  assert.match(adminHtml, /data-review-leave="\$\{escapeHtml\(request\.id\)\}" data-status="approved"/);
+  assert.match(adminHtml, /data-review-leave="\$\{escapeHtml\(request\.id\)\}" data-status="rejected"/);
+  assert.match(employeeLeaveRoute, /SELECT id, employee_id, leave_type, leave_date, status/);
+  assert.match(employeeLeaveRoute, /const canCancelPastPendingMc = existing\.leave_type === "mc" && existing\.status === "pending"/);
   assert.doesNotMatch(adminHtml, /<th>Status<\/th>\s*<th>Device<\/th>/);
 });
 
