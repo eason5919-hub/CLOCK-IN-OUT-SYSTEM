@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260818-pending-mc-actions";
+const APP_VERSION = "20260819-report-late-count";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -212,7 +212,7 @@ function employeeScreen() {
     : "Scan the warehouse QR to clock in.";
   const stats = {
     present: formatDayCount(calculatePresentDays(monthRecords, visibleCorrections)),
-    late: monthRecords.filter((row) => employeeHistoryLateMinutes(row, attendanceDisplayTimes(row, visibleCorrections)) > 0).length,
+    late: monthRecords.filter((row) => Number(row.lateMinutes || 0) > 0).length,
     ot: formatMetricDuration(monthRecords.reduce((total, row) => total + employeeHistoryOvertimeMinutes(row, attendanceDisplayTimes(row, visibleCorrections)), 0)),
     corrections: correctedReportBoxCount(monthRecords, visibleCorrections),
   };
@@ -332,7 +332,7 @@ function adminScreen() {
       </section>
       <section class="panel wide" id="reports">
         <div class="heading"><div><p class="eyebrow">Working hours</p><h3>OT rules</h3></div></div>
-        <p>Start time 09:00. Clock in until 09:15 is normal; 09:16 is late 16m. Clock in before 08:00 counts as early OT.</p>
+        <p>Start time 09:00. Clock in until 09:10 is normal; 09:11 is late 11m. Clock in before 08:00 counts as early OT.</p>
         <p>Lunch break is flexible. Return within 1h 15m is ok; weekday normal working is capped at 8h even without lunch clock-out.</p>
         <p>Monday-Friday: normal end 18:00, no OT until 18:16, counted from 18:00.</p>
         <p>Saturday: normal end 13:00, no OT until 13:16, counted from 13:00. Sunday approved work is all OT.</p>
@@ -2042,6 +2042,8 @@ function normalizePhone(value) {
 
 function formatLiveTime(value) {
   if (!value) return "";
+  const text = String(value).trim();
+  if (/^\d{1,2}:\d{2}$/.test(text)) return text.padStart(5, "0");
   const date = new Date(parseLiveTimestamp(value));
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleTimeString("en-MY", { timeZone: "Asia/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false });
@@ -2156,7 +2158,7 @@ function employeeHistoryLateMinutes(row, display) {
   const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
   if (day === 0) return 0;
   const clockInMinutes = toMinutes(display.clockIn);
-  return clockInMinutes > 9 * 60 + 15 ? clockInMinutes - 9 * 60 : 0;
+  return clockInMinutes > 9 * 60 + 10 ? clockInMinutes - 9 * 60 : 0;
 }
 
 function clockRangeMinutes(start, end) {

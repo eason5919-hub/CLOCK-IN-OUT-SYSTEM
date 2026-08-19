@@ -1232,7 +1232,7 @@
     function regularWindowStartMs(dateKey, clockInMs) {
       const startMs = scheduledDateTimeMs(dateKey, 9 * 60);
       const earlyStartMs = scheduledDateTimeMs(dateKey, 8 * 60);
-      const graceEndMs = startMs + 15 * 60000;
+      const graceEndMs = startMs + 10 * 60000;
       return clockInMs >= earlyStartMs && clockInMs <= graceEndMs ? startMs : Math.max(clockInMs, earlyStartMs);
     }
 
@@ -1342,7 +1342,7 @@
       const end = day === 6 ? 13 * 60 : 18 * 60;
       const endMs = attendanceRow.dateKey ? scheduledDateTimeMs(attendanceRow.dateKey, end) : null;
       let lateShort = Math.max(0, inMinutes - start);
-      if (inMinutes <= start + 15) lateShort = 0;
+      if (inMinutes <= start + 10) lateShort = 0;
       if (isHalfLeaveText(leaveTaken)) {
         const workShort = Math.max(0, 240 - reportWorkingWindowMinutes(attendanceRow, day));
         return Math.min(240, Math.max(lateShort, workShort));

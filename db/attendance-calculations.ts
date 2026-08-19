@@ -6,7 +6,8 @@ export type AttendanceSchedule = {
 };
 
 const DEFAULT_TIME_ZONE = "Asia/Kuala_Lumpur";
-const START_GRACE_MINUTES = 15;
+const START_LATE_GRACE_MINUTES = 10;
+const REGULAR_END_GRACE_MINUTES = 15;
 const BREAK_MINUTES = 60;
 const BREAK_GRACE_MINUTES = 15;
 const EARLY_OT_BEFORE_START_MINUTES = 60;
@@ -120,7 +121,7 @@ function calculateLateMinutes(clockInAt: string, schedule?: AttendanceSchedule |
   if (!schedule?.start_time || schedule.is_off_day) return 0;
   const clockInMinutes = localMinutesSinceMidnight(clockInAt, timeZone);
   const scheduledStartMinutes = timeToMinutes(schedule.start_time);
-  return clockInMinutes > scheduledStartMinutes + START_GRACE_MINUTES
+  return clockInMinutes > scheduledStartMinutes + START_LATE_GRACE_MINUTES
     ? Math.max(0, clockInMinutes - scheduledStartMinutes)
     : 0;
 }
@@ -156,7 +157,7 @@ function calculateShortMinutes(
   const clockInMinutes = localMinutesSinceMidnight(clockInAt, timeZone);
   const scheduledStartMinutes = timeToMinutes(schedule.start_time);
   const lateShort =
-    clockInMinutes > scheduledStartMinutes + START_GRACE_MINUTES
+    clockInMinutes > scheduledStartMinutes + START_LATE_GRACE_MINUTES
       ? Math.max(0, clockInMinutes - scheduledStartMinutes)
       : 0;
 
@@ -192,13 +193,13 @@ function calculateRegularWindowMinutes(
   const day = localDayOfWeek(clockInAt, timeZone);
   const regularStartMs = localDateAndTimeToUtcMs(workDate, minutesToTime(Math.max(0, scheduledStartMinutes - EARLY_OT_BEFORE_START_MINUTES)), timeZone);
   const scheduledStartMs = localDateAndTimeToUtcMs(workDate, schedule.start_time, timeZone);
-  const graceEndMs = scheduledStartMs + START_GRACE_MINUTES * 60000;
+  const graceEndMs = scheduledStartMs + START_LATE_GRACE_MINUTES * 60000;
   const clockInMs = Date.parse(clockInAt);
   const clockOutMs = Date.parse(clockOutAt);
   if (Number.isNaN(clockInMs) || Number.isNaN(clockOutMs)) return 0;
   const effectiveClockInMs =
     clockInMs >= regularStartMs && clockInMs <= graceEndMs ? scheduledStartMs : Math.max(clockInMs, regularStartMs);
-  const regularEndMs = localDateAndTimeToUtcMs(workDate, minutesToTime(scheduledEndMinutes + START_GRACE_MINUTES), timeZone);
+  const regularEndMs = localDateAndTimeToUtcMs(workDate, minutesToTime(scheduledEndMinutes + REGULAR_END_GRACE_MINUTES), timeZone);
   const regularSpan = Math.max(
     0,
     Math.round((Math.min(clockOutMs, regularEndMs) - effectiveClockInMs) / 60000),

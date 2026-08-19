@@ -362,7 +362,7 @@ function EmployeeApp({
   const stats = useMemo(
     () => ({
       presentDays: records.filter((record) => record.status !== "absent").length,
-      lateDays: records.filter((record) => employeeLateMinutes(record) > 0).length,
+      lateDays: records.filter((record) => Number(record.late_minutes ?? 0) > 0).length,
       otMinutes: records.reduce((total, record) => total + Number(record.overtime_minutes ?? 0), 0),
       correctionCount: corrections.length,
     }),
@@ -766,22 +766,6 @@ function formatOtMinutes(minutes: number) {
 
 function localDateTimeToIso(date: string, time: string) {
   return new Date(`${date}T${time}:00+08:00`).toISOString();
-}
-
-function employeeLateMinutes(record: Record<string, string | number | null>) {
-  const clockIn = String(record.clock_in_at || "");
-  const workDate = String(record.work_date || "");
-  if (!clockIn || !workDate) return 0;
-  const day = new Date(`${workDate}T12:00:00+08:00`).getUTCDay();
-  if (day === 0) return 0;
-  const time = new Date(clockIn).toLocaleTimeString("en-GB", {
-    timeZone: "Asia/Kuala_Lumpur",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const minutes = toMinutes(time);
-  return minutes > 9 * 60 + 15 ? minutes - 9 * 60 : 0;
 }
 
 function isOpenRecordStillActive(workDate: string) {

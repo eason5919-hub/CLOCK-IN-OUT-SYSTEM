@@ -110,7 +110,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /\.editableCell\.correctedTime \{\s+background: #fff2bf;\s+box-shadow: inset 0 0 0 1px #d2a310;[\s\S]*font-weight: 800;/);
   assert.match(script, /function employeeHistoryTimeCell\(value\) \{\s+const text = value \|\| "";/);
   assert.doesNotMatch(script, /function employeeHistoryTimeCell\(value\)[\s\S]{0,250}(correctedTime|manualEdit)/);
-  assert.match(script, /function formatLiveTime\(value\) \{\s+if \(!value\) return "";\s+const date = new Date\(parseLiveTimestamp\(value\)\);\s+if \(Number\.isNaN\(date\.getTime\(\)\)\) return "";/);
+  assert.match(script, /function formatLiveTime\(value\) \{\s+if \(!value\) return "";\s+const text = String\(value\)\.trim\(\);\s+if \(\/\^\\d\{1,2\}:\\d\{2\}\$\/\.test\(text\)\) return text\.padStart\(5, "0"\);/);
   assert.match(script, /toLocaleTimeString\("en-MY", \{ timeZone: "Asia\/Kuala_Lumpur", hour: "2-digit", minute: "2-digit", hour12: false \}\)/);
   assert.match(adminHtml, /toLocaleTimeString\("en-MY", \{\s+timeZone: "Asia\/Kuala_Lumpur",\s+hour: "2-digit",\s+minute: "2-digit",\s+hour12: false\s+\}\)/);
   assert.doesNotMatch(adminReviewSection, /attendanceChanged: false/);
@@ -223,7 +223,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /work: reportHours\(workMinutes, showZeroWork\)/);
   assert.match(adminHtml, /function isHalfLeaveText/);
   assert.match(adminHtml, /function reportWorkingWindowMinutes/);
-  assert.match(adminHtml, /if \(inMinutes <= start \+ 15\) lateShort = 0/);
+  assert.match(adminHtml, /if \(inMinutes <= start \+ 10\) lateShort = 0/);
   assert.match(adminHtml, /if \(isHalfLeaveText\(leaveTaken\)\)/);
   assert.match(adminHtml, /Math\.max\(0, 240 - reportWorkingWindowMinutes\(attendanceRow, day\)\)/);
   assert.match(adminHtml, /const workShort = Math\.max\(0, requiredMinutes - Number\(attendanceRow\.actualMinutes \|\| 0\)\)/);

@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260818-pending-mc-actions/);
-  assert.match(indexHtml, /script\.js\?v=20260818-pending-mc-actions/);
-  assert.equal(JSON.parse(appVersion).version, "20260818-pending-mc-actions");
-  assert.match(script, /const APP_VERSION = "20260818-pending-mc-actions"/);
+  assert.match(indexHtml, /style\.css\?v=20260819-report-late-count/);
+  assert.match(indexHtml, /script\.js\?v=20260819-report-late-count/);
+  assert.equal(JSON.parse(appVersion).version, "20260819-report-late-count");
+  assert.match(script, /const APP_VERSION = "20260819-report-late-count"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -265,8 +265,9 @@ test("employee metric cards use selected month report data", async () => {
 
   assert.match(script, /const monthRecords = recordsForMonth\(records, selectedEmployeeMonthKey\)/);
   assert.match(script, /present: formatDayCount\(calculatePresentDays\(monthRecords, visibleCorrections\)\)/);
-  assert.match(script, /late: monthRecords\.filter\(\(row\) => employeeHistoryLateMinutes\(row, attendanceDisplayTimes\(row, visibleCorrections\)\) > 0\)\.length/);
+  assert.match(script, /late: monthRecords\.filter\(\(row\) => Number\(row\.lateMinutes \|\| 0\) > 0\)\.length/);
   assert.match(script, /function employeeHistoryLateMinutes/);
+  assert.match(script, /if \(\s*\/\^\\d\{1,2\}:\\d\{2\}\$\/\.test\(text\)\s*\) return text\.padStart\(5, "0"\)/);
   assert.match(script, /ot: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ employeeHistoryOvertimeMinutes\(row, attendanceDisplayTimes\(row, visibleCorrections\)\), 0\)\)/);
   assert.match(script, /corrections: correctedReportBoxCount\(monthRecords, visibleCorrections\)/);
   assert.match(script, /function recordsForMonth/);
