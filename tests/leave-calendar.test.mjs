@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260819-short-card/);
-  assert.match(indexHtml, /script\.js\?v=20260819-short-card/);
-  assert.equal(JSON.parse(appVersion).version, "20260819-short-card");
-  assert.match(script, /const APP_VERSION = "20260819-short-card"/);
+  assert.match(indexHtml, /style\.css\?v=20260819-short-report-match/);
+  assert.match(indexHtml, /script\.js\?v=20260819-short-report-match/);
+  assert.equal(JSON.parse(appVersion).version, "20260819-short-report-match");
+  assert.match(script, /const APP_VERSION = "20260819-short-report-match"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -265,8 +265,10 @@ test("employee metric cards use selected month report data", async () => {
 
   assert.match(script, /const monthRecords = recordsForMonth\(records, selectedEmployeeMonthKey\)/);
   assert.match(script, /present: formatDayCount\(calculatePresentDays\(monthRecords, visibleCorrections\)\)/);
-  assert.match(script, /short: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ Number\(row\.lateMinutes \|\| 0\), 0\)\)/);
+  assert.match(script, /short: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ employeeHistoryShortMinutes\(row, attendanceDisplayTimes\(row, visibleCorrections\), leaveRequests\), 0\)\)/);
   assert.match(script, /\["Short", stats\.short, "amber"\]/);
+  assert.match(script, /function employeeHistoryShortMinutes/);
+  assert.match(script, /function employeeHistoryPaidWorkMinutes/);
   assert.match(script, /function employeeHistoryLateMinutes/);
   assert.match(script, /if \(\s*\/\^\\d\{1,2\}:\\d\{2\}\$\/\.test\(text\)\s*\) return text\.padStart\(5, "0"\)/);
   assert.match(script, /ot: formatMetricDuration\(monthRecords\.reduce\(\(total, row\) => total \+ employeeHistoryOvertimeMinutes\(row, attendanceDisplayTimes\(row, visibleCorrections\)\), 0\)\)/);

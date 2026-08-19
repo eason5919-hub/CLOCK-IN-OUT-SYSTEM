@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260819-short-card";
+const APP_VERSION = "20260819-short-report-match";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -212,7 +212,7 @@ function employeeScreen() {
     : "Scan the warehouse QR to clock in.";
   const stats = {
     present: formatDayCount(calculatePresentDays(monthRecords, visibleCorrections)),
-    short: formatMetricDuration(monthRecords.reduce((total, row) => total + Number(row.lateMinutes || 0), 0)),
+    short: formatMetricDuration(monthRecords.reduce((total, row) => total + employeeHistoryShortMinutes(row, attendanceDisplayTimes(row, visibleCorrections), leaveRequests), 0)),
     ot: formatMetricDuration(monthRecords.reduce((total, row) => total + employeeHistoryOvertimeMinutes(row, attendanceDisplayTimes(row, visibleCorrections)), 0)),
     corrections: correctedReportBoxCount(monthRecords, visibleCorrections),
   };
@@ -2159,6 +2159,81 @@ function employeeHistoryLateMinutes(row, display) {
   if (day === 0) return 0;
   const clockInMinutes = toMinutes(display.clockIn);
   return clockInMinutes > 9 * 60 + 10 ? clockInMinutes - 9 * 60 : 0;
+}
+
+function employeeHistoryShortMinutes(row, display, leaveRequests = []) {
+  if (!display.clockIn || !display.clockOut) return 0;
+  const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
+  if (day === 0) return 0;
+  const start = 9 * 60;
+  const end = day === 6 ? 13 * 60 : 18 * 60;
+  const requiredMinutes = day === 6 ? 240 : 480;
+  const inMinutes = toMinutes(display.clockIn);
+  let outMinutes = toMinutes(display.clockOut);
+  if (outMinutes < inMinutes) outMinutes += 24 * 60;
+
+  let lateShort = Math.max(0, inMinutes - start);
+  if (inMinutes <= start + 10) lateShort = 0;
+
+  const actualMinutes = employeeHistoryPaidWorkMinutes(row, display);
+  if (isHalfLeaveForDate(leaveRequests, row.date)) {
+    const workShort = Math.max(0, 240 - employeeHistoryWorkingWindowMinutes(row, display));
+    return Math.min(240, Math.max(lateShort, workShort));
+  }
+
+  const earlyOut = outMinutes < end ? Math.max(0, end - outMinutes) : 0;
+  const workShort = Math.max(0, requiredMinutes - actualMinutes);
+  return Math.min(requiredMinutes, Math.max(lateShort, earlyOut, workShort));
+}
+
+function employeeHistoryPaidWorkMinutes(row, display) {
+  if (!display.clockIn || !display.clockOut) return 0;
+  const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
+  const elapsed = clockRangeMinutes(display.clockIn, display.clockOut);
+  if (!elapsed) return 0;
+  if (day === 0) return elapsed;
+
+  const overtime = employeeHistoryOvertimeMinutes(row, display);
+  const cap = day === 6 ? 240 : 480;
+
+  if (display.breakTime && display.resumeTime) {
+    const segmentTotal = clockRangeMinutes(display.clockIn, display.breakTime) + clockRangeMinutes(display.resumeTime, display.clockOut);
+    return Math.min(Math.max(0, segmentTotal - overtime), cap) + overtime;
+  }
+
+  const end = day === 6 ? 13 * 60 : 18 * 60;
+  const regularStart = employeeHistoryRegularWindowStartMinutes(toMinutes(display.clockIn));
+  let outMinutes = toMinutes(display.clockOut);
+  if (outMinutes < toMinutes(display.clockIn)) outMinutes += 24 * 60;
+  const regularSpan = Math.max(0, Math.min(outMinutes, end + 15) - regularStart);
+  const breakDeduction = day >= 1 && day <= 5 && regularSpan >= 300 ? 60 : 0;
+  return Math.min(Math.max(0, regularSpan - breakDeduction), cap) + overtime;
+}
+
+function employeeHistoryWorkingWindowMinutes(row, display) {
+  if (!display.clockIn || !display.clockOut) return 0;
+  const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
+  if (day === 0) return 0;
+  const end = day === 6 ? 13 * 60 : 18 * 60;
+  const inMinutes = toMinutes(display.clockIn);
+  let outMinutes = toMinutes(display.clockOut);
+  if (outMinutes < inMinutes) outMinutes += 24 * 60;
+  const regularStart = employeeHistoryRegularWindowStartMinutes(inMinutes);
+  return Math.max(0, Math.min(outMinutes, end + 15) - regularStart);
+}
+
+function employeeHistoryRegularWindowStartMinutes(inMinutes) {
+  const start = 9 * 60;
+  const earlyStart = 8 * 60;
+  return inMinutes >= earlyStart && inMinutes <= start + 10 ? start : Math.max(inMinutes, earlyStart);
+}
+
+function isHalfLeaveForDate(leaveRequests, date) {
+  const request = (leaveRequests || []).find((item) => {
+    const status = String(item.status || "").toLowerCase();
+    return item.date === date && status === "approved";
+  });
+  return String(request?.duration || "").toLowerCase().includes("half");
 }
 
 function clockRangeMinutes(start, end) {
