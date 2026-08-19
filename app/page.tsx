@@ -362,7 +362,7 @@ function EmployeeApp({
   const stats = useMemo(
     () => ({
       presentDays: records.filter((record) => record.status !== "absent").length,
-      lateDays: records.filter((record) => Number(record.late_minutes ?? 0) > 0).length,
+      shortMinutes: records.reduce((total, record) => total + Number(record.late_minutes ?? 0), 0),
       otMinutes: records.reduce((total, record) => total + Number(record.overtime_minutes ?? 0), 0),
       correctionCount: corrections.length,
     }),
@@ -381,7 +381,7 @@ function EmployeeApp({
 
       <section className="metric-grid" aria-label="My attendance overview">
         <Metric label="Present days" value={stats.presentDays} tone="green" />
-        <Metric label="Late records" value={stats.lateDays} tone="amber" />
+        <Metric label="Short" value={formatMinutes(stats.shortMinutes)} tone="amber" />
         <Metric label="OT minutes" value={stats.otMinutes} tone="blue" />
         <Metric label="Corrections" value={stats.correctionCount} tone="red" />
       </section>

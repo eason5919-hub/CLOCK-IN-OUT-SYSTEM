@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260819-report-late-count";
+const APP_VERSION = "20260819-short-card";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -212,7 +212,7 @@ function employeeScreen() {
     : "Scan the warehouse QR to clock in.";
   const stats = {
     present: formatDayCount(calculatePresentDays(monthRecords, visibleCorrections)),
-    late: monthRecords.filter((row) => Number(row.lateMinutes || 0) > 0).length,
+    short: formatMetricDuration(monthRecords.reduce((total, row) => total + Number(row.lateMinutes || 0), 0)),
     ot: formatMetricDuration(monthRecords.reduce((total, row) => total + employeeHistoryOvertimeMinutes(row, attendanceDisplayTimes(row, visibleCorrections)), 0)),
     corrections: correctedReportBoxCount(monthRecords, visibleCorrections),
   };
@@ -232,7 +232,7 @@ function employeeScreen() {
       <section class="employee-metrics">
         ${metrics([
           ["Present days", stats.present, ""],
-          ["Late records", stats.late, "amber"],
+          ["Short", stats.short, "amber"],
           ["OT", stats.ot, "blue"],
           ["Corrections", stats.corrections, "red"],
         ])}
