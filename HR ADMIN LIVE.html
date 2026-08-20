@@ -940,6 +940,9 @@
 
     async function api(path, options = {}) {
       const savedToken = token();
+      const allowAuthHeaderFallback = Boolean(options.allowAuthHeaderFallback);
+      const fetchOptions = { ...options };
+      delete fetchOptions.allowAuthHeaderFallback;
       const baseHeaders = { ...(options.headers || {}) };
       const originalBody = options.body;
 
@@ -956,7 +959,7 @@
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
             const response = await fetch(`${API_BASE}${path}`, {
-              ...options,
+              ...fetchOptions,
               headers,
               body,
               cache: "no-store"
@@ -989,7 +992,7 @@
         const networkMessages = ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."];
         const isNetworkError = error.message && networkMessages.includes(error.message);
         if (!isNetworkError) throw error;
-        if (savedToken && originalBody) {
+        if (allowAuthHeaderFallback && savedToken && originalBody) {
           try {
             return await requestWithToken(true);
           } catch (fallbackError) {
@@ -2179,6 +2182,7 @@
       try {
         const data = await api("/api/admin/live", {
           method: "POST",
+          allowAuthHeaderFallback: true,
           body: JSON.stringify({ action: "load_live_data", refresh: Date.now() })
         });
         const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;

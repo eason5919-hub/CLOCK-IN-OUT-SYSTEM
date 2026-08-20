@@ -174,10 +174,12 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
   assert.match(adminHtml, /body = JSON\.stringify\(useAuthorizationHeader \? payload : \{ \.\.\.payload, hrToken: savedToken \}\)/);
   assert.match(adminHtml, /action: "load_live_data"/);
+  assert.match(adminHtml, /allowAuthHeaderFallback: true,\s+body: JSON\.stringify\(\{ action: "load_live_data"/);
   assert.match(adminHtml, /text\/plain;charset=UTF-8/);
   assert.match(adminHtml, /headers\.Authorization = `Bearer \$\{savedToken\}`/);
   assert.match(adminHtml, /return await requestWithToken\(false\)/);
   assert.match(adminHtml, /return await requestWithToken\(true\)/);
+  assert.match(adminHtml, /if \(allowAuthHeaderFallback && savedToken && originalBody\)/);
   assert.match(adminHtml, /Live connection interrupted\. Current data is kept; try again in a moment\./);
   assert.match(adminHtml, /Live connection interrupted\. Keeping current view\./);
   assert.match(adminHtml, /async function loadLiveData\(force = false, showError = false\)/);
