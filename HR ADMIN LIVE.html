@@ -2151,7 +2151,7 @@
     async function loadLiveData(force = false, showError = false) {
       if (loading) {
         if (force) refreshQueued = true;
-        return;
+        return false;
       }
       loading = true;
       try {
@@ -2161,24 +2161,26 @@
         });
         const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;
         if (!liveDataHasRows(data) && hasExistingData) {
-          setStatus(statusText, "Refresh returned empty data. Keeping current view.", "error");
-          return;
+          if (showError) setStatus(statusText, "Refresh returned empty data. Keeping current view.", "error");
+          return false;
         }
         if (!liveDataHasRows(data)) {
           const snapshot = loadLiveDataSnapshot();
           if (snapshot) {
             applyLiveData(snapshot, false);
-            setStatus(statusText, "Refresh returned empty data. Showing last saved copy.", "error");
-            return;
+            if (showError) setStatus(statusText, "Refresh returned empty data. Showing last saved copy.", "error");
+            return false;
           }
         }
         applyLiveData(data);
         setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}`, "ok");
+        return true;
       } catch (error) {
         const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;
         if (showError || !hasExistingData) {
           setStatus(statusText, error.message || "Cannot connect", "error");
         }
+        return false;
       } finally {
         loading = false;
         if (refreshQueued) {
@@ -2194,8 +2196,9 @@
         method: "POST",
         body: JSON.stringify(payload)
       });
-      setStatus(employeeStatus, payload.action === "delete_employee" ? "Deleted" : "Saved", "ok");
-      await loadLiveData(true, true);
+      const refreshed = await loadLiveData(true, false);
+      const savedText = payload.action === "delete_employee" ? "Deleted" : "Saved";
+      setStatus(employeeStatus, refreshed ? savedText : `${savedText}. Click Refresh if the list does not update.`, "ok");
     }
 
     loginForm.addEventListener("submit", async event => {
