@@ -2266,19 +2266,26 @@
       if (saveRow) {
         const row = saveRow.closest("[data-employee-row]");
         const field = name => row.querySelector(`[data-field="${name}"]`)?.value || "";
+        const previousEditingEmployeeId = editingEmployeeId;
+        const payload = {
+          action: "edit_employee",
+          employeeId: saveRow.dataset.saveRow,
+          employeeCode: field("employeeCode"),
+          fullName: field("fullName"),
+          phone: field("phone"),
+          department: field("department"),
+          position: field("position"),
+          leaveEntitlementDays: field("leaveEntitlementDays")
+        };
         try {
-          await adminAction({
-            action: "edit_employee",
-            employeeId: saveRow.dataset.saveRow,
-            employeeCode: field("employeeCode"),
-            fullName: field("fullName"),
-            phone: field("phone"),
-            department: field("department"),
-            position: field("position"),
-            leaveEntitlementDays: field("leaveEntitlementDays")
-          }, "Saving employee...");
           editingEmployeeId = "";
+          saveRow.disabled = true;
+          await adminAction(payload, "Saving employee...");
+          renderEmployees();
         } catch (error) {
+          editingEmployeeId = previousEditingEmployeeId;
+          saveRow.disabled = false;
+          renderEmployees();
           setStatus(employeeStatus, error.message || "Unable to save employee", "error");
         }
         return;

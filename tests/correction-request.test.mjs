@@ -179,6 +179,8 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /Cannot connect to live database\. Click Refresh again\./);
   assert.match(adminHtml, /async function loadLiveData\(force = false, showError = false\)/);
   assert.match(adminHtml, /if \(showError \|\| !hasExistingData\)/);
+  assert.match(adminHtml, /const previousEditingEmployeeId = editingEmployeeId/);
+  assert.match(adminHtml, /editingEmployeeId = "";\s+saveRow\.disabled = true;\s+await adminAction\(payload, "Saving employee\.\.\."\);\s+renderEmployees\(\);/);
   assert.doesNotMatch(adminHtml, /mode: "cors"/);
   assert.doesNotMatch(adminHtml, /credentials: "omit"/);
   assert.doesNotMatch(adminHtml, /Live database reconnecting\.\.\./);
