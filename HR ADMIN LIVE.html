@@ -940,41 +940,63 @@
 
     async function api(path, options = {}) {
       const savedToken = token();
-      const headers = { ...(options.headers || {}) };
-      if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "text/plain;charset=UTF-8";
-      let body = options.body;
-      if (savedToken && body) {
-        const payload = JSON.parse(body);
-        body = JSON.stringify({ ...payload, hrToken: savedToken });
-      }
+      const baseHeaders = { ...(options.headers || {}) };
+      const originalBody = options.body;
 
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          const response = await fetch(`${API_BASE}${path}`, {
-            ...options,
-            headers,
-            body,
-            cache: "no-store"
-          });
-
-          const text = await response.text();
-          const data = text ? JSON.parse(text) : {};
-          if (!response.ok) {
-            if (response.status === 401) {
-              clearToken();
-              showLogin("Please login again.");
-            }
-            throw new Error(data.error || "Request failed.");
-          }
-          return data;
-        } catch (error) {
-          if (error.message && !["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."].includes(error.message)) throw error;
-          if (attempt < 2) {
-            await wait(500 * (attempt + 1));
-            continue;
-          }
-          throw new Error("Live connection interrupted. Current data is kept; try again in a moment.");
+      const requestWithToken = async (useAuthorizationHeader = false) => {
+        const headers = { ...baseHeaders };
+        let body = originalBody;
+        if (body && !headers["Content-Type"]) headers["Content-Type"] = useAuthorizationHeader ? "application/json" : "text/plain;charset=UTF-8";
+        if (savedToken && body) {
+          const payload = JSON.parse(body);
+          body = JSON.stringify(useAuthorizationHeader ? payload : { ...payload, hrToken: savedToken });
         }
+        if (savedToken && useAuthorizationHeader) headers.Authorization = `Bearer ${savedToken}`;
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const response = await fetch(`${API_BASE}${path}`, {
+              ...options,
+              headers,
+              body,
+              cache: "no-store"
+            });
+
+            const text = await response.text();
+            const data = text ? JSON.parse(text) : {};
+            if (!response.ok) {
+              if (response.status === 401) {
+                clearToken();
+                showLogin("Please login again.");
+              }
+              throw new Error(data.error || "Request failed.");
+            }
+            return data;
+          } catch (error) {
+            if (error.message && !["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."].includes(error.message)) throw error;
+            if (attempt < 2) {
+              await wait(500 * (attempt + 1));
+              continue;
+            }
+            throw error;
+          }
+        }
+      };
+
+      try {
+        return await requestWithToken(false);
+      } catch (error) {
+        const networkMessages = ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."];
+        const isNetworkError = error.message && networkMessages.includes(error.message);
+        if (!isNetworkError) throw error;
+        if (savedToken && originalBody) {
+          try {
+            return await requestWithToken(true);
+          } catch (fallbackError) {
+            if (fallbackError.message && !networkMessages.includes(fallbackError.message)) throw fallbackError;
+          }
+        }
+        throw new Error("Live connection interrupted. Current data is kept; try again in a moment.");
       }
     }
 
