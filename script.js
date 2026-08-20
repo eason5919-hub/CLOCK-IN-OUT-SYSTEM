@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260819-short-report-match";
+const APP_VERSION = "20260820-short-missing-out";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -2162,26 +2162,26 @@ function employeeHistoryLateMinutes(row, display) {
 }
 
 function employeeHistoryShortMinutes(row, display, leaveRequests = []) {
-  if (!display.clockIn || !display.clockOut) return 0;
+  if (!display.clockIn) return 0;
   const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
   if (day === 0) return 0;
   const start = 9 * 60;
   const end = day === 6 ? 13 * 60 : 18 * 60;
   const requiredMinutes = day === 6 ? 240 : 480;
   const inMinutes = toMinutes(display.clockIn);
-  let outMinutes = toMinutes(display.clockOut);
-  if (outMinutes < inMinutes) outMinutes += 24 * 60;
+  let outMinutes = display.clockOut ? toMinutes(display.clockOut) : null;
+  if (outMinutes != null && outMinutes < inMinutes) outMinutes += 24 * 60;
 
   let lateShort = Math.max(0, inMinutes - start);
   if (inMinutes <= start + 10) lateShort = 0;
 
-  const actualMinutes = employeeHistoryPaidWorkMinutes(row, display);
+  const actualMinutes = display.clockOut ? employeeHistoryPaidWorkMinutes(row, display) : Number(row.workingMinutes || 0);
   if (isHalfLeaveForDate(leaveRequests, row.date)) {
     const workShort = Math.max(0, 240 - employeeHistoryWorkingWindowMinutes(row, display));
     return Math.min(240, Math.max(lateShort, workShort));
   }
 
-  const earlyOut = outMinutes < end ? Math.max(0, end - outMinutes) : 0;
+  const earlyOut = outMinutes != null && outMinutes < end ? Math.max(0, end - outMinutes) : 0;
   const workShort = Math.max(0, requiredMinutes - actualMinutes);
   return Math.min(requiredMinutes, Math.max(lateShort, earlyOut, workShort));
 }
