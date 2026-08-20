@@ -1,5 +1,4 @@
 import { ensureDatabase, getD1 } from "../../../../db/runtime";
-import { reconcileAttendanceRows, type AttendanceRow } from "../../../../db/attendance-reconciliation";
 
 export async function GET(request: Request) {
   try {
@@ -20,7 +19,7 @@ export async function GET(request: Request) {
       .bind(`${month}%`)
       .all<Record<string, unknown>>();
 
-    const reportRows = reconcileAttendanceRows((rows.results ?? []) as AttendanceRow[])
+    const reportRows = (rows.results ?? [])
       .sort((left, right) => {
         const dateOrder = String(left.work_date || "").localeCompare(String(right.work_date || ""));
         return dateOrder || String(left.employee_code || "").localeCompare(String(right.employee_code || ""));
