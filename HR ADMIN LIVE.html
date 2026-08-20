@@ -973,7 +973,7 @@
             await wait(500 * (attempt + 1));
             continue;
           }
-          throw new Error("Cannot connect to live database. Click Refresh again.");
+          throw new Error("Live connection interrupted. Current data is kept; try again in a moment.");
         }
       }
     }
@@ -2178,7 +2178,7 @@
       } catch (error) {
         const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;
         if (showError || !hasExistingData) {
-          setStatus(statusText, error.message || "Cannot connect", "error");
+          setStatus(statusText, hasExistingData ? "Live connection interrupted. Keeping current view." : error.message || "Cannot connect", "error");
         }
         return false;
       } finally {
