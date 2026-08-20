@@ -833,6 +833,7 @@
     const QR_IMAGE_URL = `${API_BASE}/warehouse-qr.png?v=20260806-print-quality`;
     const TOKEN_KEY = "warehouseHrLiveToken";
     const TOKEN_EXPIRY_KEY = "warehouseHrLiveTokenExpiry";
+    const LIVE_DATA_SNAPSHOT_KEY = "warehouseHrLiveLastGoodData";
     const REPORT_EDIT_KEY = "warehouseMonthlyReportEdits";
     const REPORT_CALC_VERSION_KEY = "warehouseMonthlyReportCalcVersion";
     const REPORT_CALC_VERSION = "20260806-report-in-out-only";
@@ -2103,6 +2104,44 @@
       if (!editingReportEmployeeId) renderMonthlyReport();
     }
 
+    function liveDataHasRows(data) {
+      return ["employees", "attendance", "leaveRequests", "corrections"].some(key => Array.isArray(data?.[key]) && data[key].length);
+    }
+
+    function saveLiveDataSnapshot(data) {
+      if (!liveDataHasRows(data)) return;
+      try {
+        localStorage.setItem(LIVE_DATA_SNAPSHOT_KEY, JSON.stringify({
+          employees: data.employees || [],
+          attendance: data.attendance || [],
+          attendanceDays: data.attendanceDays || [],
+          leaveRequests: data.leaveRequests || [],
+          corrections: data.corrections || [],
+          auditLogs: data.auditLogs || []
+        }));
+      } catch {}
+    }
+
+    function loadLiveDataSnapshot() {
+      try {
+        const data = JSON.parse(localStorage.getItem(LIVE_DATA_SNAPSHOT_KEY) || "null");
+        return liveDataHasRows(data) ? data : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function applyLiveData(data, remember = true) {
+      employees = Array.isArray(data.employees) ? data.employees : [];
+      attendance = Array.isArray(data.attendance) ? data.attendance : [];
+      hasResolvedAttendanceDays = Object.prototype.hasOwnProperty.call(data, "attendanceDays");
+      attendanceDays = Array.isArray(data.attendanceDays) ? data.attendanceDays : [];
+      leaveRequests = Array.isArray(data.leaveRequests) ? data.leaveRequests : [];
+      corrections = Array.isArray(data.corrections) ? data.corrections : [];
+      if (remember) saveLiveDataSnapshot(data);
+      renderAll();
+    }
+
     function setEditMode(employee) {
       editingEmployeeId = employee ? employee.id : "";
       setStatus(employeeStatus, employee ? `Editing ${employee.employee_code || ""}` : "", employee ? "ok" : "");
@@ -2120,13 +2159,20 @@
           method: "POST",
           body: JSON.stringify({ action: "load_live_data", refresh: Date.now() })
         });
-        employees = Array.isArray(data.employees) ? data.employees : [];
-        attendance = Array.isArray(data.attendance) ? data.attendance : [];
-        hasResolvedAttendanceDays = Object.prototype.hasOwnProperty.call(data, "attendanceDays");
-        attendanceDays = Array.isArray(data.attendanceDays) ? data.attendanceDays : [];
-        leaveRequests = Array.isArray(data.leaveRequests) ? data.leaveRequests : [];
-        corrections = Array.isArray(data.corrections) ? data.corrections : [];
-        renderAll();
+        const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;
+        if (!liveDataHasRows(data) && hasExistingData) {
+          setStatus(statusText, "Refresh returned empty data. Keeping current view.", "error");
+          return;
+        }
+        if (!liveDataHasRows(data)) {
+          const snapshot = loadLiveDataSnapshot();
+          if (snapshot) {
+            applyLiveData(snapshot, false);
+            setStatus(statusText, "Refresh returned empty data. Showing last saved copy.", "error");
+            return;
+          }
+        }
+        applyLiveData(data);
         setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}`, "ok");
       } catch (error) {
         const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;
