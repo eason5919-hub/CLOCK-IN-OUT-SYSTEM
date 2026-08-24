@@ -23,6 +23,8 @@ test("employee phone registration reactivates reset same-phone devices", async (
   assert.match(registerRoute, /SET status = 'registered'/);
   assert.match(registerRoute, /reset_by_user_id = NULL/);
   assert.match(registerRoute, /reset_at = NULL/);
+  assert.match(registerRoute, /previousEmployee\?\.status === "deleted"/);
+  assert.match(registerRoute, /SET employee_id = \?/);
   assert.match(registerRoute, /This phone is linked to another employee account/);
 });
 

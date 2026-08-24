@@ -68,14 +68,33 @@ export async function POST(request: Request) {
       .first<{ id: string; employee_id: string; status: string }>();
 
     if (existingDevice && existingDevice.employee_id !== employee.id) {
-      return json(
-        request,
-        { error: "This phone is linked to another employee account. Ask HR/Admin to reset the device." },
-        403,
-      );
-    }
+      const previousEmployee = await db
+        .prepare("SELECT employee_code, status FROM employees WHERE id = ?")
+        .bind(existingDevice.employee_id)
+        .first<{ employee_code: string; status: string }>();
 
-    if (existingDevice) {
+      if (existingDevice.status === "reset" && previousEmployee?.status === "deleted") {
+        await db
+          .prepare(
+            `UPDATE devices
+             SET employee_id = ?,
+                 status = 'registered',
+                 device_model = ?,
+                 last_seen_at = CURRENT_TIMESTAMP,
+                 reset_by_user_id = NULL,
+                 reset_at = NULL
+             WHERE id = ?`,
+          )
+          .bind(employee.id, payload.deviceModel, existingDevice.id)
+          .run();
+      } else {
+        return json(
+          request,
+          { error: "This phone is linked to another employee account. Ask HR/Admin to reset the device." },
+          403,
+        );
+      }
+    } else if (existingDevice) {
       await db
         .prepare(
           `UPDATE devices
@@ -88,7 +107,9 @@ export async function POST(request: Request) {
         )
         .bind(payload.deviceModel, existingDevice.id)
         .run();
-    } else {
+    }
+
+    if (!existingDevice) {
       await db
         .prepare(
           "INSERT INTO devices (id, employee_id, device_fingerprint, device_model, last_seen_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
