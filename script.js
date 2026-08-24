@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260824-n006-root";
+const APP_VERSION = "20260824-n006-gps";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -20,6 +20,8 @@ const WAREHOUSE = {
 const MANUAL_QR_CODE = "D1";
 const WHATSAPP_NOTIFY_NUMBER = "60122159225";
 const MAX_GPS_ACCURACY_METERS = 30;
+const DEFAULT_GPS_WAIT_MS = 4500;
+const N006_GPS_WAIT_MS = 15000;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
 const QR_SCAN_INTERVAL_MS = 45;
 const QR_CANVAS_MAX_SIDE = 900;
@@ -1827,7 +1829,7 @@ async function collectGpsSamples() {
   if (readySample) return paddedGpsSamples(samples, readySample);
 
   const startedAt = Date.now();
-  while (Date.now() - startedAt < 4500) {
+  while (Date.now() - startedAt < currentGpsWaitMs()) {
     const sample = await getGpsSample();
     if (sample) samples.push(sample);
     const bestSample = bestUsableWarehouseGpsSample(samples);
@@ -1852,6 +1854,10 @@ function bestUsableWarehouseGpsSample(samples) {
       const distance = distanceMeters(sample.latitude, sample.longitude, WAREHOUSE.lat, WAREHOUSE.lng);
       return sample.accuracy <= MAX_GPS_ACCURACY_METERS && distance <= WAREHOUSE.radius;
     });
+}
+
+function currentGpsWaitMs() {
+  return state.currentUser?.label === "N006" ? N006_GPS_WAIT_MS : DEFAULT_GPS_WAIT_MS;
 }
 
 function paddedGpsSamples(samples, bestSample) {

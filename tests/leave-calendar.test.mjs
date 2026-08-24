@@ -93,13 +93,15 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260824-n006-root/);
-  assert.match(indexHtml, /script\.js\?v=20260824-n006-root/);
-  assert.equal(JSON.parse(appVersion).version, "20260824-n006-root");
-  assert.match(script, /const APP_VERSION = "20260824-n006-root"/);
+  assert.match(indexHtml, /style\.css\?v=20260824-n006-gps/);
+  assert.match(indexHtml, /script\.js\?v=20260824-n006-gps/);
+  assert.equal(JSON.parse(appVersion).version, "20260824-n006-gps");
+  assert.match(script, /const APP_VERSION = "20260824-n006-gps"/);
   assert.match(script, /deviceFingerprint: getRegistrationDeviceFingerprint\(code\)/);
   assert.match(script, /String\(employeeCode \|\| ""\)\.trim\(\)\.toUpperCase\(\) !== "N006"/);
   assert.match(script, /phone-n006-/);
+  assert.match(script, /const N006_GPS_WAIT_MS = 15000/);
+  assert.match(script, /state\.currentUser\?\.label === "N006" \? N006_GPS_WAIT_MS : DEFAULT_GPS_WAIT_MS/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
