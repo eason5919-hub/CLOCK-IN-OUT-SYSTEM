@@ -39,11 +39,7 @@ export async function POST(request: Request) {
       role: "employee";
     }>();
 
-  if (
-    !employee ||
-    normalizeName(employee.full_name ?? "") !== fullName ||
-    normalizePhone(employee.phone ?? "") !== phone
-  ) {
+  if (!employee || !namesMatch(employee.full_name ?? "", fullName) || normalizePhone(employee.phone ?? "") !== phone) {
     return json(request, { error: "Employee code, full name and phone number do not match HR records." }, 401);
   }
 
@@ -107,6 +103,22 @@ function normalizePhone(value: string) {
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+function namesMatch(storedName: string, inputName: string) {
+  const normalizedStoredName = normalizeName(storedName);
+  if (normalizedStoredName === inputName) return true;
+
+  const compactStoredName = compactName(storedName);
+  return Boolean(compactStoredName && compactStoredName === compactName(inputName));
+}
+
+function compactName(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
 }
 
 function json(request: Request, data: unknown, status = 200, headers: Record<string, string> = {}) {
