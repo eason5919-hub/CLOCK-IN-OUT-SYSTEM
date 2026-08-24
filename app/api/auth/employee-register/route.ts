@@ -69,11 +69,11 @@ export async function POST(request: Request) {
 
     if (existingDevice && existingDevice.employee_id !== employee.id) {
       const previousEmployee = await db
-        .prepare("SELECT employee_code, status FROM employees WHERE id = ?")
+        .prepare("SELECT employee_code, full_name, phone, status FROM employees WHERE id = ?")
         .bind(existingDevice.employee_id)
-        .first<{ employee_code: string; status: string }>();
+        .first<{ employee_code: string; full_name?: string | null; phone?: string | null; status: string }>();
 
-      if (existingDevice.status === "reset" && previousEmployee?.status === "deleted") {
+      if (existingDevice.status === "reset" && previousEmployeeCanTransfer(previousEmployee, employee)) {
         await db
           .prepare(
             `UPDATE devices
@@ -88,9 +88,10 @@ export async function POST(request: Request) {
           .bind(employee.id, payload.deviceModel, existingDevice.id)
           .run();
       } else {
+        const ownerCode = previousEmployee?.employee_code ? ` (${previousEmployee.employee_code})` : "";
         return json(
           request,
-          { error: "This phone is linked to another employee account. Ask HR/Admin to reset the device." },
+          { error: `This phone is linked to another employee account${ownerCode}. Ask HR/Admin to reset the device.` },
           403,
         );
       }
@@ -165,6 +166,18 @@ function namesMatch(storedName: string, inputName: string) {
 
   const compactStoredName = compactName(storedName);
   return Boolean(compactStoredName && compactStoredName === compactName(inputName));
+}
+
+function previousEmployeeCanTransfer(
+  previousEmployee: { full_name?: string | null; phone?: string | null; status?: string } | null | undefined,
+  employee: { full_name: string; phone: string },
+) {
+  if (!previousEmployee) return false;
+  if (previousEmployee.status === "deleted") return true;
+  return (
+    namesMatch(previousEmployee.full_name ?? "", normalizeName(employee.full_name ?? "")) &&
+    normalizePhone(previousEmployee.phone ?? "") === normalizePhone(employee.phone ?? "")
+  );
 }
 
 function compactName(value: string) {
