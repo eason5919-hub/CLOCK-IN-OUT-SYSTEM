@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260824-qr-scan-fix";
+const APP_VERSION = "20260824-qr-stable";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -24,7 +24,7 @@ const DEFAULT_GPS_WAIT_MS = 4500;
 const N006_GPS_WAIT_MS = 15000;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
 const QR_SCAN_INTERVAL_MS = 45;
-const QR_CANVAS_MAX_SIDE = 1200;
+const QR_CANVAS_MAX_SIDE = 1000;
 const QR_DARK_FRAME_LUMA = 70;
 const QR_TORCH_CHECK_MS = 700;
 
@@ -956,24 +956,24 @@ async function startQrScanner() {
   const message = document.querySelector("#qr-scan-message");
   if (!video || !message || qrScanController?.active) return;
 
-  if (!navigator.mediaDevices?.getUserMedia || (!("BarcodeDetector" in window) && !window.jsQR)) {
-    message.textContent = "This browser cannot scan QR by camera. Use Manual QR.";
+  if (!navigator.mediaDevices?.getUserMedia) {
+    message.textContent = "This browser cannot open the camera. Use Chrome or Manual QR.";
     return;
   }
 
   try {
-    const detector = "BarcodeDetector" in window ? new BarcodeDetector({ formats: ["qr_code"] }) : null;
+    const detector = createBarcodeDetector();
+    if (!detector && !window.jsQR) {
+      message.textContent = "Loading QR scanner...";
+      await waitForJsQr();
+    }
+    if (!detector && !window.jsQR) {
+      message.textContent = "QR scanner did not load. Refresh once or use Manual QR.";
+      return;
+    }
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1280 },
-        height: { ideal: 960 },
-        frameRate: { ideal: 30, max: 30 },
-      },
-      audio: false,
-    });
+    const stream = await openQrCameraStream();
     await configureQrCamera(stream);
     qrScanController = { active: true, stream, processing: false, lastScanAt: 0, lastTorchCheckAt: 0, torchOn: false };
     video.srcObject = stream;
@@ -997,7 +997,7 @@ async function startQrScanner() {
           return;
         }
       } catch {
-        message.textContent = "Scanning... keep the QR flat, bright, and inside the frame.";
+        message.textContent = "Scanning... keep the QR inside the frame.";
       }
       requestAnimationFrame(scan);
     };
@@ -1007,6 +1007,49 @@ async function startQrScanner() {
   }
 }
 
+function createBarcodeDetector() {
+  try {
+    if ("BarcodeDetector" in window) return new BarcodeDetector({ formats: ["qr_code"] });
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function waitForJsQr(timeoutMs = 3000) {
+  const startedAt = Date.now();
+  while (!window.jsQR && Date.now() - startedAt < timeoutMs) {
+    await wait(100);
+  }
+  return Boolean(window.jsQR);
+}
+
+async function openQrCameraStream() {
+  const attempts = [
+    {
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 24, max: 30 },
+      },
+      audio: false,
+    },
+    { video: { facingMode: { ideal: "environment" } }, audio: false },
+    { video: true, audio: false },
+  ];
+
+  let lastError;
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 async function configureQrCamera(stream) {
   const track = stream.getVideoTracks()[0];
   if (!track?.getCapabilities || !track.applyConstraints) return;
@@ -1014,8 +1057,6 @@ async function configureQrCamera(stream) {
     const capabilities = track.getCapabilities();
     const advanced = [];
     if (capabilities.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" });
-    if (capabilities.exposureMode?.includes("continuous")) advanced.push({ exposureMode: "continuous" });
-    if (capabilities.whiteBalanceMode?.includes("continuous")) advanced.push({ whiteBalanceMode: "continuous" });
     if (advanced.length) await track.applyConstraints({ advanced });
   } catch {
     // Camera tuning is optional. Scanning still works when a browser ignores these constraints.
@@ -1116,7 +1157,7 @@ async function detectQrCode(video, detector, canvas, context) {
   const wideScanHeight = Math.floor(canvas.height * 0.62);
   const scans = [
     [0, 0, canvas.width, canvas.height],
-    ...[0.94, 0.84, 0.72, 0.58, 0.46].map((scale) => {
+    ...[0.92, 0.78, 0.64, 0.5].map((scale) => {
       const size = Math.floor(frameSize * scale);
       return [Math.floor((canvas.width - size) / 2), Math.floor((canvas.height - size) / 2), size, size];
     }),
@@ -1127,42 +1168,10 @@ async function detectQrCode(video, detector, canvas, context) {
 
   for (const [x, y, width, height] of scans) {
     const image = context.getImageData(x, y, width, height);
-    const qr = readQrFromImage(image);
+    const qr = String(window.jsQR(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" })?.data || "").trim();
     if (qr) return qr;
   }
   return "";
-}
-
-function readQrFromImage(image) {
-  const raw = scanQrImage(image);
-  if (raw) return raw;
-  for (const mode of ["contrast", "binary", "inverted"]) {
-    const qr = scanQrImage(enhanceQrImage(image, mode));
-    if (qr) return qr;
-  }
-  return "";
-}
-
-function scanQrImage(image) {
-  return String(window.jsQR(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" })?.data || "").trim();
-}
-
-function enhanceQrImage(image, mode) {
-  const copy = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
-  for (let index = 0; index < copy.data.length; index += 4) {
-    const luma = copy.data[index] * 0.299 + copy.data[index + 1] * 0.587 + copy.data[index + 2] * 0.114;
-    const value = qrEnhancedLuma(luma, mode);
-    copy.data[index] = value;
-    copy.data[index + 1] = value;
-    copy.data[index + 2] = value;
-  }
-  return copy;
-}
-
-function qrEnhancedLuma(luma, mode) {
-  if (mode === "binary") return luma > 128 ? 255 : 0;
-  if (mode === "inverted") return luma > 128 ? 0 : 255;
-  return Math.max(0, Math.min(255, 128 + (luma - 128) * 1.8));
 }
 
 function stopQrScanner() {
