@@ -36,6 +36,7 @@ const warehouse = {
 };
 
 export default function Home() {
+  const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [employeeData, setEmployeeData] = useState<EmployeeSummary | null>(null);
   const [adminData, setAdminData] = useState<AdminDashboard | null>(null);
@@ -52,11 +53,11 @@ export default function Home() {
     const result = await postJson<{ user: User }>(
       authAction === "login" ? "/api/auth/employee-login" : "/api/auth/employee-register",
       {
-      employeeCode: form.get("employeeCode"),
-      fullName: form.get("fullName"),
-      phone: form.get("phone"),
-      deviceFingerprint: getBrowserDeviceFingerprint(),
-      deviceModel: browserDeviceLabel(),
+        employeeCode: form.get("employeeCode"),
+        fullName: form.get("fullName"),
+        phone: form.get("phone"),
+        deviceFingerprint: getBrowserDeviceFingerprint(),
+        deviceModel: browserDeviceLabel(),
       },
     );
     if ("error" in result) return setMessage(result.error);
@@ -85,6 +86,10 @@ export default function Home() {
   }
 
   useEffect(() => {
+    void restoreEmployeeSession();
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
     if (user.role === "employee") {
       void loadEmployee();
@@ -100,6 +105,16 @@ export default function Home() {
     }, 3000);
     return () => window.clearInterval(timer);
   }, [user]);
+
+  async function restoreEmployeeSession() {
+    const result = await getJson<EmployeeSummary>("/api/employee/summary");
+    if (!("error" in result)) {
+      setEmployeeData(result);
+      setUser(toEmployeeUser(result.employee));
+      setMessage("");
+    }
+    setInitializing(false);
+  }
 
   async function loadEmployee() {
     const result = await getJson<EmployeeSummary>("/api/employee/summary");
@@ -193,6 +208,10 @@ export default function Home() {
     await loadAdmin();
   }
 
+  if (initializing) {
+    return <LoadingScreen />;
+  }
+
   if (!user) {
     return (
       <LoginScreen
@@ -259,6 +278,25 @@ export default function Home() {
         ) : (
           <AdminApp data={adminData} onAddEmployee={addEmployee} />
         )}
+      </section>
+    </main>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <main className="auth-shell">
+      <section className="auth-hero">
+        <div className="brand-block">
+          <div className="brand-mark" aria-hidden="true">
+            W
+          </div>
+          <div>
+            <p className="eyebrow">Warehouse</p>
+            <h1>Attendance Management</h1>
+          </div>
+        </div>
+        <h2>Opening saved attendance login...</h2>
       </section>
     </main>
   );
@@ -714,7 +752,10 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
 }
 
 async function getJson<T>(url: string): Promise<T | { error: string }> {
-  const response = await fetch(url, { credentials: "same-origin" });
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    headers: { "x-device-fingerprint": getBrowserDeviceFingerprint() },
+  });
   return (await response.json()) as T | { error: string };
 }
 
@@ -830,6 +871,16 @@ function statusLabel(value: unknown) {
 
 function roleLabel(role: Role) {
   return role === "owner" ? "Owner/Admin" : role === "hr" ? "HR/Admin Staff" : "Employee";
+}
+
+function toEmployeeUser(employee: Record<string, string | number | null>): User {
+  return {
+    role: "employee",
+    employeeId: String(employee.id),
+    employeeCode: String(employee.employee_code),
+    name: String(employee.full_name),
+    position: String(employee.position ?? ""),
+  };
 }
 
 function getBrowserDeviceFingerprint() {

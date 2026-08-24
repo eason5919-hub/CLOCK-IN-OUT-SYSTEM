@@ -25,3 +25,17 @@ test("employee phone registration reactivates reset same-phone devices", async (
   assert.match(registerRoute, /reset_at = NULL/);
   assert.match(registerRoute, /This phone is linked to another employee account/);
 });
+
+test("worker app restores employee session and validates registered phone", async () => {
+  const [page, summaryRoute] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/employee/summary/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /restoreEmployeeSession/);
+  assert.match(page, /setUser\(toEmployeeUser\(result\.employee\)\)/);
+  assert.match(page, /headers: \{ "x-device-fingerprint": getBrowserDeviceFingerprint\(\) \}/);
+  assert.match(summaryRoute, /device_fingerprint = \?/);
+  assert.match(summaryRoute, /bind\(session\.employee_id, deviceFingerprint\)/);
+  assert.match(summaryRoute, /Employee phone access was deleted by HR/);
+});
