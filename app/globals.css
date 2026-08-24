@@ -331,6 +331,12 @@ textarea {
   color: var(--muted);
 }
 
+.employee-auth-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
 .seed-panel div {
   display: flex;
   justify-content: space-between;

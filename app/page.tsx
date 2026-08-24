@@ -43,16 +43,22 @@ export default function Home() {
   const [clockState, setClockState] = useState<ClockState>("idle");
   const [gpsMessage, setGpsMessage] = useState("Ready for QR and GPS verification.");
 
-  async function employeeRegister(event: FormEvent<HTMLFormElement>) {
+  async function employeeAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const submitter = event.nativeEvent.submitter;
+    const authAction =
+      submitter instanceof HTMLButtonElement && submitter.value === "login" ? "login" : "register";
     const form = new FormData(event.currentTarget);
-    const result = await postJson<{ user: User }>("/api/auth/employee-register", {
+    const result = await postJson<{ user: User }>(
+      authAction === "login" ? "/api/auth/employee-login" : "/api/auth/employee-register",
+      {
       employeeCode: form.get("employeeCode"),
       fullName: form.get("fullName"),
       phone: form.get("phone"),
       deviceFingerprint: getBrowserDeviceFingerprint(),
       deviceModel: browserDeviceLabel(),
-    });
+      },
+    );
     if ("error" in result) return setMessage(result.error);
     setUser(result.user);
     setMessage("");
@@ -191,7 +197,7 @@ export default function Home() {
     return (
       <LoginScreen
         message={message}
-        onEmployeeRegister={employeeRegister}
+        onEmployeeAuth={employeeAuth}
         onAdminLogin={adminLogin}
       />
     );
@@ -260,11 +266,11 @@ export default function Home() {
 
 function LoginScreen({
   message,
-  onEmployeeRegister,
+  onEmployeeAuth,
   onAdminLogin,
 }: {
   message: string;
-  onEmployeeRegister: (event: FormEvent<HTMLFormElement>) => void;
+  onEmployeeAuth: (event: FormEvent<HTMLFormElement>) => void;
   onAdminLogin: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
@@ -288,7 +294,7 @@ function LoginScreen({
       </section>
 
       <section className="auth-grid">
-        <form className="auth-panel" onSubmit={onEmployeeRegister}>
+        <form className="auth-panel" onSubmit={onEmployeeAuth}>
           <div>
             <p className="eyebrow">Employee login</p>
             <h3>Open Attendance</h3>
@@ -305,8 +311,15 @@ function LoginScreen({
             Phone number
             <input name="phone" placeholder="+60 12-400 1001" required />
           </label>
-          <button type="submit">Open My Attendance</button>
-          <small>Code, full name, and phone must match HR records.</small>
+          <div className="employee-auth-actions">
+            <button type="submit" name="employeeAuthAction" value="register">
+              Register Official Phone
+            </button>
+            <button type="submit" name="employeeAuthAction" value="login" className="secondary">
+              Open My Attendance
+            </button>
+          </div>
+          <small>First time on this phone, use Register Official Phone. After that, use Open My Attendance.</small>
         </form>
 
         <form className="auth-panel" onSubmit={onAdminLogin}>
@@ -693,13 +706,15 @@ async function postJson<T>(url: string, body: Record<string, unknown>): Promise<
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+    credentials: "same-origin",
   });
-  const data = (await response.json()) as T | { error: string };
+  const text = await response.text();
+  const data = (text ? JSON.parse(text) : {}) as T | { error: string };
   return data;
 }
 
 async function getJson<T>(url: string): Promise<T | { error: string }> {
-  const response = await fetch(url);
+  const response = await fetch(url, { credentials: "same-origin" });
   return (await response.json()) as T | { error: string };
 }
 
