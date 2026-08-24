@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Role = "employee" | "hr" | "owner";
 
@@ -132,12 +132,10 @@ export default function Home() {
     setAdminData(result);
   }
 
-  async function runClock(action: "clock_in" | "clock_out") {
+  async function runClock(action: "clock_in" | "clock_out", qrToken: string) {
     if (!user?.employeeId) return;
 
     setClockState("scanning");
-    setGpsMessage("Camera opened. Scanning permanent warehouse QR code.");
-    await wait(550);
     setGpsMessage("QR accepted. Collecting 5 high accuracy GPS samples.");
     const samples = await collectGpsSamples();
 
@@ -149,7 +147,7 @@ export default function Home() {
     }>("/api/attendance/clock", {
       employeeId: user.employeeId,
       action,
-      qrToken: warehouse.qr,
+      qrToken,
       deviceFingerprint: getBrowserDeviceFingerprint(),
       deviceModel: browserDeviceLabel(),
       samples,
@@ -392,9 +390,10 @@ function EmployeeApp({
   data: EmployeeSummary | null;
   clockState: ClockState;
   gpsMessage: string;
-  onClock: (action: "clock_in" | "clock_out") => void;
+  onClock: (action: "clock_in" | "clock_out", qrToken: string) => void;
   onCorrection: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const [scanAction, setScanAction] = useState<"clock_in" | "clock_out" | null>(null);
   const records = useMemo(() => data?.attendance ?? [], [data?.attendance]);
   const corrections = useMemo(() => data?.corrections ?? [], [data?.corrections]);
   const openRecord = records.find((record) => (
@@ -461,7 +460,7 @@ function EmployeeApp({
           </div>
 
           <div className="clock-actions single">
-            <button type="button" className={`clock-primary ${openRecord ? "out" : "in"}`} onClick={() => onClock(nextAction)}>
+            <button type="button" className={`clock-primary ${openRecord ? "out" : "in"}`} onClick={() => setScanAction(nextAction)}>
               {nextLabel}
             </button>
           </div>
@@ -522,7 +521,137 @@ function EmployeeApp({
           </div>
         </section>
       </div>
+      {scanAction ? (
+        <CameraScanner
+          action={scanAction}
+          onCancel={() => setScanAction(null)}
+          onDetected={(qrToken) => {
+            setScanAction(null);
+            onClock(scanAction, qrToken);
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+function CameraScanner({
+  action,
+  onDetected,
+  onCancel,
+}: {
+  action: "clock_in" | "clock_out";
+  onDetected: (qrToken: string) => void;
+  onCancel: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [status, setStatus] = useState("Opening camera...");
+  const [canConfirmQr, setCanConfirmQr] = useState(false);
+
+  useEffect(() => {
+    let stopped = false;
+    let frame = 0;
+    let stream: MediaStream | null = null;
+
+    async function startCamera() {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setStatus("This browser cannot open the camera. Try Chrome on the same phone.");
+          return;
+        }
+
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        if (stopped) return;
+
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play();
+        setStatus("Camera is open. Point at the warehouse QR code.");
+
+        const BarcodeDetectorClass = (window as Window & {
+          BarcodeDetector?: new (options?: { formats?: string[] }) => {
+            detect(source: CanvasImageSource): Promise<Array<{ rawValue?: string }>>;
+          };
+        }).BarcodeDetector;
+
+        if (!BarcodeDetectorClass) {
+          setCanConfirmQr(true);
+          setStatus("Camera is open. If the QR is on screen, tap Confirm Warehouse QR.");
+          return;
+        }
+
+        const detector = new BarcodeDetectorClass({ formats: ["qr_code"] });
+        const scan = async () => {
+          if (stopped) return;
+          const currentVideo = videoRef.current;
+          if (!currentVideo || currentVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+            frame = window.requestAnimationFrame(scan);
+            return;
+          }
+
+          try {
+            const codes = await detector.detect(currentVideo);
+            const qrToken = codes[0]?.rawValue?.trim();
+            if (qrToken) {
+              if (qrToken !== warehouse.qr) {
+                setStatus("Wrong QR code. Please scan the warehouse attendance QR.");
+                frame = window.requestAnimationFrame(scan);
+                return;
+              }
+              onDetected(qrToken);
+              return;
+            }
+          } catch {
+            setCanConfirmQr(true);
+            setStatus("Camera is open. If the QR is on screen, tap Confirm Warehouse QR.");
+            return;
+          }
+          frame = window.requestAnimationFrame(scan);
+        };
+
+        frame = window.requestAnimationFrame(scan);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Camera permission was blocked.";
+        setStatus(`Cannot open camera: ${message}`);
+      }
+    }
+
+    void startCamera();
+    return () => {
+      stopped = true;
+      if (frame) window.cancelAnimationFrame(frame);
+      stream?.getTracks().forEach((track) => track.stop());
+    };
+  }, [onDetected]);
+
+  return (
+    <div className="scanner-modal" role="dialog" aria-modal="true" aria-label="Warehouse QR scanner">
+      <div className="scanner-sheet">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{action === "clock_in" ? "Clock in" : "Clock out"}</p>
+            <h3>Scan Warehouse QR</h3>
+          </div>
+          <button type="button" className="secondary" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+        <div className="live-camera-frame">
+          <video ref={videoRef} playsInline muted />
+          <div className="scan-reticle" aria-hidden="true" />
+        </div>
+        <p className="camera-status">{status}</p>
+        {canConfirmQr ? (
+          <button type="button" className="clock-primary in" onClick={() => onDetected(warehouse.qr)}>
+            Confirm Warehouse QR
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

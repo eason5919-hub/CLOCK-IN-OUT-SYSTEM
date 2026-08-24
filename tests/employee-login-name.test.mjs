@@ -39,3 +39,18 @@ test("worker app restores employee session and validates registered phone", asyn
   assert.match(summaryRoute, /bind\(session\.employee_id, deviceFingerprint\)/);
   assert.match(summaryRoute, /Employee phone access was deleted by HR/);
 });
+
+test("worker employee clock opens a real camera QR scanner", async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /navigator\.mediaDevices\?\.getUserMedia/);
+  assert.match(page, /facingMode: \{ ideal: "environment" \}/);
+  assert.match(page, /BarcodeDetector/);
+  assert.match(page, /setScanAction\(nextAction\)/);
+  assert.match(page, /onClock\(scanAction, qrToken\)/);
+  assert.match(css, /\.scanner-modal/);
+  assert.match(css, /\.live-camera-frame video/);
+});
