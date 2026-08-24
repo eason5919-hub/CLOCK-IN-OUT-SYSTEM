@@ -27,6 +27,13 @@ type AdminDashboard = {
 
 type ClockState = "idle" | "scanning" | "accepted" | "rejected";
 
+type ClockGpsSample = {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: number;
+};
+
 const warehouse = {
   name: "Main Warehouse",
   latitude: 2.9989616,
@@ -137,7 +144,15 @@ export default function Home() {
 
     setClockState("scanning");
     setGpsMessage("QR accepted. Collecting 5 high accuracy GPS samples.");
-    const samples = await collectGpsSamples();
+    let samples: ClockGpsSample[] = [];
+    try {
+      samples = await collectGpsSamples();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Please enable phone GPS and try again.";
+      setClockState("rejected");
+      setGpsMessage(detail);
+      return;
+    }
 
     const result = await postJson<{
       ok: boolean;
@@ -552,6 +567,7 @@ function CameraScanner({
     let stopped = false;
     let frame = 0;
     let stream: MediaStream | null = null;
+    let confirmTimer = 0;
 
     async function startCamera() {
       try {
@@ -571,6 +587,12 @@ function CameraScanner({
         video.srcObject = stream;
         await video.play();
         setStatus("Camera is open. Point at the warehouse QR code.");
+        confirmTimer = window.setTimeout(() => {
+          if (!stopped) {
+            setCanConfirmQr(true);
+            setStatus("Camera is open. If the warehouse QR is inside the frame, tap Confirm Warehouse QR.");
+          }
+        }, 4500);
 
         const BarcodeDetectorClass = (window as Window & {
           BarcodeDetector?: new (options?: { formats?: string[] }) => {
@@ -595,13 +617,14 @@ function CameraScanner({
 
           try {
             const codes = await detector.detect(currentVideo);
-            const qrToken = codes[0]?.rawValue?.trim();
+            const qrToken = warehouseQrToken(codes[0]?.rawValue);
             if (qrToken) {
               if (qrToken !== warehouse.qr) {
                 setStatus("Wrong QR code. Please scan the warehouse attendance QR.");
                 frame = window.requestAnimationFrame(scan);
                 return;
               }
+              setStatus("QR accepted. Checking GPS now...");
               onDetected(qrToken);
               return;
             }
@@ -624,6 +647,7 @@ function CameraScanner({
     return () => {
       stopped = true;
       if (frame) window.cancelAnimationFrame(frame);
+      if (confirmTimer) window.clearTimeout(confirmTimer);
       stream?.getTracks().forEach((track) => track.stop());
     };
   }, [onDetected]);
@@ -653,6 +677,14 @@ function CameraScanner({
       </div>
     </div>
   );
+}
+
+function warehouseQrToken(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (raw === warehouse.qr) return warehouse.qr;
+  if (raw.toUpperCase() === "D1") return warehouse.qr;
+  return raw;
 }
 
 function AdminApp({
@@ -891,34 +923,30 @@ async function getJson<T>(url: string): Promise<T | { error: string }> {
 async function collectGpsSamples() {
   const samples = [];
   for (let index = 0; index < 5; index += 1) {
-    samples.push(await getGpsSample(index));
+    samples.push(await getGpsSample());
     await wait(180);
   }
   return samples;
 }
 
-function getGpsSample(index: number): Promise<{ latitude: number; longitude: number; accuracy: number }> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) return resolve(fallbackSample(index));
+function getGpsSample(): Promise<ClockGpsSample> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Phone GPS is not available. Enable location services and try again."));
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
       (position) =>
         resolve({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: Math.round(position.coords.accuracy),
+          timestamp: position.timestamp || Date.now(),
         }),
-      () => resolve(fallbackSample(index)),
-      { enableHighAccuracy: true, timeout: 1200, maximumAge: 0 },
+      () => reject(new Error("Location permission is needed. Allow GPS/location and try again.")),
+      { enableHighAccuracy: true, timeout: 4000, maximumAge: 0 },
     );
   });
-}
-
-function fallbackSample(index: number) {
-  return {
-    latitude: warehouse.latitude + index * 0.00001,
-    longitude: warehouse.longitude + index * 0.00001,
-    accuracy: [24, 18, 12, 16, 9][index] ?? 18,
-  };
 }
 
 function formatMinutes(minutes: number) {

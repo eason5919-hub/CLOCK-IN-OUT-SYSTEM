@@ -49,8 +49,13 @@ test("worker employee clock opens a real camera QR scanner", async () => {
   assert.match(page, /navigator\.mediaDevices\?\.getUserMedia/);
   assert.match(page, /facingMode: \{ ideal: "environment" \}/);
   assert.match(page, /BarcodeDetector/);
+  assert.match(page, /window\.setTimeout/);
+  assert.match(page, /Confirm Warehouse QR/);
   assert.match(page, /setScanAction\(nextAction\)/);
   assert.match(page, /onClock\(scanAction, qrToken\)/);
+  assert.match(page, /timestamp: position\.timestamp \|\| Date\.now\(\)/);
+  assert.match(page, /Location permission is needed/);
+  assert.doesNotMatch(page, /fallbackSample/);
   assert.match(css, /\.scanner-modal/);
   assert.match(css, /\.live-camera-frame video/);
 });
