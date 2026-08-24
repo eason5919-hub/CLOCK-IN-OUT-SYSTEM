@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="theme-color" content="#17211f" />
+    <title>Warehouse Attendance Management</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="stylesheet" href="style.css?v=20260820-short-missing-out" />
+  </head>
+  <body>
+    <main id="app" class="app"></main>
+    <script>
+      (() => {
+        const key = "warehouse-device-fingerprint";
+        const cookie = "warehouse-device-fingerprint";
+        const legacyPattern = /^device-[a-f0-9]{8}$/i;
+        const cookieValue = document.cookie
+          .split("; ")
+          .find((row) => row.startsWith(`${cookie}=`))
+          ?.split("=")
+          .slice(1)
+          .join("=");
+        const existing = localStorage.getItem(key) || sessionStorage.getItem(key) || (cookieValue ? decodeURIComponent(cookieValue) : "");
+
+        if (existing && !legacyPattern.test(existing)) return;
+
+        const fingerprint = globalThis.crypto?.randomUUID
+          ? `phone-${globalThis.crypto.randomUUID()}`
+          : `phone-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(key, fingerprint);
+        sessionStorage.setItem(key, fingerprint);
+        document.cookie = `${cookie}=${encodeURIComponent(fingerprint)}; Max-Age=315360000; Path=/; SameSite=Lax; Secure`;
+      })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="script.js?v=20260820-short-missing-out"></script>
+  </body>
+</html>
