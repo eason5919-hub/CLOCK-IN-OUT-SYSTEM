@@ -11,29 +11,56 @@
   <body>
     <main id="app" class="app"></main>
     <script>
-      (() => {
-        const key = "warehouse-device-fingerprint";
-        const cookie = "warehouse-device-fingerprint";
-        const legacyPattern = /^device-[a-f0-9]{8}$/i;
-        const cookieValue = document.cookie
-          .split("; ")
-          .find((row) => row.startsWith(`${cookie}=`))
-          ?.split("=")
-          .slice(1)
-          .join("=");
-        const existing = localStorage.getItem(key) || sessionStorage.getItem(key) || (cookieValue ? decodeURIComponent(cookieValue) : "");
+      (function () {
+        var key = "warehouse-device-fingerprint";
+        var cookie = "warehouse-device-fingerprint";
+        var prefix = "phone-n006-";
 
-        if (existing && !legacyPattern.test(existing)) return;
+        function readCookie() {
+          var rows = document.cookie ? document.cookie.split("; ") : [];
+          for (var index = 0; index < rows.length; index += 1) {
+            if (rows[index].indexOf(cookie + "=") === 0) {
+              return decodeURIComponent(rows[index].split("=").slice(1).join("="));
+            }
+          }
+          return "";
+        }
 
-        const fingerprint = globalThis.crypto?.randomUUID
-          ? `phone-${globalThis.crypto.randomUUID()}`
-          : `phone-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-        localStorage.setItem(key, fingerprint);
-        sessionStorage.setItem(key, fingerprint);
-        document.cookie = `${cookie}=${encodeURIComponent(fingerprint)}; Max-Age=315360000; Path=/; SameSite=Lax; Secure`;
+        function createFingerprint() {
+          if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+            return prefix + globalThis.crypto.randomUUID();
+          }
+          return prefix + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+        }
+
+        function saveFingerprint(value) {
+          localStorage.setItem(key, value);
+          sessionStorage.setItem(key, value);
+          document.cookie = cookie + "=" + encodeURIComponent(value) + "; Max-Age=315360000; Path=/; SameSite=Lax; Secure";
+        }
+
+        var existing = localStorage.getItem(key) || sessionStorage.getItem(key) || readCookie();
+        var fingerprint = existing && existing.indexOf(prefix) === 0 ? existing : createFingerprint();
+        saveFingerprint(fingerprint);
+        window.__N006_DEVICE_FINGERPRINT__ = fingerprint;
       })();
     </script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <script src="script.js?v=20260820-short-missing-out"></script>
+    <script>
+      (function () {
+        var fingerprint = window.__N006_DEVICE_FINGERPRINT__;
+        if (!fingerprint) return;
+        window.getDeviceFingerprint = function () {
+          localStorage.setItem("warehouse-device-fingerprint", fingerprint);
+          sessionStorage.setItem("warehouse-device-fingerprint", fingerprint);
+          document.cookie =
+            "warehouse-device-fingerprint=" +
+            encodeURIComponent(fingerprint) +
+            "; Max-Age=315360000; Path=/; SameSite=Lax; Secure";
+          return fingerprint;
+        };
+      })();
+    </script>
   </body>
 </html>
