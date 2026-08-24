@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260824-n006-manual";
+const APP_VERSION = "20260824-qr-scan-fix";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -24,7 +24,7 @@ const DEFAULT_GPS_WAIT_MS = 4500;
 const N006_GPS_WAIT_MS = 15000;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
 const QR_SCAN_INTERVAL_MS = 45;
-const QR_CANVAS_MAX_SIDE = 900;
+const QR_CANVAS_MAX_SIDE = 1200;
 const QR_DARK_FRAME_LUMA = 70;
 const QR_TORCH_CHECK_MS = 700;
 
@@ -968,8 +968,8 @@ async function startQrScanner() {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
-        width: { ideal: 960 },
-        height: { ideal: 720 },
+        width: { ideal: 1280 },
+        height: { ideal: 960 },
         frameRate: { ideal: 30, max: 30 },
       },
       audio: false,
@@ -997,7 +997,7 @@ async function startQrScanner() {
           return;
         }
       } catch {
-        message.textContent = "Scanning... keep the QR inside the frame.";
+        message.textContent = "Scanning... keep the QR flat, bright, and inside the frame.";
       }
       requestAnimationFrame(scan);
     };
@@ -1014,7 +1014,8 @@ async function configureQrCamera(stream) {
     const capabilities = track.getCapabilities();
     const advanced = [];
     if (capabilities.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" });
-    if (capabilities.zoom) advanced.push({ zoom: capabilities.zoom.min });
+    if (capabilities.exposureMode?.includes("continuous")) advanced.push({ exposureMode: "continuous" });
+    if (capabilities.whiteBalanceMode?.includes("continuous")) advanced.push({ whiteBalanceMode: "continuous" });
     if (advanced.length) await track.applyConstraints({ advanced });
   } catch {
     // Camera tuning is optional. Scanning still works when a browser ignores these constraints.
@@ -1112,22 +1113,56 @@ async function detectQrCode(video, detector, canvas, context) {
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
   const frameSize = Math.min(canvas.width, canvas.height);
   const sideScan = Math.floor(frameSize * 0.72);
+  const wideScanHeight = Math.floor(canvas.height * 0.62);
   const scans = [
     [0, 0, canvas.width, canvas.height],
-    ...[0.9, 0.78, 0.62].map((scale) => {
+    ...[0.94, 0.84, 0.72, 0.58, 0.46].map((scale) => {
       const size = Math.floor(frameSize * scale);
       return [Math.floor((canvas.width - size) / 2), Math.floor((canvas.height - size) / 2), size, size];
     }),
+    [0, Math.floor((canvas.height - wideScanHeight) / 2), canvas.width, wideScanHeight],
     [0, Math.floor((canvas.height - sideScan) / 2), sideScan, sideScan],
     [canvas.width - sideScan, Math.floor((canvas.height - sideScan) / 2), sideScan, sideScan],
   ];
 
   for (const [x, y, width, height] of scans) {
     const image = context.getImageData(x, y, width, height);
-    const qr = String(window.jsQR(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" })?.data || "").trim();
+    const qr = readQrFromImage(image);
     if (qr) return qr;
   }
   return "";
+}
+
+function readQrFromImage(image) {
+  const raw = scanQrImage(image);
+  if (raw) return raw;
+  for (const mode of ["contrast", "binary", "inverted"]) {
+    const qr = scanQrImage(enhanceQrImage(image, mode));
+    if (qr) return qr;
+  }
+  return "";
+}
+
+function scanQrImage(image) {
+  return String(window.jsQR(image.data, image.width, image.height, { inversionAttempts: "attemptBoth" })?.data || "").trim();
+}
+
+function enhanceQrImage(image, mode) {
+  const copy = new ImageData(new Uint8ClampedArray(image.data), image.width, image.height);
+  for (let index = 0; index < copy.data.length; index += 4) {
+    const luma = copy.data[index] * 0.299 + copy.data[index + 1] * 0.587 + copy.data[index + 2] * 0.114;
+    const value = qrEnhancedLuma(luma, mode);
+    copy.data[index] = value;
+    copy.data[index + 1] = value;
+    copy.data[index + 2] = value;
+  }
+  return copy;
+}
+
+function qrEnhancedLuma(luma, mode) {
+  if (mode === "binary") return luma > 128 ? 255 : 0;
+  if (mode === "inverted") return luma > 128 ? 0 : 255;
+  return Math.max(0, Math.min(255, 128 + (luma - 128) * 1.8));
 }
 
 function stopQrScanner() {

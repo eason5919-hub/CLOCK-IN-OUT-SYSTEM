@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260824-n006-manual/);
-  assert.match(indexHtml, /script\.js\?v=20260824-n006-manual/);
-  assert.equal(JSON.parse(appVersion).version, "20260824-n006-manual");
-  assert.match(script, /const APP_VERSION = "20260824-n006-manual"/);
+  assert.match(indexHtml, /style\.css\?v=20260824-qr-scan-fix/);
+  assert.match(indexHtml, /script\.js\?v=20260824-qr-scan-fix/);
+  assert.equal(JSON.parse(appVersion).version, "20260824-qr-scan-fix");
+  assert.match(script, /const APP_VERSION = "20260824-qr-scan-fix"/);
   assert.match(script, /deviceFingerprint: getRegistrationDeviceFingerprint\(code\)/);
   assert.match(script, /String\(employeeCode \|\| ""\)\.trim\(\)\.toUpperCase\(\) !== "N006"/);
   assert.match(script, /phone-n006-/);
@@ -172,12 +172,21 @@ test("employee QR scanner trims reads and scans multiple frame areas", async () 
   const css = await readFile(new URL("../style.css", import.meta.url), "utf8");
 
   assert.match(script, /const QR_SCAN_INTERVAL_MS = 45/);
-  assert.match(script, /const QR_CANVAS_MAX_SIDE = 900/);
+  assert.match(script, /const QR_CANVAS_MAX_SIDE = 1200/);
   assert.match(script, /const token = String\(qr \|\| ""\)\.trim\(\)/);
   assert.match(script, /document\.querySelector\("\.scan-modal"\)\?\.closest\("\.modal-backdrop"\)\?\.remove\(\)/);
-  assert.match(script, /\[0\.9, 0\.78, 0\.62\]\.map/);
+  assert.match(script, /\[0\.94, 0\.84, 0\.72, 0\.58, 0\.46\]\.map/);
   assert.match(script, /canvas\.width - sideScan/);
-  assert.match(script, /String\(window\.jsQR\(image\.data, image\.width, image\.height/);
+  assert.match(script, /const wideScanHeight = Math\.floor\(canvas\.height \* 0\.62\)/);
+  assert.match(script, /readQrFromImage\(image\)/);
+  assert.match(script, /function scanQrImage/);
+  assert.match(script, /function enhanceQrImage/);
+  assert.match(script, /\["contrast", "binary", "inverted"\]/);
+  assert.match(script, /new ImageData\(new Uint8ClampedArray\(image\.data\)/);
+  assert.match(script, /function qrEnhancedLuma/);
+  assert.match(script, /focusMode\?\.includes\("continuous"\)/);
+  assert.match(script, /exposureMode\?\.includes\("continuous"\)/);
+  assert.match(script, /whiteBalanceMode\?\.includes\("continuous"\)/);
   assert.match(script, /scannedQr !== WAREHOUSE\.qr && !isManualQr/);
   assert.match(script, /result\.action === "clock_in_existing"/);
   assert.match(script, /Already clocked in/);
