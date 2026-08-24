@@ -15,3 +15,13 @@ test("employee login accepts compacted name matches", async () => {
     assert.match(route, /compactStoredName === compactName\(inputName\)/);
   }
 });
+
+test("employee phone registration reactivates reset same-phone devices", async () => {
+  const registerRoute = await readFile(new URL("../app/api/auth/employee-register/route.ts", import.meta.url), "utf8");
+
+  assert.match(registerRoute, /SELECT id, employee_id, status FROM devices WHERE device_fingerprint = \?/);
+  assert.match(registerRoute, /SET status = 'registered'/);
+  assert.match(registerRoute, /reset_by_user_id = NULL/);
+  assert.match(registerRoute, /reset_at = NULL/);
+  assert.match(registerRoute, /This phone is linked to another employee account/);
+});

@@ -56,13 +56,46 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!linked) {
+  if (linked) {
     await db
-      .prepare(
-        "INSERT INTO devices (id, employee_id, device_fingerprint, device_model, last_seen_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
-      )
-      .bind(crypto.randomUUID(), employee.id, payload.deviceFingerprint, payload.deviceModel)
+      .prepare("UPDATE devices SET last_seen_at = CURRENT_TIMESTAMP, device_model = ? WHERE id = ?")
+      .bind(payload.deviceModel, linked.id)
       .run();
+  } else {
+    const existingDevice = await db
+      .prepare("SELECT id, employee_id, status FROM devices WHERE device_fingerprint = ?")
+      .bind(payload.deviceFingerprint)
+      .first<{ id: string; employee_id: string; status: string }>();
+
+    if (existingDevice && existingDevice.employee_id !== employee.id) {
+      return json(
+        request,
+        { error: "This phone is linked to another employee account. Ask HR/Admin to reset the device." },
+        403,
+      );
+    }
+
+    if (existingDevice) {
+      await db
+        .prepare(
+          `UPDATE devices
+           SET status = 'registered',
+               device_model = ?,
+               last_seen_at = CURRENT_TIMESTAMP,
+               reset_by_user_id = NULL,
+               reset_at = NULL
+           WHERE id = ?`,
+        )
+        .bind(payload.deviceModel, existingDevice.id)
+        .run();
+    } else {
+      await db
+        .prepare(
+          "INSERT INTO devices (id, employee_id, device_fingerprint, device_model, last_seen_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        )
+        .bind(crypto.randomUUID(), employee.id, payload.deviceFingerprint, payload.deviceModel)
+        .run();
+    }
   }
 
   const session = await createSession(db, {
