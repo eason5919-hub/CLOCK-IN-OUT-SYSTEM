@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260824-n006-gps";
+const APP_VERSION = "20260824-n006-manual";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -710,6 +710,10 @@ function bindEmployee() {
   });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
+    if (isN006CurrentUser()) {
+      completeQrScan(MANUAL_QR_CODE);
+      return;
+    }
     const qr = prompt("Enter the manual QR code");
     if (qr) completeQrScan(qr.trim());
   });
@@ -1857,7 +1861,11 @@ function bestUsableWarehouseGpsSample(samples) {
 }
 
 function currentGpsWaitMs() {
-  return state.currentUser?.label === "N006" ? N006_GPS_WAIT_MS : DEFAULT_GPS_WAIT_MS;
+  return isN006CurrentUser() ? N006_GPS_WAIT_MS : DEFAULT_GPS_WAIT_MS;
+}
+
+function isN006CurrentUser() {
+  return state.currentUser?.label === "N006";
 }
 
 function paddedGpsSamples(samples, bestSample) {
@@ -2035,7 +2043,7 @@ function qrScannerModal() {
         <div class="actions">
           <button class="secondary" data-cancel-scan>Cancel</button>
           <button class="secondary" data-toggle-torch>Torch On</button>
-          <button class="secondary" data-manual-qr>Manual QR</button>
+          <button class="secondary" data-manual-qr>${isN006CurrentUser() ? "Use Manual QR D1" : "Manual QR"}</button>
         </div>
       </section>
     </div>
