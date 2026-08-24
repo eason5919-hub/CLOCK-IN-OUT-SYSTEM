@@ -47,6 +47,7 @@ const MAX_GPS_ACCURACY_METERS = 30;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
 let gpsWatchId: number | null = null;
 let latestGpsSamples: ClockGpsSample[] = [];
+let lastGpsError = "";
 
 export default function Home() {
   const [initializing, setInitializing] = useState(true);
@@ -937,7 +938,7 @@ async function collectGpsSamples() {
   if (readySample) return paddedGpsSamples(samples, readySample);
 
   const startedAt = Date.now();
-  while (Date.now() - startedAt < 4500) {
+  while (Date.now() - startedAt < 20000) {
     const sample = await getGpsSample();
     if (sample) samples.push(sample);
     const bestSample = bestUsableWarehouseGpsSample(samples);
@@ -949,7 +950,11 @@ async function collectGpsSamples() {
     .filter((sample) => Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS)
     .sort((left, right) => left.accuracy - right.accuracy);
   if (freshBrowserSamples.length < 5) {
-    throw new Error("Unable to read fresh phone GPS. Check this site's location permission, then try again.");
+    throw new Error(
+      freshBrowserSamples.length
+        ? `GPS only returned ${freshBrowserSamples.length}/5 fresh readings. Keep the app open outside or near the warehouse entrance, then try again.`
+        : lastGpsError || "Unable to read fresh phone GPS. Check this site's location permission, then try again.",
+    );
   }
   return freshBrowserSamples.slice(0, 5);
 }
@@ -962,8 +967,11 @@ function getGpsSample(): Promise<ClockGpsSample | null> {
     }
     navigator.geolocation.getCurrentPosition(
       (position) => resolve(saveGpsSample(position)),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+      (error) => {
+        lastGpsError = gpsErrorMessage(error);
+        resolve(null);
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 },
     );
   });
 }
@@ -974,7 +982,9 @@ function startLocationWatch() {
     (position) => {
       saveGpsSample(position);
     },
-    () => {},
+    (error) => {
+      lastGpsError = gpsErrorMessage(error);
+    },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
   );
 }
@@ -988,6 +998,7 @@ function stopLocationWatch() {
 }
 
 function saveGpsSample(position: GeolocationPosition): ClockGpsSample {
+  lastGpsError = "";
   const sample = {
     latitude: position.coords.latitude,
     longitude: position.coords.longitude,
@@ -1023,6 +1034,19 @@ function paddedGpsSamples(samples: ClockGpsSample[], bestSample: ClockGpsSample)
     freshBrowserSamples.push({ ...bestSample, timestamp: Date.now() });
   }
   return freshBrowserSamples;
+}
+
+function gpsErrorMessage(error: GeolocationPositionError) {
+  if (error.code === error.PERMISSION_DENIED) {
+    return "Location permission is blocked for this site. In Chrome, tap the lock icon beside the URL and allow Location.";
+  }
+  if (error.code === error.POSITION_UNAVAILABLE) {
+    return "Phone GPS position is unavailable. Turn on high accuracy/location services and try near an open area.";
+  }
+  if (error.code === error.TIMEOUT) {
+    return "Phone GPS timed out before giving a fresh reading. Keep the app open and try again near an open area.";
+  }
+  return error.message || "Unable to read fresh phone GPS. Check this site's location permission, then try again.";
 }
 
 function formatMinutes(minutes: number) {

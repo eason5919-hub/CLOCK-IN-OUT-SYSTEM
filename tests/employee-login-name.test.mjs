@@ -56,6 +56,9 @@ test("worker employee clock opens a real camera QR scanner", async () => {
   assert.match(page, /startLocationWatch/);
   assert.match(page, /watchPosition/);
   assert.match(page, /bestUsableWarehouseGpsSample/);
+  assert.match(page, /Date\.now\(\) - startedAt < 20000/);
+  assert.match(page, /GPS only returned/);
+  assert.match(page, /gpsErrorMessage/);
   assert.match(page, /timestamp: position\.timestamp \|\| Date\.now\(\)/);
   assert.match(page, /Unable to read fresh phone GPS/);
   assert.doesNotMatch(page, /fallbackSample/);
