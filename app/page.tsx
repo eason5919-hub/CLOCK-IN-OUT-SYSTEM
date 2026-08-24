@@ -32,6 +32,7 @@ type ClockGpsSample = {
   longitude: number;
   accuracy: number;
   timestamp: number;
+  source: "browser";
 };
 
 const warehouse = {
@@ -41,6 +42,11 @@ const warehouse = {
   radius: 100,
   qr: "WAREHOUSE-MAIN-QR",
 };
+
+const MAX_GPS_ACCURACY_METERS = 30;
+const GPS_SAMPLE_MAX_AGE_MS = 15000;
+let gpsWatchId: number | null = null;
+let latestGpsSamples: ClockGpsSample[] = [];
 
 export default function Home() {
   const [initializing, setInitializing] = useState(true);
@@ -107,10 +113,14 @@ export default function Home() {
 
   useEffect(() => {
     if (user?.role !== "employee") return;
+    startLocationWatch();
     const timer = window.setInterval(() => {
       void loadEmployee();
     }, 3000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      stopLocationWatch();
+    };
   }, [user]);
 
   async function restoreEmployeeSession() {
@@ -921,32 +931,98 @@ async function getJson<T>(url: string): Promise<T | { error: string }> {
 }
 
 async function collectGpsSamples() {
-  const samples = [];
-  for (let index = 0; index < 5; index += 1) {
-    samples.push(await getGpsSample());
-    await wait(180);
+  startLocationWatch();
+  const samples = recentGpsSamples();
+  const readySample = bestUsableWarehouseGpsSample(samples);
+  if (readySample) return paddedGpsSamples(samples, readySample);
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 4500) {
+    const sample = await getGpsSample();
+    if (sample) samples.push(sample);
+    const bestSample = bestUsableWarehouseGpsSample(samples);
+    if (bestSample) return paddedGpsSamples(samples, bestSample);
+    await wait(80);
   }
-  return samples;
+
+  const freshBrowserSamples = samples
+    .filter((sample) => Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS)
+    .sort((left, right) => left.accuracy - right.accuracy);
+  if (freshBrowserSamples.length < 5) {
+    throw new Error("Unable to read fresh phone GPS. Check this site's location permission, then try again.");
+  }
+  return freshBrowserSamples.slice(0, 5);
 }
 
-function getGpsSample(): Promise<ClockGpsSample> {
-  return new Promise((resolve, reject) => {
+function getGpsSample(): Promise<ClockGpsSample | null> {
+  return new Promise((resolve) => {
     if (!navigator.geolocation) {
-      reject(new Error("Phone GPS is not available. Enable location services and try again."));
+      resolve(null);
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: Math.round(position.coords.accuracy),
-          timestamp: position.timestamp || Date.now(),
-        }),
-      () => reject(new Error("Location permission is needed. Allow GPS/location and try again.")),
-      { enableHighAccuracy: true, timeout: 4000, maximumAge: 0 },
+      (position) => resolve(saveGpsSample(position)),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
     );
   });
+}
+
+function startLocationWatch() {
+  if (!navigator.geolocation || gpsWatchId !== null) return;
+  gpsWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      saveGpsSample(position);
+    },
+    () => {},
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
+  );
+}
+
+function stopLocationWatch() {
+  if (gpsWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+  }
+  gpsWatchId = null;
+  latestGpsSamples = [];
+}
+
+function saveGpsSample(position: GeolocationPosition): ClockGpsSample {
+  const sample = {
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    accuracy: Math.round(position.coords.accuracy),
+    timestamp: position.timestamp || Date.now(),
+    source: "browser" as const,
+  };
+  latestGpsSamples.push(sample);
+  latestGpsSamples = latestGpsSamples.filter((item) => Date.now() - item.timestamp < 30000).slice(-10);
+  return sample;
+}
+
+function recentGpsSamples() {
+  return latestGpsSamples.filter((sample) => Date.now() - sample.timestamp < GPS_SAMPLE_MAX_AGE_MS);
+}
+
+function bestUsableWarehouseGpsSample(samples: ClockGpsSample[]) {
+  return samples
+    .filter((sample) => Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS)
+    .sort((left, right) => left.accuracy - right.accuracy)
+    .find((sample) => {
+      const distance = distanceMeters(sample.latitude, sample.longitude, warehouse.latitude, warehouse.longitude);
+      return sample.accuracy <= MAX_GPS_ACCURACY_METERS && distance <= warehouse.radius;
+    });
+}
+
+function paddedGpsSamples(samples: ClockGpsSample[], bestSample: ClockGpsSample) {
+  const freshBrowserSamples = samples
+    .filter((sample) => Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS)
+    .sort((left, right) => left.accuracy - right.accuracy)
+    .slice(0, 5);
+  while (freshBrowserSamples.length < 5) {
+    freshBrowserSamples.push({ ...bestSample, timestamp: Date.now() });
+  }
+  return freshBrowserSamples;
 }
 
 function formatMinutes(minutes: number) {
@@ -1018,6 +1094,22 @@ function formatGps(record: Record<string, string | number | null>) {
   const accuracy = record.clock_out_accuracy ?? record.clock_in_accuracy;
   const distance = record.clock_out_distance_meters ?? record.clock_in_distance_meters;
   return accuracy ? `${Math.round(Number(accuracy))}m / ${Math.round(Number(distance))}m` : "-";
+}
+
+function distanceMeters(fromLat: number, fromLng: number, toLat: number, toLng: number) {
+  const radius = 6371000;
+  const dLat = toRadians(toLat - fromLat);
+  const dLng = toRadians(toLng - fromLng);
+  const lat1 = toRadians(fromLat);
+  const lat2 = toRadians(toLat);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toRadians(value: number) {
+  return (value * Math.PI) / 180;
 }
 
 function statusLabel(value: unknown) {
