@@ -93,11 +93,11 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260824-qr-stable/);
-  assert.match(indexHtml, /script\.js\?v=20260824-qr-stable/);
+  assert.match(indexHtml, /style\.css\?v=20260824-gps-real-sample/);
+  assert.match(indexHtml, /script\.js\?v=20260824-gps-real-sample/);
   assert.match(indexHtml, /unpkg\.com\/jsqr@1\.4\.0\/dist\/jsQR\.js/);
-  assert.equal(JSON.parse(appVersion).version, "20260824-qr-stable");
-  assert.match(script, /const APP_VERSION = "20260824-qr-stable"/);
+  assert.equal(JSON.parse(appVersion).version, "20260824-gps-real-sample");
+  assert.match(script, /const APP_VERSION = "20260824-gps-real-sample"/);
   assert.match(script, /deviceFingerprint: getRegistrationDeviceFingerprint\(code\)/);
   assert.match(script, /String\(employeeCode \|\| ""\)\.trim\(\)\.toUpperCase\(\) !== "N006"/);
   assert.match(script, /phone-n006-/);
@@ -164,6 +164,10 @@ test("employee GPS display shows warehouse distance and does not fake fallback s
   assert.match(script, /function gpsReadyMessage/);
   assert.match(script, /Distance \$\{distance\}m/);
   assert.match(script, /maximumAge: 0/);
+  assert.match(script, /freshBrowserSamples\.length > 0/);
+  assert.match(script, /paddedGpsSamples\(\s+freshBrowserSamples,\s+freshBrowserSamples\.sort/);
+  assert.match(script, /No fresh GPS reading received from this browser/);
+  assert.doesNotMatch(script, /Unable to read fresh phone GPS\. Please enable Location Services/);
   assert.doesNotMatch(script, /function fallbackGps/);
   assert.doesNotMatch(script, /source: "fallback"/);
 });

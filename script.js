@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260824-qr-stable";
+const APP_VERSION = "20260824-gps-real-sample";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -1888,8 +1888,14 @@ async function collectGpsSamples() {
   const freshBrowserSamples = samples.filter((sample) => sample.source === "browser" && Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS);
   const bestFreshSample = bestUsableWarehouseGpsSample(freshBrowserSamples);
   if (bestFreshSample) return paddedGpsSamples(freshBrowserSamples, bestFreshSample);
+  if (freshBrowserSamples.length > 0) {
+    return paddedGpsSamples(
+      freshBrowserSamples,
+      freshBrowserSamples.sort((a, b) => a.accuracy - b.accuracy)[0],
+    );
+  }
   if (freshBrowserSamples.length < 5) {
-    throw new Error("Unable to read fresh phone GPS. Please enable Location Services and try again.");
+    throw new Error("No fresh GPS reading received from this browser. Turn Location on for Chrome/Safari and this site, then try again.");
   }
   return freshBrowserSamples.sort((a, b) => a.accuracy - b.accuracy).slice(0, 5);
 }
