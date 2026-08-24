@@ -93,10 +93,13 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260820-short-missing-out/);
-  assert.match(indexHtml, /script\.js\?v=20260820-short-missing-out/);
-  assert.equal(JSON.parse(appVersion).version, "20260820-short-missing-out");
-  assert.match(script, /const APP_VERSION = "20260820-short-missing-out"/);
+  assert.match(indexHtml, /style\.css\?v=20260824-n006-root/);
+  assert.match(indexHtml, /script\.js\?v=20260824-n006-root/);
+  assert.equal(JSON.parse(appVersion).version, "20260824-n006-root");
+  assert.match(script, /const APP_VERSION = "20260824-n006-root"/);
+  assert.match(script, /deviceFingerprint: getRegistrationDeviceFingerprint\(code\)/);
+  assert.match(script, /String\(employeeCode \|\| ""\)\.trim\(\)\.toUpperCase\(\) !== "N006"/);
+  assert.match(script, /phone-n006-/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);

@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260820-short-missing-out";
+const APP_VERSION = "20260824-n006-root";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -357,7 +357,7 @@ function bindLogin() {
           employeeCode: code,
           fullName: name,
           phone,
-          deviceFingerprint: getDeviceFingerprint(),
+          deviceFingerprint: getRegistrationDeviceFingerprint(code),
           deviceModel: browserDeviceLabel(),
         }),
       }, false);
@@ -2089,6 +2089,25 @@ function getDeviceFingerprint() {
   sessionStorage.setItem(DEVICE_KEY, fingerprint);
   setCookie(DEVICE_COOKIE, fingerprint, 3650);
   return fingerprint;
+}
+
+function getRegistrationDeviceFingerprint(employeeCode) {
+  if (String(employeeCode || "").trim().toUpperCase() !== "N006") return getDeviceFingerprint();
+  const prefix = "phone-n006-";
+  const existing =
+    localStorage.getItem(DEVICE_KEY) ||
+    sessionStorage.getItem(DEVICE_KEY) ||
+    getCookie(DEVICE_COOKIE);
+  const fingerprint = existing && existing.startsWith(prefix) ? existing : createN006DeviceFingerprint(prefix);
+  localStorage.setItem(DEVICE_KEY, fingerprint);
+  sessionStorage.setItem(DEVICE_KEY, fingerprint);
+  setCookie(DEVICE_COOKIE, fingerprint, 3650);
+  return fingerprint;
+}
+
+function createN006DeviceFingerprint(prefix) {
+  if (globalThis.crypto?.randomUUID) return `${prefix}${globalThis.crypto.randomUUID()}`;
+  return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 async function sha256Hex(value) {
