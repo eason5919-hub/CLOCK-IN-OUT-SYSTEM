@@ -310,7 +310,9 @@ test("approved corrections update attendance and highlight changed times", async
   assert.doesNotMatch(adminHtml, /function reportFieldShouldSave[\s\S]{0,200}reportFieldWasEdited/);
   assert.match(adminHtml, /return reportFieldShouldSave\(employeeId, dateKey, field\)/);
   assert.match(adminHtml, /editedFields: \["in", "out"\]\.filter\(field => reportFieldShouldSave\(employeeId, dateKey, field\)\)/);
+  assert.match(adminHtml, /if \(!cell \|\| !isEditableReportField\(cell\.dataset\.reportField\)\) return/);
   assert.match(adminHtml, /reportEditDraftKeys\.add\(reportEditKey\(cell\.dataset\.reportEmployee, cell\.dataset\.reportDate, cell\.dataset\.reportField\)\)/);
+  assert.match(adminHtml, /if \(REPORT_TIME_FIELDS\.has\(cell\.dataset\.reportField\)\) refreshReportRow\(cell\.closest\("tr"\), false\)/);
   assert.match(adminHtml, /const regularSpan = Math\.max\(0, Math\.round/);
   assert.match(adminHtml, /function regularWindowStartMs/);
   assert.match(adminHtml, /clockInMs >= earlyStartMs && clockInMs <= graceEndMs \? startMs : Math\.max\(clockInMs, earlyStartMs\)/);

@@ -2442,9 +2442,9 @@
     });
     monthlyReportArea.addEventListener("input", event => {
       const cell = event.target.closest("[data-report-field]");
-      if (!cell || !REPORT_TIME_FIELDS.has(cell.dataset.reportField)) return;
+      if (!cell || !isEditableReportField(cell.dataset.reportField)) return;
       reportEditDraftKeys.add(reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField));
-      refreshReportRow(cell.closest("tr"), false);
+      if (REPORT_TIME_FIELDS.has(cell.dataset.reportField)) refreshReportRow(cell.closest("tr"), false);
     });
     monthlyReportArea.addEventListener("blur", event => {
       const cell = event.target.closest("[data-report-field]");
