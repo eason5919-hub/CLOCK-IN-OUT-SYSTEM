@@ -270,6 +270,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /let reportRemarks = \[\]/);
   assert.match(adminHtml, /function reportRemark/);
   assert.match(adminHtml, /data\.reportRemarks \|\| \[\]/);
+  assert.match(adminHtml, /const shouldSaveField = reportEditDraftKeys\.has\(key\) \|\| \(field === "remark" && hasLocalEdit\)/);
   assert.match(adminHtml, /action: "save_report_remarks"/);
   assert.match(adminHtml, /remarkRows\.forEach\(row =>/);
   assert.doesNotMatch(adminHtml, /restore_report_attendance_times|restoreEmployeeMonthlyReport|data-restore-report/);

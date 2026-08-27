@@ -2042,7 +2042,9 @@
       cells.forEach(cell => {
         const field = cell.dataset.reportField;
         const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, field);
-        if (isEditableReportField(field) && reportEditDraftKeys.has(key)) {
+        const hasLocalEdit = Object.prototype.hasOwnProperty.call(monthlyReportEdits, key);
+        const shouldSaveField = reportEditDraftKeys.has(key) || (field === "remark" && hasLocalEdit);
+        if (isEditableReportField(field) && shouldSaveField) {
           const picker = cell.querySelector("select");
           const timeInput = cell.querySelector("[data-report-time-input]");
           const value = picker ? picker.value : timeInput ? timeInput.value.trim() : cell.textContent.trim();
