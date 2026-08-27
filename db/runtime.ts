@@ -541,6 +541,17 @@ const schemaStatements = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_date ON leave_requests(employee_id, leave_date)`,
   `CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status)`,
+  `CREATE TABLE IF NOT EXISTS monthly_report_remarks (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT NOT NULL REFERENCES employees(id),
+    work_date TEXT NOT NULL,
+    remark TEXT NOT NULL,
+    created_by_user_id TEXT REFERENCES users(id),
+    updated_by_user_id TEXT REFERENCES users(id),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_monthly_report_remarks_employee_date ON monthly_report_remarks(employee_id, work_date)`,
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

@@ -43,6 +43,11 @@ type AdminAction =
       action: "save_report_leave_taken";
       employeeId?: string;
       rows?: Array<{ dateKey?: string; leaveTaken?: string }>;
+    }
+  | {
+      action: "save_report_remarks";
+      employeeId?: string;
+      rows?: Array<{ dateKey?: string; remark?: string }>;
     };
 
 export async function OPTIONS(request: Request) {
@@ -104,6 +109,9 @@ export async function POST(request: Request) {
     if (payload.action === "save_report_leave_taken") {
       return saveReportLeaveTaken(db, request, payload, auth.userId);
     }
+    if (payload.action === "save_report_remarks") {
+      return saveReportRemarks(db, request, payload, auth.userId);
+    }
     return json(request, { error: "Unknown admin action." }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected error";
@@ -112,7 +120,7 @@ export async function POST(request: Request) {
 }
 
 async function liveData(db: D1Database, request: Request) {
-  const [employees, attendance, corrections, leaveRequests, auditLogs] = await Promise.all([
+  const [employees, attendance, corrections, leaveRequests, reportRemarks, auditLogs] = await Promise.all([
     db
       .prepare(
         `SELECT e.id, e.employee_code, e.full_name, e.department_id,
@@ -166,6 +174,15 @@ async function liveData(db: D1Database, request: Request) {
          ORDER BY l.created_at DESC`,
       )
       .all(),
+    db
+      .prepare(
+        `SELECT r.*, e.employee_code, e.full_name
+         FROM monthly_report_remarks r
+         JOIN employees e ON e.id = r.employee_id
+         WHERE e.status <> 'deleted'
+         ORDER BY r.work_date DESC, e.employee_code`,
+      )
+      .all(),
     db.prepare("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 30").all(),
   ]);
 
@@ -176,6 +193,7 @@ async function liveData(db: D1Database, request: Request) {
     attendance: attendanceRows,
     corrections: corrections.results ?? [],
     leaveRequests: leaveRequests.results ?? [],
+    reportRemarks: reportRemarks.results ?? [],
     auditLogs: auditLogs.results ?? [],
     qrToken: "WAREHOUSE-MAIN-QR",
     warehouse: {
@@ -479,6 +497,71 @@ async function saveReportLeaveTaken(
     if (selection.duration === "half_day") {
       await applyHalfDayLeaveAttendanceRule(db, requestId);
     }
+  }
+
+  return json(request, { ok: true });
+}
+
+async function saveReportRemarks(
+  db: D1Database,
+  request: Request,
+  payload: Extract<AdminAction, { action: "save_report_remarks" }>,
+  adminUserId: string,
+) {
+  if (!payload.employeeId || !Array.isArray(payload.rows)) {
+    return json(request, { error: "Employee and remark rows are required." }, 400);
+  }
+
+  const employee = await db
+    .prepare("SELECT id FROM employees WHERE id = ? AND status <> 'deleted'")
+    .bind(payload.employeeId)
+    .first<{ id: string }>();
+  if (!employee) return json(request, { error: "Employee was not found." }, 404);
+
+  for (const row of payload.rows) {
+    const dateKey = String(row.dateKey || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) continue;
+
+    const remark = String(row.remark || "").trim();
+    const before = await db
+      .prepare("SELECT * FROM monthly_report_remarks WHERE employee_id = ? AND work_date = ?")
+      .bind(payload.employeeId, dateKey)
+      .first();
+
+    if (!remark) {
+      await db
+        .prepare("DELETE FROM monthly_report_remarks WHERE employee_id = ? AND work_date = ?")
+        .bind(payload.employeeId, dateKey)
+        .run();
+    } else {
+      await db
+        .prepare(
+          `INSERT INTO monthly_report_remarks
+           (id, employee_id, work_date, remark, created_by_user_id, updated_by_user_id)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(employee_id, work_date) DO UPDATE SET
+             remark = excluded.remark,
+             updated_by_user_id = excluded.updated_by_user_id,
+             updated_at = CURRENT_TIMESTAMP`,
+        )
+        .bind(crypto.randomUUID(), payload.employeeId, dateKey, remark, adminUserId, adminUserId)
+        .run();
+    }
+
+    await db
+      .prepare(
+        "INSERT INTO audit_logs (id, actor_user_id, action, entity_type, entity_id, before_json, after_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(
+        crypto.randomUUID(),
+        adminUserId,
+        "monthly_report_remark_edit",
+        "monthly_report_remark",
+        `${payload.employeeId}:${dateKey}`,
+        before ? JSON.stringify(before) : null,
+        JSON.stringify({ employeeId: payload.employeeId, dateKey, remark }),
+      )
+      .run();
   }
 
   return json(request, { ok: true });

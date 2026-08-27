@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const departments = sqliteTable("departments", {
   id: text("id").primaryKey(),
@@ -162,6 +162,21 @@ export const leaveRequests = sqliteTable(
     index("idx_leave_requests_employee_date").on(table.employeeId, table.leaveDate),
     index("idx_leave_requests_status").on(table.status),
   ],
+);
+
+export const monthlyReportRemarks = sqliteTable(
+  "monthly_report_remarks",
+  {
+    id: text("id").primaryKey(),
+    employeeId: text("employee_id").notNull().references(() => employees.id),
+    workDate: text("work_date").notNull(),
+    remark: text("remark").notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.id),
+    updatedByUserId: text("updated_by_user_id").references(() => users.id),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [uniqueIndex("idx_monthly_report_remarks_employee_date").on(table.employeeId, table.workDate)],
 );
 
 export const settings = sqliteTable("settings", {

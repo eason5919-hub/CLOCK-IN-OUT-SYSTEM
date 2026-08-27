@@ -267,6 +267,11 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /delete nextEdits\[reportEditKey\(employeeId, row\.dateKey, field\)\]/);
   assert.doesNotMatch(adminHtml, /const restoreRows = \[\.\.\.reportRows\.keys\(\)\]/);
   assert.match(adminHtml, /action: "save_report_attendance_times"/);
+  assert.match(adminHtml, /let reportRemarks = \[\]/);
+  assert.match(adminHtml, /function reportRemark/);
+  assert.match(adminHtml, /data\.reportRemarks \|\| \[\]/);
+  assert.match(adminHtml, /action: "save_report_remarks"/);
+  assert.match(adminHtml, /remarkRows\.forEach\(row =>/);
   assert.doesNotMatch(adminHtml, /restore_report_attendance_times|restoreEmployeeMonthlyReport|data-restore-report/);
   assert.match(adminHtml, /data-cancel-report/);
   assert.match(adminHtml, /Cancelled edit \|/);
@@ -285,6 +290,11 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /leaveTaken: reportRowText\(row, "leaveTaken"\)/);
   assert.match(adminHtml, /data-report-leave-picker/);
   assert.match(adminRoute, /action: "save_report_leave_taken"/);
+  assert.match(adminRoute, /action: "save_report_remarks"/);
+  assert.match(adminRoute, /FROM monthly_report_remarks r/);
+  assert.match(adminRoute, /function saveReportRemarks/);
+  assert.match(adminRoute, /ON CONFLICT\(employee_id, work_date\) DO UPDATE SET/);
+  assert.match(adminRoute, /monthly_report_remark_edit/);
   assert.match(adminRoute, /INSERT INTO employees \(id, employee_code, full_name, department_id, position, phone, email, leave_entitlement_days, status\) VALUES \(\?, \?, \?, \?, \?, \?, \?, \?, 'active'\)/);
   assert.doesNotMatch(adminRoute, /leave_entitlement_days, status\) VALUES \(\?, \?, \?, \?, \?, \?, \?, 0, 'active'\)/);
   assert.match(adminRoute, /function reportLeaveSelection/);

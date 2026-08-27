@@ -884,6 +884,7 @@
     let hasResolvedAttendanceDays = false;
     let leaveRequests = [];
     let corrections = [];
+    let reportRemarks = [];
     let loading = false;
     let refreshQueued = false;
     let editingEmployeeId = "";
@@ -1391,6 +1392,11 @@
       return Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) ? monthlyReportEdits[key] : fallback;
     }
 
+    function reportRemark(employeeId, dateKey) {
+      const remark = reportRemarks.find(item => item.employee_id === employeeId && item.work_date === dateKey);
+      return remark?.remark || "";
+    }
+
     function editableReportCell(employeeId, dateKey, field, fallback = "", className = "") {
       const editing = editingReportEmployeeId === employeeId;
       const key = reportEditKey(employeeId, dateKey, field);
@@ -1873,7 +1879,7 @@
             ${editableReportCell(employee.id, dateKey, "overtime", overtime)}
             ${editableReportCell(employee.id, dateKey, "short", short)}
             ${editableReportCell(employee.id, dateKey, "leaveTaken", leaveTaken)}
-            ${editableReportCell(employee.id, dateKey, "remark", "")}
+            ${editableReportCell(employee.id, dateKey, "remark", reportRemark(employee.id, dateKey))}
           </tr>
         `;
       }).join("");
@@ -1979,7 +1985,7 @@
     function originalReportValue(employeeId, dateKey, field) {
       const attendanceRow = employeeAttendanceByDate(employeeId, dateKey);
       if (field === "in") return reportTime(attendanceRow?.clockIn);
-      if (field === "remark") return "";
+      if (field === "remark") return reportRemark(employeeId, dateKey);
       if (field === "out") return reportTime(attendanceRow?.clockOut);
       if (field === "leaveTaken") return employeeLeaveForDate(employeeId, dateKey);
       return "";
@@ -2032,24 +2038,29 @@
       new Set([...rows].map(cell => cell.closest("tr")).filter(Boolean)).forEach(row => refreshReportRow(row, true));
       const nextEdits = { ...monthlyReportEdits };
       const reportRows = new Map();
+      const remarkRows = [];
       cells.forEach(cell => {
-        const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
-        if (isEditableReportField(cell.dataset.reportField) && reportEditDraftKeys.has(key)) {
+        const field = cell.dataset.reportField;
+        const key = reportEditKey(cell.dataset.reportEmployee, cell.dataset.reportDate, field);
+        if (isEditableReportField(field) && reportEditDraftKeys.has(key)) {
           const picker = cell.querySelector("select");
           const timeInput = cell.querySelector("[data-report-time-input]");
           const value = picker ? picker.value : timeInput ? timeInput.value.trim() : cell.textContent.trim();
-          const original = originalReportValue(cell.dataset.reportEmployee, cell.dataset.reportDate, cell.dataset.reportField);
+          const original = originalReportValue(cell.dataset.reportEmployee, cell.dataset.reportDate, field);
           if (value === original) {
             delete nextEdits[key];
           } else {
             nextEdits[key] = value;
           }
-          if (REPORT_TIME_FIELDS.has(cell.dataset.reportField) || cell.dataset.reportField === "leaveTaken") {
+          if (field === "remark" && value !== original) {
+            remarkRows.push({ dateKey: cell.dataset.reportDate, remark: value });
+          }
+          if (REPORT_TIME_FIELDS.has(field) || field === "leaveTaken") {
             const row = cell.closest("tr");
             const dateKey = cell.dataset.reportDate;
             if (row && dateKey) reportRows.set(dateKey, row);
           }
-        } else if (!isEditableReportField(cell.dataset.reportField)) {
+        } else if (!isEditableReportField(field)) {
           delete nextEdits[key];
         }
       });
@@ -2079,7 +2090,7 @@
         return;
       }
       const liveRows = timeRows;
-      if (liveRows.length || leaveRows.length) {
+      if (liveRows.length || leaveRows.length || remarkRows.length) {
         setStatus(monthlyReportStatus, "Saving report changes to employee history...", "");
       }
       if (liveRows.length) {
@@ -2110,11 +2121,24 @@
           delete nextEdits[reportEditKey(employeeId, row.dateKey, "leaveTaken")];
         });
       }
+      if (remarkRows.length) {
+        await api("/api/admin/live", {
+          method: "POST",
+          body: JSON.stringify({
+            action: "save_report_remarks",
+            employeeId,
+            rows: remarkRows,
+          }),
+        });
+        remarkRows.forEach(row => {
+          delete nextEdits[reportEditKey(employeeId, row.dateKey, "remark")];
+        });
+      }
       monthlyReportEdits = nextEdits;
       saveReportEdits();
       editingReportEmployeeId = "";
       reportEditDraftKeys.clear();
-      if (liveRows.length || leaveRows.length) await loadLiveData(true, true);
+      if (liveRows.length || leaveRows.length || remarkRows.length) await loadLiveData(true, true);
       else renderMonthlyReport();
       setStatus(monthlyReportStatus, `Saved | ${monthLabel(selectedReportMonth)}`, "ok");
     }
@@ -2142,6 +2166,7 @@
           attendanceDays: data.attendanceDays || [],
           leaveRequests: data.leaveRequests || [],
           corrections: data.corrections || [],
+          reportRemarks: data.reportRemarks || [],
           auditLogs: data.auditLogs || []
         }));
       } catch {}
@@ -2163,6 +2188,7 @@
       attendanceDays = Array.isArray(data.attendanceDays) ? data.attendanceDays : [];
       leaveRequests = Array.isArray(data.leaveRequests) ? data.leaveRequests : [];
       corrections = Array.isArray(data.corrections) ? data.corrections : [];
+      reportRemarks = Array.isArray(data.reportRemarks) ? data.reportRemarks : [];
       if (remember) saveLiveDataSnapshot(data);
       renderAll();
     }
