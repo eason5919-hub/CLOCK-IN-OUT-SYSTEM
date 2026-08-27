@@ -1,4 +1,4 @@
-import { ensureDatabase, getD1, getSessionFromRequest } from "../../../../db/runtime";
+import { ensureDatabase, getD1, getSessionFromRequest, restoreEmployeeDevice } from "../../../../db/runtime";
 import {
   approvedCorrectionMatchesField,
   parseAttendanceTimestamp,
@@ -41,13 +41,7 @@ export async function GET(request: Request) {
 
   const deviceFingerprint = request.headers.get("x-device-fingerprint")?.trim();
   if (deviceFingerprint) {
-    const device = await db
-      .prepare("SELECT id FROM devices WHERE employee_id = ? AND device_fingerprint = ? AND status = 'registered'")
-      .bind(session.employee_id, deviceFingerprint)
-      .first<{ id: string }>();
-    if (!device) {
-      return json(request, { error: "Employee phone access was deleted by HR." }, 401);
-    }
+    await restoreEmployeeDevice(db, employee, deviceFingerprint, String(employee.device_model || "Restored phone session"));
   }
 
   const [rawAttendance, corrections, leaveRequests] = await Promise.all([

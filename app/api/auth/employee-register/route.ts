@@ -1,4 +1,4 @@
-import { createSession, ensureDatabase, getD1, sessionCookie } from "../../../../db/runtime";
+import { createSession, ensureDatabase, getD1, restoreEmployeeDevice, sessionCookie } from "../../../../db/runtime";
 
 export async function POST(request: Request) {
   const db = getD1();
@@ -43,82 +43,8 @@ export async function POST(request: Request) {
     return json(request, { error: "Employee code, full name and phone number do not match HR records." }, 401);
   }
 
-  const linked = await db
-    .prepare("SELECT id, device_fingerprint FROM devices WHERE employee_id = ? AND status = 'registered'")
-    .bind(employee.id)
-    .first<{ id: string; device_fingerprint: string }>();
-
-  if (linked && linked.device_fingerprint !== payload.deviceFingerprint) {
-    return json(
-      request,
-      { error: "This employee account is already linked to another phone. Ask HR/Admin to reset the device." },
-      403,
-    );
-  }
-
-  if (linked) {
-    await db
-      .prepare("UPDATE devices SET last_seen_at = CURRENT_TIMESTAMP, device_model = ? WHERE id = ?")
-      .bind(payload.deviceModel, linked.id)
-      .run();
-  } else {
-    const existingDevice = await db
-      .prepare("SELECT id, employee_id, status FROM devices WHERE device_fingerprint = ?")
-      .bind(payload.deviceFingerprint)
-      .first<{ id: string; employee_id: string; status: string }>();
-
-    if (existingDevice && existingDevice.employee_id !== employee.id) {
-      const previousEmployee = await db
-        .prepare("SELECT employee_code, full_name, phone, status FROM employees WHERE id = ?")
-        .bind(existingDevice.employee_id)
-        .first<{ employee_code: string; full_name?: string | null; phone?: string | null; status: string }>();
-
-      if (existingDevice.status === "reset" && previousEmployeeCanTransfer(previousEmployee, employee)) {
-        await db
-          .prepare(
-            `UPDATE devices
-             SET employee_id = ?,
-                 status = 'registered',
-                 device_model = ?,
-                 last_seen_at = CURRENT_TIMESTAMP,
-                 reset_by_user_id = NULL,
-                 reset_at = NULL
-             WHERE id = ?`,
-          )
-          .bind(employee.id, payload.deviceModel, existingDevice.id)
-          .run();
-      } else {
-        const ownerCode = previousEmployee?.employee_code ? ` (${previousEmployee.employee_code})` : "";
-        return json(
-          request,
-          { error: `This phone is linked to another employee account${ownerCode}. Ask HR/Admin to reset the device.` },
-          403,
-        );
-      }
-    } else if (existingDevice) {
-      await db
-        .prepare(
-          `UPDATE devices
-           SET status = 'registered',
-               device_model = ?,
-               last_seen_at = CURRENT_TIMESTAMP,
-               reset_by_user_id = NULL,
-               reset_at = NULL
-           WHERE id = ?`,
-        )
-        .bind(payload.deviceModel, existingDevice.id)
-        .run();
-    }
-
-    if (!existingDevice) {
-      await db
-        .prepare(
-          "INSERT INTO devices (id, employee_id, device_fingerprint, device_model, last_seen_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
-        )
-        .bind(crypto.randomUUID(), employee.id, payload.deviceFingerprint, payload.deviceModel)
-        .run();
-    }
-  }
+  const device = await restoreEmployeeDevice(db, employee, payload.deviceFingerprint, payload.deviceModel);
+  if ("error" in device) return json(request, { error: device.error }, 403);
 
   const session = await createSession(db, {
     id: employee.user_id,
@@ -166,18 +92,6 @@ function namesMatch(storedName: string, inputName: string) {
 
   const compactStoredName = compactName(storedName);
   return Boolean(compactStoredName && compactStoredName === compactName(inputName));
-}
-
-function previousEmployeeCanTransfer(
-  previousEmployee: { full_name?: string | null; phone?: string | null; status?: string } | null | undefined,
-  employee: { full_name: string; phone: string },
-) {
-  if (!previousEmployee) return false;
-  if (previousEmployee.status === "deleted") return true;
-  return (
-    namesMatch(previousEmployee.full_name ?? "", normalizeName(employee.full_name ?? "")) &&
-    normalizePhone(previousEmployee.phone ?? "") === normalizePhone(employee.phone ?? "")
-  );
 }
 
 function compactName(value: string) {

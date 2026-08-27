@@ -192,6 +192,79 @@ export async function createSession(
   return { id, expiresAt };
 }
 
+export async function restoreEmployeeDevice(
+  db: D1Database,
+  employee: { id: string; employee_code?: string | null; full_name?: string | null; phone?: string | null },
+  deviceFingerprint: string,
+  deviceModel = "Mobile browser",
+) {
+  const fingerprint = deviceFingerprint.trim();
+  const model = deviceModel.trim() || "Mobile browser";
+  if (!fingerprint) return { error: "deviceFingerprint is required." };
+
+  const existingDevice = await db
+    .prepare("SELECT id, employee_id, status FROM devices WHERE device_fingerprint = ?")
+    .bind(fingerprint)
+    .first<{ id: string; employee_id: string; status: string }>();
+
+  if (existingDevice && existingDevice.employee_id !== employee.id) {
+    const previousEmployee = await db
+      .prepare("SELECT employee_code, full_name, phone, status FROM employees WHERE id = ?")
+      .bind(existingDevice.employee_id)
+      .first<{ employee_code: string; full_name?: string | null; phone?: string | null; status: string }>();
+
+    const canTransferResetDevice =
+      existingDevice.status !== "registered" && previousEmployeeCanTransfer(previousEmployee, employee);
+    if (!canTransferResetDevice && previousEmployee?.status !== "deleted") {
+      const ownerCode = previousEmployee?.employee_code ? ` (${previousEmployee.employee_code})` : "";
+      return { error: `This phone is linked to another employee account${ownerCode}. Ask HR/Admin to reset the device.` };
+    }
+
+    await resetOtherRegisteredEmployeeDevices(db, employee.id, existingDevice.id);
+    await db
+      .prepare(
+        `UPDATE devices
+         SET employee_id = ?,
+             status = 'registered',
+             device_model = ?,
+             last_seen_at = CURRENT_TIMESTAMP,
+             reset_by_user_id = NULL,
+             reset_at = NULL
+         WHERE id = ?`,
+      )
+      .bind(employee.id, model, existingDevice.id)
+      .run();
+    return { id: existingDevice.id };
+  }
+
+  if (existingDevice) {
+    await resetOtherRegisteredEmployeeDevices(db, employee.id, existingDevice.id);
+    await db
+      .prepare(
+        `UPDATE devices
+         SET status = 'registered',
+             device_model = ?,
+             last_seen_at = CURRENT_TIMESTAMP,
+             reset_by_user_id = NULL,
+             reset_at = NULL
+         WHERE id = ?`,
+      )
+      .bind(model, existingDevice.id)
+      .run();
+    return { id: existingDevice.id };
+  }
+
+  const id = crypto.randomUUID();
+  await resetOtherRegisteredEmployeeDevices(db, employee.id, id);
+  await db
+    .prepare(
+      "INSERT INTO devices (id, employee_id, device_fingerprint, device_model, last_seen_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
+    )
+    .bind(id, employee.id, fingerprint, model)
+    .run();
+  return { id };
+}
+
 export async function getSessionFromRequest(db: D1Database, request: Request) {
   const authorization = request.headers.get("authorization") ?? "";
   const bearerToken = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
@@ -274,6 +347,57 @@ function parseCookie(value: string) {
           : [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
       }),
   );
+}
+
+async function resetOtherRegisteredEmployeeDevices(db: D1Database, employeeId: string, currentDeviceId: string) {
+  await db
+    .prepare(
+      `UPDATE devices
+       SET status = 'reset',
+           reset_by_user_id = NULL,
+           reset_at = CURRENT_TIMESTAMP
+       WHERE employee_id = ?
+         AND status = 'registered'
+         AND id <> ?`,
+    )
+    .bind(employeeId, currentDeviceId)
+    .run();
+}
+
+function previousEmployeeCanTransfer(
+  previousEmployee: { full_name?: string | null; phone?: string | null; status?: string } | null | undefined,
+  employee: { full_name?: string | null; phone?: string | null },
+) {
+  if (!previousEmployee) return false;
+  if (previousEmployee.status === "deleted") return true;
+  return (
+    namesMatch(previousEmployee.full_name ?? "", normalizeName(employee.full_name ?? "")) &&
+    normalizePhone(previousEmployee.phone ?? "") === normalizePhone(employee.phone ?? "")
+  );
+}
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function normalizeName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+function namesMatch(storedName: string, inputName: string) {
+  const normalizedStoredName = normalizeName(storedName);
+  if (normalizedStoredName === inputName) return true;
+
+  const compactStoredName = compactName(storedName);
+  return Boolean(compactStoredName && compactStoredName === compactName(inputName));
+}
+
+function compactName(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
 }
 
 const scheduleSeed = [

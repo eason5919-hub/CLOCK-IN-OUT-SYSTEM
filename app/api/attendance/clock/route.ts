@@ -4,6 +4,7 @@ import {
   getD1,
   getSessionFromRequest,
   pickBestSample,
+  restoreEmployeeDevice,
   sha256Hex,
   type GpsSample,
 } from "../../../../db/runtime";
@@ -110,15 +111,15 @@ export async function POST(request: Request) {
     }
 
     const employee = await db
-      .prepare("SELECT id FROM employees WHERE id = ? AND status = 'active'")
+      .prepare("SELECT id, employee_code, full_name, phone FROM employees WHERE id = ? AND status = 'active'")
       .bind(payload.employeeId)
-      .first<{ id: string }>();
+      .first<{ id: string; employee_code: string; full_name: string; phone: string | null }>();
 
     if (!employee) {
       return json(request, { error: "Employee account is inactive or missing." }, 404);
     }
 
-    const device = await resolveDevice(db, payload);
+    const device = await restoreEmployeeDevice(db, employee, payload.deviceFingerprint!, payload.deviceModel!);
     if ("error" in device) return json(request, { error: device.error }, 403);
 
     const now = new Date();
@@ -350,45 +351,6 @@ function freshGpsSamples(samples: GpsSample[]) {
       now - timestamp <= GPS_SAMPLE_MAX_AGE_MS
     );
   });
-}
-
-async function resolveDevice(db: D1Database, payload: ClockPayload) {
-  const current = await db
-    .prepare("SELECT id, employee_id, status FROM devices WHERE device_fingerprint = ?")
-    .bind(payload.deviceFingerprint)
-    .first<{ id: string; employee_id: string; status: string }>();
-
-  if (current && current.employee_id !== payload.employeeId) {
-    return { error: "This phone is already registered to another employee." };
-  }
-  if (current && current.status !== "registered") {
-    return { error: "Device registration must be reset by Admin before login." };
-  }
-  if (current) {
-    await db
-      .prepare("UPDATE devices SET last_seen_at = CURRENT_TIMESTAMP, device_model = ? WHERE id = ?")
-      .bind(payload.deviceModel, current.id)
-      .run();
-    return { id: current.id };
-  }
-
-  const linked = await db
-    .prepare("SELECT id FROM devices WHERE employee_id = ? AND status = 'registered'")
-    .bind(payload.employeeId)
-    .first<{ id: string }>();
-
-  if (linked) {
-    return { error: "Employee account is linked to another phone. Ask Admin to reset the device." };
-  }
-
-  const id = crypto.randomUUID();
-  await db
-    .prepare(
-      "INSERT INTO devices (id, employee_id, device_fingerprint, device_model, last_seen_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)",
-    )
-    .bind(id, payload.employeeId, payload.deviceFingerprint, payload.deviceModel)
-    .run();
-  return { id };
 }
 
 async function loadSchedule(db: D1Database, warehouseId: string, dayOfWeek: number) {

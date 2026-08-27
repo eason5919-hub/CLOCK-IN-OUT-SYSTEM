@@ -1,4 +1,4 @@
-import { createSession, ensureDatabase, getD1, sessionCookie } from "../../../../db/runtime";
+import { createSession, ensureDatabase, getD1, restoreEmployeeDevice, sessionCookie } from "../../../../db/runtime";
 
 export async function POST(request: Request) {
   const db = getD1();
@@ -9,6 +9,7 @@ export async function POST(request: Request) {
     fullName?: string;
     phone?: string;
     deviceFingerprint?: string;
+    deviceModel?: string;
   };
   const code = payload.employeeCode?.trim().toUpperCase();
   const fullName = normalizeName(payload.fullName ?? "");
@@ -45,25 +46,13 @@ export async function POST(request: Request) {
     return json(request, { error: "Employee code, full name and phone number do not match HR records." }, 401);
   }
 
-  const device = await db
-    .prepare("SELECT device_fingerprint, status FROM devices WHERE employee_id = ? AND status = 'registered'")
-    .bind(employee.id)
-    .first<{ device_fingerprint: string; status: string }>();
-
-  if (!device) {
-    return json(
-      request,
-      { error: "This employee has not registered this phone yet. Use Register Official Phone first." },
-      403,
-    );
-  }
-  if (device.device_fingerprint !== payload.deviceFingerprint) {
-    return json(
-      request,
-      { error: "This employee account is linked to another phone. Ask HR/Admin to reset the device." },
-      403,
-    );
-  }
+  const device = await restoreEmployeeDevice(
+    db,
+    employee,
+    payload.deviceFingerprint,
+    payload.deviceModel || "Employee phone",
+  );
+  if ("error" in device) return json(request, { error: device.error }, 403);
 
   const session = await createSession(db, {
     id: employee.user_id,

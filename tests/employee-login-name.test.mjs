@@ -17,31 +17,53 @@ test("employee login accepts compacted name matches", async () => {
 });
 
 test("employee phone registration reactivates reset same-phone devices", async () => {
-  const registerRoute = await readFile(new URL("../app/api/auth/employee-register/route.ts", import.meta.url), "utf8");
+  const [registerRoute, runtime] = await Promise.all([
+    readFile(new URL("../app/api/auth/employee-register/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/runtime.ts", import.meta.url), "utf8"),
+  ]);
 
-  assert.match(registerRoute, /SELECT id, employee_id, status FROM devices WHERE device_fingerprint = \?/);
-  assert.match(registerRoute, /SET status = 'registered'/);
-  assert.match(registerRoute, /reset_by_user_id = NULL/);
-  assert.match(registerRoute, /reset_at = NULL/);
-  assert.match(registerRoute, /previousEmployee\.status === "deleted"/);
-  assert.match(registerRoute, /previousEmployeeCanTransfer/);
-  assert.match(registerRoute, /SET employee_id = \?/);
-  assert.match(registerRoute, /ownerCode/);
-  assert.match(registerRoute, /This phone is linked to another employee account/);
+  assert.match(registerRoute, /restoreEmployeeDevice/);
+  assert.match(runtime, /export async function restoreEmployeeDevice/);
+  assert.match(runtime, /SELECT id, employee_id, status FROM devices WHERE device_fingerprint = \?/);
+  assert.match(runtime, /SET status = 'registered'/);
+  assert.match(runtime, /reset_by_user_id = NULL/);
+  assert.match(runtime, /reset_at = NULL/);
+  assert.match(runtime, /previousEmployee\?\.status !== "deleted"/);
+  assert.match(runtime, /previousEmployeeCanTransfer/);
+  assert.match(runtime, /SET employee_id = \?/);
+  assert.match(runtime, /ownerCode/);
+  assert.match(runtime, /This phone is linked to another employee account/);
 });
 
-test("worker app restores employee session and validates registered phone", async () => {
-  const [page, summaryRoute] = await Promise.all([
+test("worker app restores employee session and repairs registered phone", async () => {
+  const [page, summaryRoute, runtime] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/employee/summary/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/runtime.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /restoreEmployeeSession/);
   assert.match(page, /setUser\(toEmployeeUser\(result\.employee\)\)/);
   assert.match(page, /headers: \{ "x-device-fingerprint": getBrowserDeviceFingerprint\(\) \}/);
-  assert.match(summaryRoute, /device_fingerprint = \?/);
-  assert.match(summaryRoute, /bind\(session\.employee_id, deviceFingerprint\)/);
-  assert.match(summaryRoute, /Employee phone access was deleted by HR/);
+  assert.match(summaryRoute, /restoreEmployeeDevice/);
+  assert.doesNotMatch(summaryRoute, /Employee phone access was deleted by HR/);
+  assert.match(runtime, /resetOtherRegisteredEmployeeDevices/);
+  assert.match(runtime, /status = 'reset'/);
+});
+
+test("verified employee auth refreshes current phone instead of blocking old device links", async () => {
+  const [loginRoute, registerRoute, clockRoute] = await Promise.all([
+    readFile(new URL("../app/api/auth/employee-login/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/auth/employee-register/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/attendance/clock/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  for (const route of [loginRoute, registerRoute, clockRoute]) {
+    assert.match(route, /restoreEmployeeDevice/);
+  }
+  assert.doesNotMatch(loginRoute, /This employee account is linked to another phone/);
+  assert.doesNotMatch(registerRoute, /This employee account is already linked to another phone/);
+  assert.doesNotMatch(clockRoute, /Employee account is linked to another phone/);
 });
 
 test("worker employee clock opens a real camera QR scanner", async () => {
