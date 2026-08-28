@@ -887,6 +887,7 @@
     let reportRemarks = [];
     let loading = false;
     let refreshQueued = false;
+    let localRemarkSyncInFlight = false;
     let editingEmployeeId = "";
     let selectedAttendanceDate = todayKey();
     let selectedReportMonth = todayKey().slice(0, 7);
@@ -1395,6 +1396,58 @@
     function reportRemark(employeeId, dateKey) {
       const remark = reportRemarks.find(item => item.employee_id === employeeId && item.work_date === dateKey);
       return remark?.remark || "";
+    }
+
+    function localReportRemarksForSync() {
+      const activeEmployeeIds = new Set(employees.filter(employee => employee.status !== "deleted").map(employee => employee.id));
+      const existingRemarks = new Map(reportRemarks.map(item => [`${item.employee_id}|${item.work_date}`, String(item.remark || "").trim()]));
+      const rowsByEmployee = new Map();
+      Object.entries(monthlyReportEdits).forEach(([editKey, value]) => {
+        const parts = editKey.split("|");
+        const field = parts.pop();
+        const dateKey = parts.pop();
+        const employeeId = parts.pop();
+        if (field !== "remark" || !employeeId || !dateKey || !activeEmployeeIds.has(employeeId)) return;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
+        const remark = String(value || "").trim();
+        if (!remark) return;
+        const sharedRemark = existingRemarks.get(`${employeeId}|${dateKey}`) || "";
+        if (sharedRemark && sharedRemark !== remark) return;
+        if (!rowsByEmployee.has(employeeId)) rowsByEmployee.set(employeeId, []);
+        rowsByEmployee.get(employeeId).push({ dateKey, remark, editKey });
+      });
+      return rowsByEmployee;
+    }
+
+    async function syncLocalReportRemarks() {
+      if (localRemarkSyncInFlight || editingReportEmployeeId) return 0;
+      const rowsByEmployee = localReportRemarksForSync();
+      if (!rowsByEmployee.size) return 0;
+
+      localRemarkSyncInFlight = true;
+      const nextEdits = { ...monthlyReportEdits };
+      let syncedCount = 0;
+      try {
+        for (const [employeeId, rows] of rowsByEmployee.entries()) {
+          await api("/api/admin/live", {
+            method: "POST",
+            body: JSON.stringify({
+              action: "save_report_remarks",
+              employeeId,
+              rows: rows.map(row => ({ dateKey: row.dateKey, remark: row.remark })),
+            }),
+          });
+          rows.forEach(row => {
+            delete nextEdits[row.editKey];
+            syncedCount += 1;
+          });
+        }
+        monthlyReportEdits = nextEdits;
+        saveReportEdits();
+        return syncedCount;
+      } finally {
+        localRemarkSyncInFlight = false;
+      }
     }
 
     function editableReportCell(employeeId, dateKey, field, fallback = "", className = "") {
@@ -2227,7 +2280,16 @@
           }
         }
         applyLiveData(data);
-        setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}`, "ok");
+        const syncedRemarks = await syncLocalReportRemarks();
+        if (syncedRemarks) {
+          const refreshedData = await api("/api/admin/live", {
+            method: "POST",
+            allowAuthHeaderFallback: true,
+            body: JSON.stringify({ action: "load_live_data", refresh: Date.now() })
+          });
+          applyLiveData(refreshedData);
+        }
+        setStatus(statusText, `Live | ${new Date().toLocaleTimeString("en-MY")}${syncedRemarks ? ` | Synced ${syncedRemarks} remark${syncedRemarks === 1 ? "" : "s"}` : ""}`, "ok");
         return true;
       } catch (error) {
         const hasExistingData = employees.length || attendance.length || leaveRequests.length || corrections.length;

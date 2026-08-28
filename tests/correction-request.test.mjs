@@ -268,11 +268,16 @@ test("approved corrections update attendance and highlight changed times", async
   assert.doesNotMatch(adminHtml, /const restoreRows = \[\.\.\.reportRows\.keys\(\)\]/);
   assert.match(adminHtml, /action: "save_report_attendance_times"/);
   assert.match(adminHtml, /let reportRemarks = \[\]/);
+  assert.match(adminHtml, /let localRemarkSyncInFlight = false/);
   assert.match(adminHtml, /function reportRemark/);
+  assert.match(adminHtml, /function localReportRemarksForSync/);
+  assert.match(adminHtml, /async function syncLocalReportRemarks/);
   assert.match(adminHtml, /data\.reportRemarks \|\| \[\]/);
   assert.match(adminHtml, /const shouldSaveField = reportEditDraftKeys\.has\(key\) \|\| \(field === "remark" && hasLocalEdit\)/);
   assert.match(adminHtml, /action: "save_report_remarks"/);
   assert.match(adminHtml, /remarkRows\.forEach\(row =>/);
+  assert.match(adminHtml, /const syncedRemarks = await syncLocalReportRemarks\(\)/);
+  assert.match(adminHtml, /Synced \$\{syncedRemarks\} remark/);
   assert.doesNotMatch(adminHtml, /restore_report_attendance_times|restoreEmployeeMonthlyReport|data-restore-report/);
   assert.match(adminHtml, /data-cancel-report/);
   assert.match(adminHtml, /Cancelled edit \|/);
