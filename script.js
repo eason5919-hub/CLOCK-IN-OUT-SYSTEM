@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260820-short-missing-out";
+const APP_VERSION = "20260828-leave-reason";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -270,7 +270,7 @@ function employeeScreen() {
           <label>Type<select name="leaveType"><option value="leave">Annual Leave</option><option value="mc">MC</option></select></label>
           ${leaveRangeField(leaveDefaultDate)}
           <label>Duration<select name="duration"><option value="full_day">Full day</option><option value="half_day">Half day</option></select><small class="muted" data-leave-rule></small></label>
-          <label>Reason<textarea name="reason" rows="3" placeholder="Optional"></textarea></label>
+          <label>Reason<textarea name="reason" rows="3" required></textarea></label>
           <button>Submit Annual Leave/MC</button>
         </form>
         <div class="list" style="margin-top:14px">${visibleLeaveRequests.map(leaveRequestCard).join("") || `<small>No Annual Leave/MC requests.</small>`}${leaveMoreButton ? `<div class="actions">${leaveMoreButton}</div>` : ""}</div>
@@ -1484,6 +1484,7 @@ function leaveWhatsAppMessage({ leaveType, startDate, endDate, duration, reason,
     `Employee: ${state.currentUser.label} - ${state.currentUser.name}`,
     `Type: ${typeLabel}`,
     leaveWhatsAppDateLines(leaveDates, duration),
+    `Reason: ${reason}`,
     `Working days submitted: ${formatLeaveSubmittedDays(leaveDates, duration)}`,
   ]
     .filter(Boolean)
@@ -2070,7 +2071,9 @@ function leaveRequestStatusLabel(row) {
 }
 
 function leaveTypeLabel(value) {
-  return value === "leave" || value === "Annual Leave" ? "Annual Leave" : statusLabel(value);
+  if (value === "leave" || value === "Annual Leave") return "Annual Leave";
+  if (String(value || "").toLowerCase() === "mc") return "MC";
+  return statusLabel(value);
 }
 
 function getDeviceFingerprint() {

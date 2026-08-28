@@ -13,6 +13,8 @@ test("leave requests notify WhatsApp recipients from the Worker", async () => {
   assert.match(route, /type: "text"/);
   assert.match(route, /notifyWhatsApp === false/);
   assert.match(route, /Annual Leave\/MC request/);
+  assert.match(route, /Reason is required for Annual Leave\/MC\./);
+  assert.match(route, /Reason: \$\{payload\.reason\}/);
   assert.match(route, /Working days submitted/);
 });
 
@@ -26,11 +28,13 @@ test("employee app opens one WhatsApp number after leave submit", async () => {
   assert.match(script, /function leaveWhatsAppMessage/);
   assert.match(script, /Annual Leave\/MC request/);
   assert.match(script, /leaveWhatsAppDateLines/);
+  assert.match(script, /Reason: \$\{reason\}/);
   assert.match(script, /Working days submitted: \$\{formatLeaveSubmittedDays/);
   assert.match(script, /return line/);
   assert.match(script, /leaveSubmittedDayValue\(date, duration\)/);
   assert.match(script, /notifyWhatsApp: false/);
   assert.match(script, /openWhatsAppMessage\(WHATSAPP_NOTIFY_NUMBER/);
+  assert.match(script, /toLowerCase\(\) === "mc"\) return "MC"/);
   assert.doesNotMatch(script, /data-whatsapp-notify/);
   assert.doesNotMatch(script, /60177395919/);
   assert.match(script, /https:\/\/wa\.me\/\$\{phone\}/);

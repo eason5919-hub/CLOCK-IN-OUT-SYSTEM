@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260820-short-missing-out/);
-  assert.match(indexHtml, /script\.js\?v=20260820-short-missing-out/);
-  assert.equal(JSON.parse(appVersion).version, "20260820-short-missing-out");
-  assert.match(script, /const APP_VERSION = "20260820-short-missing-out"/);
+  assert.match(indexHtml, /style\.css\?v=20260828-leave-reason/);
+  assert.match(indexHtml, /script\.js\?v=20260828-leave-reason/);
+  assert.equal(JSON.parse(appVersion).version, "20260828-leave-reason");
+  assert.match(script, /const APP_VERSION = "20260828-leave-reason"/);
   assert.match(script, /function employeeLiveRevision/);
   assert.match(script, /renderWhenChanged && employeeLiveRevision\(\) !== renderedEmployeeLiveRevision/);
   assert.match(script, /loadEmployeeLive\(true, true\)/);
@@ -198,6 +198,8 @@ test("employee leave requests use one date-range calendar and show five cards be
 
   assert.match(script, /name="startDate"/);
   assert.match(script, /name="endDate"/);
+  assert.match(script, /name="reason" rows="3" required/);
+  assert.doesNotMatch(script, /name="reason" rows="3" placeholder="Optional"/);
   assert.match(script, /Date range/);
   assert.match(script, /formatLeaveRangeDisplay/);
   assert.match(script, /calendar\.dataset\.rangeStep = "end"/);

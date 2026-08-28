@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     if (payload.employeeId && payload.employeeId !== session.employee_id) {
       return json(request, { error: "Employees can only apply for their own leave." }, 403);
     }
+    const reason = payload.reason?.trim() || "";
 
     const employee = await db
       .prepare("SELECT id, employee_code, full_name, phone FROM employees WHERE id = ? AND status = 'active'")
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
         payload.leaveType,
         payload.leaveDate,
         payload.duration,
-        payload.reason?.trim() || null,
+        reason,
       )
       .run();
 
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
       payload.notifyWhatsApp === false
         ? { attempted: false, configured: whatsappConfigured(), sent: 0, recipients: whatsappRecipients() }
         : await sendLeaveWhatsAppNotification({
-            message: payload.whatsappMessage || leaveRequestMessage(employee, payload),
+            message: payload.whatsappMessage || leaveRequestMessage(employee, { ...payload, reason }),
           });
 
     return json(request, { ok: true, leaveRequestId: id, whatsapp }, 201);
@@ -140,6 +141,7 @@ function leaveRequestMessage(
     `Employee: ${employee.employee_code} - ${employee.full_name}`,
     `Type: ${payload.leaveType === "mc" ? "MC" : "Annual Leave"}`,
     `Date: ${payload.leaveDate} (${label(payload.duration)})`,
+    `Reason: ${payload.reason}`,
     `Working days submitted: ${payload.duration === "half_day" ? "0.5" : "1"}`,
   ]
     .filter(Boolean)
@@ -220,6 +222,7 @@ function validatePayload(payload: LeavePayload) {
   if (payload.leaveType !== "leave" && payload.leaveType !== "mc") return "Select Leave or MC.";
   if (!payload.leaveDate || !/^\d{4}-\d{2}-\d{2}$/.test(payload.leaveDate)) return "Select leave date.";
   if (payload.duration !== "half_day" && payload.duration !== "full_day") return "Select half day or full day.";
+  if (!payload.reason?.trim()) return "Reason is required for Annual Leave/MC.";
   if (payload.leaveDate < malaysiaTodayKey()) return "Past dates cannot be selected for Annual Leave/MC.";
   const day = dayOfWeek(payload.leaveDate);
   if (day === 0) return "Annual Leave/MC cannot be selected on Sunday.";
