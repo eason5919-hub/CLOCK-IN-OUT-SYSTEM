@@ -20,9 +20,11 @@ const WAREHOUSE = {
 const MANUAL_QR_CODE = "D1";
 const WHATSAPP_NOTIFY_NUMBER = "60122159225";
 const MAX_GPS_ACCURACY_METERS = 30;
+const DEFAULT_GPS_WAIT_MS = 4500;
+const N006_GPS_WAIT_MS = 15000;
 const GPS_SAMPLE_MAX_AGE_MS = 15000;
 const QR_SCAN_INTERVAL_MS = 45;
-const QR_CANVAS_MAX_SIDE = 900;
+const QR_CANVAS_MAX_SIDE = 1000;
 const QR_DARK_FRAME_LUMA = 70;
 const QR_TORCH_CHECK_MS = 700;
 
@@ -357,7 +359,7 @@ function bindLogin() {
           employeeCode: code,
           fullName: name,
           phone,
-          deviceFingerprint: getDeviceFingerprint(),
+          deviceFingerprint: getRegistrationDeviceFingerprint(code),
           deviceModel: browserDeviceLabel(),
         }),
       }, false);
@@ -708,6 +710,10 @@ function bindEmployee() {
   });
   document.querySelector("[data-cancel-scan]")?.addEventListener("click", closeQrScanner);
   document.querySelector("[data-manual-qr]")?.addEventListener("click", () => {
+    if (isN006CurrentUser()) {
+      completeQrScan(MANUAL_QR_CODE);
+      return;
+    }
     const qr = prompt("Enter the manual QR code");
     if (qr) completeQrScan(qr.trim());
   });
@@ -950,24 +956,24 @@ async function startQrScanner() {
   const message = document.querySelector("#qr-scan-message");
   if (!video || !message || qrScanController?.active) return;
 
-  if (!navigator.mediaDevices?.getUserMedia || (!("BarcodeDetector" in window) && !window.jsQR)) {
-    message.textContent = "This browser cannot scan QR by camera. Use Manual QR.";
+  if (!navigator.mediaDevices?.getUserMedia) {
+    message.textContent = "This browser cannot open the camera. Use Chrome or Manual QR.";
     return;
   }
 
   try {
-    const detector = "BarcodeDetector" in window ? new BarcodeDetector({ formats: ["qr_code"] }) : null;
+    const detector = createBarcodeDetector();
+    if (!detector && !window.jsQR) {
+      message.textContent = "Loading QR scanner...";
+      await waitForJsQr();
+    }
+    if (!detector && !window.jsQR) {
+      message.textContent = "QR scanner did not load. Refresh once or use Manual QR.";
+      return;
+    }
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d", { willReadFrequently: true });
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 960 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 30, max: 30 },
-      },
-      audio: false,
-    });
+    const stream = await openQrCameraStream();
     await configureQrCamera(stream);
     qrScanController = { active: true, stream, processing: false, lastScanAt: 0, lastTorchCheckAt: 0, torchOn: false };
     video.srcObject = stream;
@@ -1001,6 +1007,49 @@ async function startQrScanner() {
   }
 }
 
+function createBarcodeDetector() {
+  try {
+    if ("BarcodeDetector" in window) return new BarcodeDetector({ formats: ["qr_code"] });
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function waitForJsQr(timeoutMs = 3000) {
+  const startedAt = Date.now();
+  while (!window.jsQR && Date.now() - startedAt < timeoutMs) {
+    await wait(100);
+  }
+  return Boolean(window.jsQR);
+}
+
+async function openQrCameraStream() {
+  const attempts = [
+    {
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 24, max: 30 },
+      },
+      audio: false,
+    },
+    { video: { facingMode: { ideal: "environment" } }, audio: false },
+    { video: true, audio: false },
+  ];
+
+  let lastError;
+  for (const constraints of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 async function configureQrCamera(stream) {
   const track = stream.getVideoTracks()[0];
   if (!track?.getCapabilities || !track.applyConstraints) return;
@@ -1008,7 +1057,6 @@ async function configureQrCamera(stream) {
     const capabilities = track.getCapabilities();
     const advanced = [];
     if (capabilities.focusMode?.includes("continuous")) advanced.push({ focusMode: "continuous" });
-    if (capabilities.zoom) advanced.push({ zoom: capabilities.zoom.min });
     if (advanced.length) await track.applyConstraints({ advanced });
   } catch {
     // Camera tuning is optional. Scanning still works when a browser ignores these constraints.
@@ -1106,12 +1154,14 @@ async function detectQrCode(video, detector, canvas, context) {
   context.drawImage(video, 0, 0, canvas.width, canvas.height);
   const frameSize = Math.min(canvas.width, canvas.height);
   const sideScan = Math.floor(frameSize * 0.72);
+  const wideScanHeight = Math.floor(canvas.height * 0.62);
   const scans = [
     [0, 0, canvas.width, canvas.height],
-    ...[0.9, 0.78, 0.62].map((scale) => {
+    ...[0.92, 0.78, 0.64, 0.5].map((scale) => {
       const size = Math.floor(frameSize * scale);
       return [Math.floor((canvas.width - size) / 2), Math.floor((canvas.height - size) / 2), size, size];
     }),
+    [0, Math.floor((canvas.height - wideScanHeight) / 2), canvas.width, wideScanHeight],
     [0, Math.floor((canvas.height - sideScan) / 2), sideScan, sideScan],
     [canvas.width - sideScan, Math.floor((canvas.height - sideScan) / 2), sideScan, sideScan],
   ];
@@ -1828,7 +1878,7 @@ async function collectGpsSamples() {
   if (readySample) return paddedGpsSamples(samples, readySample);
 
   const startedAt = Date.now();
-  while (Date.now() - startedAt < 4500) {
+  while (Date.now() - startedAt < currentGpsWaitMs()) {
     const sample = await getGpsSample();
     if (sample) samples.push(sample);
     const bestSample = bestUsableWarehouseGpsSample(samples);
@@ -1839,8 +1889,14 @@ async function collectGpsSamples() {
   const freshBrowserSamples = samples.filter((sample) => sample.source === "browser" && Date.now() - sample.timestamp <= GPS_SAMPLE_MAX_AGE_MS);
   const bestFreshSample = bestUsableWarehouseGpsSample(freshBrowserSamples);
   if (bestFreshSample) return paddedGpsSamples(freshBrowserSamples, bestFreshSample);
+  if (freshBrowserSamples.length > 0) {
+    return paddedGpsSamples(
+      freshBrowserSamples,
+      freshBrowserSamples.sort((a, b) => a.accuracy - b.accuracy)[0],
+    );
+  }
   if (freshBrowserSamples.length < 5) {
-    throw new Error("Unable to read fresh phone GPS. Please enable Location Services and try again.");
+    throw new Error("No fresh GPS reading received from this browser. Turn Location on for Chrome/Safari and this site, then try again.");
   }
   return freshBrowserSamples.sort((a, b) => a.accuracy - b.accuracy).slice(0, 5);
 }
@@ -1853,6 +1909,14 @@ function bestUsableWarehouseGpsSample(samples) {
       const distance = distanceMeters(sample.latitude, sample.longitude, WAREHOUSE.lat, WAREHOUSE.lng);
       return sample.accuracy <= MAX_GPS_ACCURACY_METERS && distance <= WAREHOUSE.radius;
     });
+}
+
+function currentGpsWaitMs() {
+  return isN006CurrentUser() ? N006_GPS_WAIT_MS : DEFAULT_GPS_WAIT_MS;
+}
+
+function isN006CurrentUser() {
+  return state.currentUser?.label === "N006";
 }
 
 function paddedGpsSamples(samples, bestSample) {
@@ -2030,7 +2094,7 @@ function qrScannerModal() {
         <div class="actions">
           <button class="secondary" data-cancel-scan>Cancel</button>
           <button class="secondary" data-toggle-torch>Torch On</button>
-          <button class="secondary" data-manual-qr>Manual QR</button>
+          <button class="secondary" data-manual-qr>${isN006CurrentUser() ? "Use Manual QR D1" : "Manual QR"}</button>
         </div>
       </section>
     </div>
@@ -2092,6 +2156,25 @@ function getDeviceFingerprint() {
   sessionStorage.setItem(DEVICE_KEY, fingerprint);
   setCookie(DEVICE_COOKIE, fingerprint, 3650);
   return fingerprint;
+}
+
+function getRegistrationDeviceFingerprint(employeeCode) {
+  if (String(employeeCode || "").trim().toUpperCase() !== "N006") return getDeviceFingerprint();
+  const prefix = "phone-n006-";
+  const existing =
+    localStorage.getItem(DEVICE_KEY) ||
+    sessionStorage.getItem(DEVICE_KEY) ||
+    getCookie(DEVICE_COOKIE);
+  const fingerprint = existing && existing.startsWith(prefix) ? existing : createN006DeviceFingerprint(prefix);
+  localStorage.setItem(DEVICE_KEY, fingerprint);
+  sessionStorage.setItem(DEVICE_KEY, fingerprint);
+  setCookie(DEVICE_COOKIE, fingerprint, 3650);
+  return fingerprint;
+}
+
+function createN006DeviceFingerprint(prefix) {
+  if (globalThis.crypto?.randomUUID) return `${prefix}${globalThis.crypto.randomUUID()}`;
+  return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 async function sha256Hex(value) {
