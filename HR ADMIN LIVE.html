@@ -640,7 +640,7 @@
   <header>
     <div>
       <h1>Warehouse HR Attendance</h1>
-      <p>Live employee and attendance records from the shared warehouse database. Calc v20260805-shared-attendance-day.</p>
+      <p>Live employee and attendance records from the shared warehouse database. Calc v20260828-shared-remarks.</p>
     </div>
     <div class="actions">
       <a class="buttonLink secondary" href="index.html">Employee App</a>
@@ -1455,7 +1455,7 @@
       const key = reportEditKey(employeeId, dateKey, field);
       const editableField = isEditableReportField(field);
       const correctionWins = reportCorrectionWins(employeeId, dateKey, field);
-      const manualEdit = editableField && !correctionWins && (Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) || reportFieldWasEdited(employeeId, dateKey, field));
+      const manualEdit = editableField && field !== "remark" && !correctionWins && (Object.prototype.hasOwnProperty.call(monthlyReportEdits, key) || reportFieldWasEdited(employeeId, dateKey, field));
       const value = reportValue(employeeId, dateKey, field, fallback);
       const editable = editing && editableField;
       const classes = ["editableCell", correctionWins ? "correctedTime" : className, manualEdit ? "manualEdit" : ""].filter(Boolean).join(" ");

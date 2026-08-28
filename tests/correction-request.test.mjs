@@ -257,7 +257,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /reportEditedBreak: Boolean\(breakTime\)/);
   assert.match(adminHtml, /if \(!isEditableReportField\(field\)\) return fallback/);
   assert.match(adminHtml, /if \(reportCorrectionWins\(employeeId, dateKey, field\)\) return fallback/);
-  assert.match(adminHtml, /const manualEdit = editableField && !correctionWins && \(Object\.prototype\.hasOwnProperty\.call\(monthlyReportEdits, key\) \|\| reportFieldWasEdited\(employeeId, dateKey, field\)\)/);
+  assert.match(adminHtml, /const manualEdit = editableField && field !== "remark" && !correctionWins && \(Object\.prototype\.hasOwnProperty\.call\(monthlyReportEdits, key\) \|\| reportFieldWasEdited\(employeeId, dateKey, field\)\)/);
   assert.match(adminHtml, /if \(!isEditableReportField\(field\)\)/);
   assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "break"/);
   assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "resume"/);
@@ -268,6 +268,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.doesNotMatch(adminHtml, /const restoreRows = \[\.\.\.reportRows\.keys\(\)\]/);
   assert.match(adminHtml, /action: "save_report_attendance_times"/);
   assert.match(adminHtml, /let reportRemarks = \[\]/);
+  assert.match(adminHtml, /v20260828-shared-remarks/);
   assert.match(adminHtml, /let localRemarkSyncInFlight = false/);
   assert.match(adminHtml, /function reportRemark/);
   assert.match(adminHtml, /function localReportRemarksForSync/);
@@ -341,7 +342,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /const outMs = parseLiveTimestamp\(attendanceRow\.clockOut\)/);
   assert.match(adminHtml, /Math\.round\(\(endMs - outMs\) \/ 60000\)/);
   assert.doesNotMatch(adminHtml, /Math\.max\(0, end - outMinutes\)/);
-  assert.match(adminHtml, /20260805-shared-attendance-day/);
+  assert.match(adminHtml, /20260828-shared-remarks/);
   assert.doesNotMatch(adminHtml, /<th>Sche<\/th>/);
   assert.doesNotMatch(adminHtml, /<th>Diff OT<\/th>/);
   assert.doesNotMatch(adminHtml, /editableReportCell\(employee\.id, dateKey, "schedule"/);
