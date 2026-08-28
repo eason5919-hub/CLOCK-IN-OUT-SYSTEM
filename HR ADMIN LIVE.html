@@ -1573,6 +1573,7 @@
       const reportSegments = [...reportSegmentRows].sort(compareReportSegments);
       const inMarker = reportRows.find(row => row.source === "admin_report_edit_in");
       const outMarker = reportRows.find(row => row.source === "admin_report_edit_out");
+      const hasFieldMarkers = Boolean(inMarker || outMarker);
       const reportInRows = reportSegmentRows.filter(row => row.clock_in_at).sort((a, b) => String(a.clock_in_at || "").localeCompare(String(b.clock_in_at || "")));
       const reportOutRows = reportSegmentRows.filter(row => row.clock_out_at).sort((a, b) => String(a.clock_out_at || "").localeCompare(String(b.clock_out_at || "")));
       const baseInCandidate = newestReportTimeCandidate(baseRows.map(row => reportTimeCandidate(row, "clock_in_at")));
@@ -1606,10 +1607,10 @@
         clockOut: lastOut,
         correctedClockIn: correctionInWins,
         correctedClockOut: correctionOutWins,
-        reportEditedClockIn: Boolean(inMarker || reportSegmentRows.some(row => row.clock_in_at)) && !correctionInWins,
+        reportEditedClockIn: (hasFieldMarkers ? Boolean(inMarker) : reportSegmentRows.some(row => row.clock_in_at)) && !correctionInWins,
         reportEditedBreak: Boolean(breakTime),
         reportEditedResume: Boolean(resumeTime),
-        reportEditedClockOut: Boolean(outMarker || reportSegmentRows.some(row => row.clock_out_at)) && !correctionOutWins,
+        reportEditedClockOut: (hasFieldMarkers ? Boolean(outMarker) : reportSegmentRows.some(row => row.clock_out_at)) && !correctionOutWins,
         actualMinutes: reportPaidWorkMinutes(firstIn, lastOut, dateKey, dateParts(dateKey).getUTCDay()),
         totalMinutes: rows.reduce((sum, row) => sum + Number(row.total_minutes || 0), 0),
         lateMinutes: rows.reduce((sum, row) => sum + Number(row.late_minutes || 0), 0),

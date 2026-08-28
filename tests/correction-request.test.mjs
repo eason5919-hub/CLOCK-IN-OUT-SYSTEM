@@ -253,8 +253,11 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /function isEditableReportField/);
   assert.match(adminHtml, /function reportFieldWasEdited/);
   assert.match(adminHtml, /sameReportInstant\(approvedTimes\.clockIn, rowFirstIn\)/);
-  assert.match(adminHtml, /reportEditedClockIn: Boolean\(inMarker \|\| reportSegmentRows\.some\(row => row\.clock_in_at\)\) && !correctionInWins/);
+  assert.match(adminHtml, /const hasFieldMarkers = Boolean\(inMarker \|\| outMarker\)/);
+  assert.match(adminHtml, /reportEditedClockIn: \(hasFieldMarkers \? Boolean\(inMarker\) : reportSegmentRows\.some\(row => row\.clock_in_at\)\) && !correctionInWins/);
   assert.match(adminHtml, /reportEditedBreak: Boolean\(breakTime\)/);
+  assert.match(adminHtml, /reportEditedClockOut: \(hasFieldMarkers \? Boolean\(outMarker\) : reportSegmentRows\.some\(row => row\.clock_out_at\)\) && !correctionOutWins/);
+  assert.match(adminRoute, /attendanceDays: reconcileAttendanceRows\(attendanceRows\)/);
   assert.match(adminHtml, /if \(!isEditableReportField\(field\)\) return fallback/);
   assert.match(adminHtml, /if \(reportCorrectionWins\(employeeId, dateKey, field\)\) return fallback/);
   assert.match(adminHtml, /const manualEdit = editableField && field !== "remark" && !correctionWins && \(Object\.prototype\.hasOwnProperty\.call\(monthlyReportEdits, key\) \|\| reportFieldWasEdited\(employeeId, dateKey, field\)\)/);

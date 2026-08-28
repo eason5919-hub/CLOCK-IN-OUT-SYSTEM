@@ -3,6 +3,7 @@ import { calculateAttendanceTotals, localDayOfWeek } from "../../../../db/attend
 import {
   approvedCorrectionTimes,
   reconcileAttendanceDay,
+  reconcileAttendanceRows,
   type AttendanceRow,
 } from "../../../../db/attendance-reconciliation";
 
@@ -191,6 +192,7 @@ async function liveData(db: D1Database, request: Request) {
   return json(request, {
     employees: employees.results ?? [],
     attendance: attendanceRows,
+    attendanceDays: reconcileAttendanceRows(attendanceRows),
     corrections: corrections.results ?? [],
     leaveRequests: leaveRequests.results ?? [],
     reportRemarks: reportRemarks.results ?? [],
