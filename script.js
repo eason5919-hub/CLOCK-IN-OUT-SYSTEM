@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260828-leave-reason";
+const APP_VERSION = "20260829-saturday-half-leave-short";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -542,6 +542,7 @@ function mapLiveAttendance(row) {
     lateMinutes: Number(row.late_minutes || 0),
     earlyLeaveMinutes: Number(row.early_leave_minutes || 0),
     overtimeMinutes: Number(row.overtime_minutes || 0),
+    reportShortMinutes: Object.prototype.hasOwnProperty.call(row, "report_short_minutes") ? Number(row.report_short_minutes || 0) : null,
     status: statusLabel(row.status),
     source: row.source || "",
     createdAt: row.created_at || "",
@@ -2248,6 +2249,7 @@ function employeeHistoryLateMinutes(row, display) {
 }
 
 function employeeHistoryShortMinutes(row, display, leaveRequests = []) {
+  if (row.reportShortMinutes != null) return Number(row.reportShortMinutes || 0);
   if (!display.clockIn) return 0;
   const day = new Date(`${row.date}T12:00:00+08:00`).getUTCDay();
   if (day === 0) return 0;
@@ -2263,8 +2265,9 @@ function employeeHistoryShortMinutes(row, display, leaveRequests = []) {
 
   const actualMinutes = display.clockOut ? employeeHistoryPaidWorkMinutes(row, display) : Number(row.workingMinutes || 0);
   if (isHalfLeaveForDate(leaveRequests, row.date)) {
+    if (day === 6) return 0;
     const workShort = Math.max(0, 240 - employeeHistoryWorkingWindowMinutes(row, display));
-    return Math.min(240, Math.max(lateShort, workShort));
+    return Math.min(240, workShort);
   }
 
   const earlyOut = outMinutes != null && outMinutes < end ? Math.max(0, end - outMinutes) : 0;

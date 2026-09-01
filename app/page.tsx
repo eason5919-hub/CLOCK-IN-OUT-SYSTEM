@@ -438,7 +438,7 @@ function EmployeeApp({
   const stats = useMemo(
     () => ({
       presentDays: records.filter((record) => record.status !== "absent").length,
-      shortMinutes: records.reduce((total, record) => total + Number(record.late_minutes ?? 0), 0),
+      shortMinutes: records.reduce((total, record) => total + Number(record.report_short_minutes ?? record.late_minutes ?? 0), 0),
       otMinutes: records.reduce((total, record) => total + Number(record.overtime_minutes ?? 0), 0),
       correctionCount: corrections.length,
     }),

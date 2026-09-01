@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260828-leave-reason/);
-  assert.match(indexHtml, /script\.js\?v=20260828-leave-reason/);
-  assert.equal(JSON.parse(appVersion).version, "20260828-leave-reason");
-  assert.match(script, /const APP_VERSION = "20260828-leave-reason"/);
+  assert.match(indexHtml, /style\.css\?v=20260829-saturday-half-leave-short/);
+  assert.match(indexHtml, /script\.js\?v=20260829-saturday-half-leave-short/);
+  assert.equal(JSON.parse(appVersion).version, "20260829-saturday-half-leave-short");
+  assert.match(script, /const APP_VERSION = "20260829-saturday-half-leave-short"/);
   assert.match(indexHtml, /unpkg\.com\/jsqr@1\.4\.0\/dist\/jsQR\.js/);
   assert.match(script, /deviceFingerprint: getRegistrationDeviceFingerprint\(code\)/);
   assert.match(script, /String\(employeeCode \|\| ""\)\.trim\(\)\.toUpperCase\(\) !== "N006"/);
@@ -294,6 +294,7 @@ test("employee metric cards use selected month report data", async () => {
   assert.match(script, /function employeeHistoryShortMinutes/);
   assert.match(script, /if \(!display\.clockIn\) return 0/);
   assert.match(script, /const actualMinutes = display\.clockOut \? employeeHistoryPaidWorkMinutes\(row, display\) : Number\(row\.workingMinutes \|\| 0\)/);
+  assert.match(script, /if \(day === 6\) return 0/);
   assert.match(script, /function employeeHistoryPaidWorkMinutes/);
   assert.match(script, /function employeeHistoryLateMinutes/);
   assert.match(script, /if \(\s*\/\^\\d\{1,2\}:\\d\{2\}\$\/\.test\(text\)\s*\) return text\.padStart\(5, "0"\)/);

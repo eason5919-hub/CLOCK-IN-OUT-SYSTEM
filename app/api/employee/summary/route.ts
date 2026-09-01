@@ -6,6 +6,8 @@ import {
   type AttendanceRow,
 } from "../../../../db/attendance-reconciliation";
 
+const TIME_ZONE = "Asia/Kuala_Lumpur";
+
 export async function GET(request: Request) {
   const db = getD1();
   await ensureDatabase(db);
@@ -76,8 +78,10 @@ export async function GET(request: Request) {
   ]);
 
   const correctionRows = (corrections.results || []) as AttendanceRow[];
+  const approvedHalfLeaveDates = approvedHalfLeaveDateSet((leaveRequests.results || []) as AttendanceRow[]);
   const attendanceRows = reconcileAttendanceRows((rawAttendance.results || []) as AttendanceRow[]).map((row) => ({
     ...row,
+    report_short_minutes: reportShortMinutes(row, approvedHalfLeaveDates),
     report_clock_in_mark: reportClockMark(row, "clock_in", correctionRows),
     report_clock_out_mark: reportClockMark(row, "clock_out", correctionRows),
   }));
@@ -121,6 +125,124 @@ function reportClockMark(row: AttendanceRow, field: "clock_in" | "clock_out", co
 
   if (correction && approvedCorrectionMatchesField(row, correction, field)) return "corrected";
   return Number(row[editedKey] || 0) && row[valueKey] ? "edited" : "";
+}
+
+function approvedHalfLeaveDateSet(rows: AttendanceRow[]) {
+  return new Set(
+    rows
+      .filter((row) => (
+        String(row.status || "").toLowerCase() === "approved" &&
+        String(row.duration || "").toLowerCase() === "half_day"
+      ))
+      .map((row) => String(row.leave_date || "")),
+  );
+}
+
+function reportShortMinutes(row: AttendanceRow, approvedHalfLeaveDates: Set<string>) {
+  const dateKey = String(row.work_date || "");
+  const day = localDayOfWeek(dateKey);
+  if (!row.clock_in_at || day === 0) return 0;
+
+  const inMinutes = malaysiaClockMinutes(String(row.clock_in_at));
+  if (inMinutes == null) return 0;
+
+  const start = 9 * 60;
+  const end = day === 6 ? 13 * 60 : 18 * 60;
+  let lateShort = Math.max(0, inMinutes - start);
+  if (inMinutes <= start + 10) lateShort = 0;
+
+  if (approvedHalfLeaveDates.has(dateKey)) {
+    if (day === 6) return 0;
+    const workShort = Math.max(0, 240 - reportWorkingWindowMinutes(row, day));
+    return Math.min(240, workShort);
+  }
+
+  const outMs = parseAttendanceTimestamp(String(row.clock_out_at || ""));
+  const endMs = Date.parse(`${dateKey}T${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}:00+08:00`);
+  const earlyOut = outMs && !Number.isNaN(endMs) ? Math.max(0, Math.round((endMs - outMs) / 60000)) : 0;
+  const requiredMinutes = day === 6 ? 240 : 480;
+  const actualMinutes = reportPaidWorkMinutes(row, day);
+  const workShort = Math.max(0, requiredMinutes - actualMinutes);
+  return Math.min(requiredMinutes, Math.max(lateShort, earlyOut, workShort));
+}
+
+function reportPaidWorkMinutes(row: AttendanceRow, day: number) {
+  if (!row.clock_in_at || !row.clock_out_at) return 0;
+  const elapsed = Math.max(0, Math.round((parseAttendanceTimestamp(String(row.clock_out_at)) - parseAttendanceTimestamp(String(row.clock_in_at))) / 60000));
+  if (!elapsed) return 0;
+  if (day === 0) return elapsed;
+
+  const overtime = reportOvertimeFromTimes(row, day);
+  const cap = day === 6 ? 240 : 480;
+  if (row.break_at && row.resume_at) {
+    const segmentTotal = Math.max(0, Math.round((parseAttendanceTimestamp(String(row.break_at)) - parseAttendanceTimestamp(String(row.clock_in_at))) / 60000)) +
+      Math.max(0, Math.round((parseAttendanceTimestamp(String(row.clock_out_at)) - parseAttendanceTimestamp(String(row.resume_at))) / 60000));
+    return Math.min(Math.max(0, segmentTotal - overtime), cap) + overtime;
+  }
+
+  const end = day === 6 ? 13 * 60 : 18 * 60;
+  const inMs = parseAttendanceTimestamp(String(row.clock_in_at));
+  const outMs = parseAttendanceTimestamp(String(row.clock_out_at));
+  const regularStartMs = regularWindowStartMs(String(row.work_date || ""), inMs);
+  const regularEndMs = Date.parse(`${String(row.work_date || "")}T${String(Math.floor((end + 15) / 60)).padStart(2, "0")}:${String((end + 15) % 60).padStart(2, "0")}:00+08:00`);
+  const regularSpan = Math.max(0, Math.round((Math.min(outMs, regularEndMs) - regularStartMs) / 60000));
+  const breakDeduction = day >= 1 && day <= 5 && regularSpan >= 300 ? 60 : 0;
+  return Math.min(Math.max(0, regularSpan - breakDeduction), cap) + overtime;
+}
+
+function reportWorkingWindowMinutes(row: AttendanceRow, day: number) {
+  if (!row.clock_in_at || !row.clock_out_at || day === 0) return 0;
+  const dateKey = String(row.work_date || "");
+  const inMs = parseAttendanceTimestamp(String(row.clock_in_at));
+  const outMs = parseAttendanceTimestamp(String(row.clock_out_at));
+  if (!dateKey || Number.isNaN(inMs) || Number.isNaN(outMs)) return 0;
+  const end = day === 6 ? 13 * 60 : 18 * 60;
+  const startMs = regularWindowStartMs(dateKey, inMs);
+  const endMs = Date.parse(`${dateKey}T${String(Math.floor((end + 15) / 60)).padStart(2, "0")}:${String((end + 15) % 60).padStart(2, "0")}:00+08:00`);
+  return Math.max(0, Math.round((Math.min(outMs, endMs) - startMs) / 60000));
+}
+
+function reportOvertimeFromTimes(row: AttendanceRow, day: number) {
+  if (!row.clock_out_at) return 0;
+  const clockInMs = parseAttendanceTimestamp(String(row.clock_in_at || ""));
+  const clockOutMs = parseAttendanceTimestamp(String(row.clock_out_at || ""));
+  if (!clockInMs || !clockOutMs || clockOutMs <= clockInMs) return 0;
+  if (day === 0) return Math.max(0, Math.round((clockOutMs - clockInMs) / 60000));
+
+  const dateKey = String(row.work_date || "");
+  const end = day === 6 ? 13 * 60 : 18 * 60;
+  const earlyOtStartMs = Date.parse(`${dateKey}T08:00:00+08:00`);
+  const normalEndMs = Date.parse(`${dateKey}T${String(Math.floor(end / 60)).padStart(2, "0")}:${String(end % 60).padStart(2, "0")}:00+08:00`);
+  const lateOtStartMs = normalEndMs + 16 * 60000;
+  const earlyOt = clockInMs < earlyOtStartMs ? Math.max(0, Math.round((earlyOtStartMs - clockInMs) / 60000)) : 0;
+  const lateOt = clockOutMs >= lateOtStartMs ? Math.max(0, Math.round((clockOutMs - Math.max(clockInMs, normalEndMs)) / 60000)) : 0;
+  return earlyOt + lateOt;
+}
+
+function regularWindowStartMs(dateKey: string, clockInMs: number) {
+  const startMs = Date.parse(`${dateKey}T09:00:00+08:00`);
+  const earlyStartMs = Date.parse(`${dateKey}T08:00:00+08:00`);
+  const graceEndMs = startMs + 10 * 60000;
+  return clockInMs >= earlyStartMs && clockInMs <= graceEndMs ? startMs : Math.max(clockInMs, earlyStartMs);
+}
+
+function malaysiaClockMinutes(value: string) {
+  const timestamp = parseAttendanceTimestamp(value);
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  return hour * 60 + minute;
+}
+
+function localDayOfWeek(dateKey: string) {
+  return new Date(`${dateKey}T12:00:00+08:00`).getUTCDay();
 }
 
 function json(request: Request, data: unknown, status = 200) {
