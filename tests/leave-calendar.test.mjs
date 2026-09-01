@@ -45,8 +45,8 @@ test("employee month dashboard stays Sunday to Saturday and filters history by s
     script.indexOf('document.querySelectorAll("[data-employee-month]")'),
   );
   assert.doesNotMatch(dateClickHandler, /render\(\)/);
-  assert.match(script, /monthCalendar\(records, leaveRequests, corrections, historyDate, currentMonthDate\)/);
-  assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections\)/);
+  assert.match(script, /monthCalendar\(records, leaveRequests, corrections, historyDate, currentMonthDate, reportRemarks\)/);
+  assert.match(script, /attendanceTable\(historyRecords, true, historyDate, corrections, employeeReportRemarkForDate\(reportRemarks, historyDate\)\)/);
   assert.match(script, /function employeeAttendanceHeader/);
   assert.match(script, /<th>Date<\/th><th>Clock In<\/th><th>Clock Out<\/th><th>OT<\/th>/);
   assert.doesNotMatch(script, /function employeeAttendanceHeader\(\) \{\s+return "[^"]*<th>GPS<\/th>/);
@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260829-saturday-half-leave-short/);
-  assert.match(indexHtml, /script\.js\?v=20260829-saturday-half-leave-short/);
-  assert.equal(JSON.parse(appVersion).version, "20260829-saturday-half-leave-short");
-  assert.match(script, /const APP_VERSION = "20260829-saturday-half-leave-short"/);
+  assert.match(indexHtml, /style\.css\?v=20260901-employee-report-remarks/);
+  assert.match(indexHtml, /script\.js\?v=20260901-employee-report-remarks/);
+  assert.equal(JSON.parse(appVersion).version, "20260901-employee-report-remarks");
+  assert.match(script, /const APP_VERSION = "20260901-employee-report-remarks"/);
   assert.match(indexHtml, /unpkg\.com\/jsqr@1\.4\.0\/dist\/jsQR\.js/);
   assert.match(script, /deviceFingerprint: getRegistrationDeviceFingerprint\(code\)/);
   assert.match(script, /String\(employeeCode \|\| ""\)\.trim\(\)\.toUpperCase\(\) !== "N006"/);
@@ -319,6 +319,27 @@ test("employee metric cards use selected month report data", async () => {
   assert.match(script, /correctionId: button\.dataset\.cancelCorrection/);
   assert.match(script, /state\.corrections = previousCorrections/);
   assert.match(script, /Correction request cancelled\./);
+});
+
+test("employee month and history show admin report remarks for empty dates", async () => {
+  const [script, employeeSummaryRoute] = await Promise.all([
+    readFile(new URL("../script.js", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/employee/summary/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(employeeSummaryRoute, /FROM monthly_report_remarks/);
+  assert.match(employeeSummaryRoute, /WHERE employee_id = \? AND TRIM\(COALESCE\(remark, ''\)\) <> ''/);
+  assert.match(employeeSummaryRoute, /reportRemarks: reportRemarks\.results/);
+  assert.match(script, /reportRemarks: \[\]/);
+  assert.match(script, /state\.reportRemarks = \(result\.reportRemarks \|\| \[\]\)\.map\(mapLiveReportRemark\)/);
+  assert.match(script, /function mapLiveReportRemark/);
+  assert.match(script, /monthCalendar\(records, leaveRequests, corrections, historyDate, currentMonthDate, reportRemarks\)/);
+  assert.match(script, /employeeReportRemarkForDate\(reportRemarks, historyDate\)/);
+  assert.match(script, /employeeReportRemarkForDate\(state\.reportRemarks, date\)/);
+  assert.match(script, /function employeeReportRemarkForDate/);
+  assert.match(script, /return remark \? \{ label: remark, tone: "leave-note" \} : \{ label: "-", tone: "" \}/);
+  assert.match(script, /const emptyTitle = emptyRemark \|\| `No attendance records/);
+  assert.match(script, /<strong>\$\{escapeHtml\(emptyTitle\)\}<\/strong>/);
 });
 
 test("employee correction form records one missing time and shows requested time", async () => {

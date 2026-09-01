@@ -46,7 +46,7 @@ export async function GET(request: Request) {
     await restoreEmployeeDevice(db, employee, deviceFingerprint, String(employee.device_model || "Restored phone session"));
   }
 
-  const [rawAttendance, corrections, leaveRequests] = await Promise.all([
+  const [rawAttendance, corrections, leaveRequests, reportRemarks] = await Promise.all([
     db
       .prepare(
         `SELECT *
@@ -75,6 +75,15 @@ export async function GET(request: Request) {
       )
       .bind(session.employee_id)
       .all(),
+    db
+      .prepare(
+        `SELECT id, employee_id, work_date, remark
+         FROM monthly_report_remarks
+         WHERE employee_id = ? AND TRIM(COALESCE(remark, '')) <> ''
+         ORDER BY work_date DESC`,
+      )
+      .bind(session.employee_id)
+      .all(),
   ]);
 
   const correctionRows = (corrections.results || []) as AttendanceRow[];
@@ -100,6 +109,7 @@ export async function GET(request: Request) {
     attendance: attendanceRows,
     corrections: correctionsWithReportTimes,
     leaveRequests: leaveRequests.results,
+    reportRemarks: reportRemarks.results,
   });
 }
 

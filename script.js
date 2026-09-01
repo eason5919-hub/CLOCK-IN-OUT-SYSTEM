@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260829-saturday-half-leave-short";
+const APP_VERSION = "20260901-employee-report-remarks";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -34,6 +34,7 @@ const defaultState = {
   attendance: [],
   corrections: [],
   leaveRequests: [],
+  reportRemarks: [],
   auditLogs: [],
 };
 
@@ -186,6 +187,7 @@ function employeeScreen() {
   const records = state.attendance;
   const corrections = state.corrections;
   const leaveRequests = state.leaveRequests || [];
+  const reportRemarks = state.reportRemarks || [];
   const visibleLeaveRequests = visibleEmployeeLeaveRequests(leaveRequests, showAllEmployeeLeaveRequests);
   const leaveMoreButton = leaveRequests.length > 5
     ? `<button class="secondary" type="button" data-toggle-employee-leave>${showAllEmployeeLeaveRequests ? "Show less" : "View more"}</button>`
@@ -247,11 +249,11 @@ function employeeScreen() {
             <button class="secondary" type="button" data-employee-month="${currentEmployeeMonthKey()}">Current</button>
           </div>
         </div>
-        <div class="month-calendar">${monthCalendar(records, leaveRequests, corrections, historyDate, currentMonthDate)}</div>
+        <div class="month-calendar">${monthCalendar(records, leaveRequests, corrections, historyDate, currentMonthDate, reportRemarks)}</div>
       </section>
       <section class="panel wide" id="history">
         <div class="heading"><div><p class="eyebrow">Clock history</p><h3 data-history-title>My attendance - ${formatLeaveDateDisplay(historyDate)}</h3></div></div>
-        <div data-history-content>${attendanceTable(historyRecords, true, historyDate, corrections)}</div>
+        <div data-history-content>${attendanceTable(historyRecords, true, historyDate, corrections, employeeReportRemarkForDate(reportRemarks, historyDate))}</div>
       </section>
       <section class="panel" id="corrections">
         <div class="heading"><div><p class="eyebrow">Forgotten clock</p><h3>Correction request</h3></div></div>
@@ -406,6 +408,7 @@ async function loadEmployeeLive(force = false, renderWhenChanged = false) {
     state.attendance = (result.attendance || []).map(mapLiveAttendance);
     state.corrections = (result.corrections || []).map(mapLiveCorrection);
     state.leaveRequests = (result.leaveRequests || []).map(mapLiveLeaveRequest);
+    state.reportRemarks = (result.reportRemarks || []).map(mapLiveReportRemark);
     saveState();
     if (renderWhenChanged && employeeLiveRevision() !== renderedEmployeeLiveRevision) render();
   } catch (error) {
@@ -431,6 +434,7 @@ function employeeLiveRevision() {
     attendance: state.attendance,
     corrections: state.corrections,
     leaveRequests: state.leaveRequests,
+    reportRemarks: state.reportRemarks,
   });
 }
 
@@ -518,6 +522,7 @@ function clearEmployeeSession(message) {
   state.attendance = [];
   state.corrections = [];
   state.leaveRequests = [];
+  state.reportRemarks = [];
   saveState();
   stopQrScanner();
   stopLocationWatch();
@@ -616,6 +621,13 @@ function mapLiveLeaveRequest(row) {
     reason: row.reason || "",
     status: leaveRequestStatusLabel(row),
     adminNote: row.admin_note || "",
+  };
+}
+
+function mapLiveReportRemark(row) {
+  return {
+    date: row.work_date,
+    remark: row.remark || "",
   };
 }
 
@@ -948,7 +960,7 @@ function updateSelectedEmployeeHistory(date) {
   if (content) {
     const records = state.attendance.filter((row) => row.date === date).sort(compareAttendanceLatest);
     const corrections = correctionsForMonth(state.corrections, selectedEmployeeMonthKey);
-    content.innerHTML = attendanceTable(records, true, date, corrections);
+    content.innerHTML = attendanceTable(records, true, date, corrections, employeeReportRemarkForDate(state.reportRemarks, date));
   }
 }
 
@@ -1243,7 +1255,7 @@ function metrics(items) {
     .join("")}</section>`;
 }
 
-function monthCalendar(records, leaveRequests, corrections, selectedDate, monthDate) {
+function monthCalendar(records, leaveRequests, corrections, selectedDate, monthDate, reportRemarks = []) {
   const today = malaysiaDateKey(new Date());
   const monthKey = `${monthDate.getUTCFullYear()}-${String(monthDate.getUTCMonth() + 1).padStart(2, "0")}`;
   const firstDay = monthDate.getUTCDay();
@@ -1260,7 +1272,7 @@ function monthCalendar(records, leaveRequests, corrections, selectedDate, monthD
     const date = `${monthKey}-${String(day).padStart(2, "0")}`;
     const dayRecords = records.filter((row) => row.date === date);
     const leave = calendarLeaveForDate(leaveRequests, date);
-    const summary = leave || calendarRecordSummary(dayRecords, date, today, corrections);
+    const summary = leave || calendarRecordSummary(dayRecords, date, today, corrections, employeeReportRemarkForDate(reportRemarks, date));
     const isToday = date === today;
     const classes = ["month-day", summary.tone, isToday ? "today" : "", date === selectedDate ? "selected" : ""].filter(Boolean).join(" ");
     cells.push(`
@@ -1290,8 +1302,8 @@ function calendarLeaveLabel(request) {
   return `${durationLabel}\n${typeLabel}`;
 }
 
-function calendarRecordSummary(records, date, today, corrections = []) {
-  if (!records.length) return { label: "-", tone: "" };
+function calendarRecordSummary(records, date, today, corrections = [], remark = "") {
+  if (!records.length) return remark ? { label: remark, tone: "leave-note" } : { label: "-", tone: "" };
 
   const displayRecords = records.map((row) => attendanceDisplayTimes(row, corrections));
   const hasMissingIn = displayRecords.some((row) => !row.clockIn && row.clockOut);
@@ -1382,10 +1394,11 @@ function employeeHistoryTimeCell(value) {
   return `<td class="history-time-cell"><span class="history-time-value">${escapeHtml(text)}</span></td>`;
 }
 
-function attendanceTable(records, employeeOnly, emptyDate = "", corrections = []) {
+function attendanceTable(records, employeeOnly, emptyDate = "", corrections = [], emptyRemark = "") {
   if (!records.length) {
+    const emptyTitle = emptyRemark || `No attendance records${emptyDate ? ` on ${formatLeaveDateDisplay(emptyDate)}` : " yet"}.`;
     return `<div class="empty-state">
-      <strong>No attendance records${emptyDate ? ` on ${escapeHtml(formatLeaveDateDisplay(emptyDate))}` : " yet"}.</strong>
+      <strong>${escapeHtml(emptyTitle)}</strong>
       <small>${employeeOnly ? "Tap another date in Current Month to view that day." : "GitHub Pages stores attendance inside each phone/browser. Records from employee phones will not appear on this HR browser unless this app uses an online database."}</small>
     </div>`;
   }
@@ -2388,6 +2401,11 @@ function correctedReportBoxCount(records, corrections = []) {
     const marks = attendanceEditMarks(row, corrections);
     return total + (marks.clockIn === "corrected" ? 1 : 0) + (marks.clockOut === "corrected" ? 1 : 0);
   }, 0);
+}
+
+function employeeReportRemarkForDate(reportRemarks, date) {
+  const item = (reportRemarks || []).find((row) => row.date === date);
+  return String(item?.remark || "").trim();
 }
 
 function pendingCorrectionCount(corrections) {
