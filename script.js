@@ -7,7 +7,7 @@ const EMPLOYEE_TOKEN_COOKIE = "warehouseEmployeeToken";
 const EMPLOYEE_TOKEN_EXPIRY_COOKIE = "warehouseEmployeeTokenExpiry";
 const EMPLOYEE_LOGIN_DB = "warehouse-employee-login";
 const EMPLOYEE_LOGIN_STORE = "tokens";
-const APP_VERSION = "20260901-employee-report-remarks";
+const APP_VERSION = "20260901-employee-remark-initials";
 const APP_VERSION_CHECK_MS = 15000;
 const API_BASE = "https://warehouse-attendance-management.eason5919-hub.workers.dev";
 const WAREHOUSE = {
@@ -1303,7 +1303,7 @@ function calendarLeaveLabel(request) {
 }
 
 function calendarRecordSummary(records, date, today, corrections = [], remark = "") {
-  if (!records.length) return remark ? { label: remark, tone: "leave-note" } : { label: "-", tone: "" };
+  if (!records.length) return remark ? { label: reportRemarkInitials(remark), tone: "leave-note" } : { label: "-", tone: "" };
 
   const displayRecords = records.map((row) => attendanceDisplayTimes(row, corrections));
   const hasMissingIn = displayRecords.some((row) => !row.clockIn && row.clockOut);
@@ -2406,6 +2406,15 @@ function correctedReportBoxCount(records, corrections = []) {
 function employeeReportRemarkForDate(reportRemarks, date) {
   const item = (reportRemarks || []).find((row) => row.date === date);
   return String(item?.remark || "").trim();
+}
+
+function reportRemarkInitials(remark) {
+  return String(remark || "")
+    .trim()
+    .split(/\s+/)
+    .map((word) => word[0] || "")
+    .join("")
+    .toUpperCase();
 }
 
 function pendingCorrectionCount(corrections) {

@@ -93,10 +93,10 @@ test("employee month dashboard can show current and previous month only", async 
   ]);
 
   assert.match(script, /let selectedEmployeeMonthKey = employeeMonthKey\(malaysiaToday\(\)\)/);
-  assert.match(indexHtml, /style\.css\?v=20260901-employee-report-remarks/);
-  assert.match(indexHtml, /script\.js\?v=20260901-employee-report-remarks/);
-  assert.equal(JSON.parse(appVersion).version, "20260901-employee-report-remarks");
-  assert.match(script, /const APP_VERSION = "20260901-employee-report-remarks"/);
+  assert.match(indexHtml, /style\.css\?v=20260901-employee-remark-initials/);
+  assert.match(indexHtml, /script\.js\?v=20260901-employee-remark-initials/);
+  assert.equal(JSON.parse(appVersion).version, "20260901-employee-remark-initials");
+  assert.match(script, /const APP_VERSION = "20260901-employee-remark-initials"/);
   assert.match(indexHtml, /unpkg\.com\/jsqr@1\.4\.0\/dist\/jsQR\.js/);
   assert.match(script, /deviceFingerprint: getRegistrationDeviceFingerprint\(code\)/);
   assert.match(script, /String\(employeeCode \|\| ""\)\.trim\(\)\.toUpperCase\(\) !== "N006"/);
@@ -337,7 +337,9 @@ test("employee month and history show admin report remarks for empty dates", asy
   assert.match(script, /employeeReportRemarkForDate\(reportRemarks, historyDate\)/);
   assert.match(script, /employeeReportRemarkForDate\(state\.reportRemarks, date\)/);
   assert.match(script, /function employeeReportRemarkForDate/);
-  assert.match(script, /return remark \? \{ label: remark, tone: "leave-note" \} : \{ label: "-", tone: "" \}/);
+  assert.match(script, /return remark \? \{ label: reportRemarkInitials\(remark\), tone: "leave-note" \} : \{ label: "-", tone: "" \}/);
+  assert.match(script, /function reportRemarkInitials/);
+  assert.match(script, /\.split\(\/\\s\+\/\)/);
   assert.match(script, /const emptyTitle = emptyRemark \|\| `No attendance records/);
   assert.match(script, /<strong>\$\{escapeHtml\(emptyTitle\)\}<\/strong>/);
 });
