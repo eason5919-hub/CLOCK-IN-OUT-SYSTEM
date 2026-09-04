@@ -2592,7 +2592,7 @@ setInterval(() => {
   if (state.currentUser && employeeToken() && !document.hidden) {
     loadEmployeeLive(true, true);
   }
-}, 3000);
+}, 10000);
 
 window.addEventListener("focus", () => {
   refreshEmployeeAppVersion();
