@@ -223,7 +223,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /const work = calculated\.hasTimes \? calculated\.work : reportHours\(attendanceRow\?\.actualMinutes\)/);
   assert.match(adminHtml, /const overtime = calculated\.hasTimes \? calculated\.overtime : reportHours\(reportOvertimeMinutes\(attendanceRow, day\)\)/);
   assert.match(adminHtml, /const short = calculated\.hasTimes \? calculated\.short : reportHours\(reportShortMinutes\(attendanceRow, day, leaveTaken\)\)/);
-  assert.match(adminHtml, /return Math\.min\(240, Math\.max\(lateShort, workShort\)\)/);
+  assert.match(adminHtml, /return Math\.min\(240, workShort\)/);
   assert.match(adminHtml, /return Math\.min\(requiredMinutes, Math\.max\(lateShort, earlyOut, workShort\)\)/);
   assert.match(adminHtml, /function reportHours\(minutes, showZero = false\)/);
   assert.match(adminHtml, /const showZeroWork = outMs === inMs/);
@@ -234,6 +234,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /if \(isHalfLeaveText\(leaveTaken\)\)/);
   assert.match(adminHtml, /if \(day === 6\) return 0/);
   assert.match(adminHtml, /Math\.max\(0, 240 - reportWorkingWindowMinutes\(attendanceRow, day\)\)/);
+  assert.doesNotMatch(adminHtml, /return Math\.min\(240, Math\.max\(lateShort, workShort\)\)/);
   assert.match(adminHtml, /const workShort = Math\.max\(0, requiredMinutes - Number\(attendanceRow\.actualMinutes \|\| 0\)\)/);
   assert.match(adminHtml, /return Math\.min\(requiredMinutes, Math\.max\(lateShort, earlyOut, workShort\)\)/);
   assert.doesNotMatch(adminHtml, /inMs >= endMs\) return 0/);
