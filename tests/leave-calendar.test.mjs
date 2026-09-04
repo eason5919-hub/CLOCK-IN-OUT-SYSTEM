@@ -158,6 +158,18 @@ test("employee month dashboard uses short AL and MC labels", async () => {
   assert.match(css, /\.month-day\.leave-note small[\s\S]*white-space: pre-line/);
 });
 
+test("admin active leave notice has a month picker", async () => {
+  const adminHtml = await readFile(new URL("../HR ADMIN LIVE.html", import.meta.url), "utf8");
+
+  assert.match(adminHtml, /<input id="leaveMonthInput" type="month">/);
+  assert.match(adminHtml, /const leaveMonthInput = document\.getElementById\("leaveMonthInput"\)/);
+  assert.match(adminHtml, /let selectedLeaveMonth = todayKey\(\)\.slice\(0, 7\)/);
+  assert.match(adminHtml, /leaveMonthInput\.value = selectedLeaveMonth/);
+  assert.match(adminHtml, /String\(item\.leave_date \|\| ""\)\.startsWith\(`\$\{selectedLeaveMonth\}-`\) && status !== "rejected" && status !== "cancelled"/);
+  assert.match(adminHtml, /active notice\$\{rows\.length === 1 \? "" : "s"\} in \$\{monthLabel\(selectedLeaveMonth\)\}/);
+  assert.match(adminHtml, /leaveMonthInput\.addEventListener\("change"/);
+});
+
 test("employee GPS display shows warehouse distance and does not fake fallback samples", async () => {
   const script = await readFile(new URL("../script.js", import.meta.url), "utf8");
 
@@ -276,7 +288,7 @@ test("admin employee list shows approved MC days instead of status", async () =>
   assert.match(adminRoute, /WHERE status = 'approved'/);
   assert.match(adminHtml, /<th>MC Taken<\/th>/);
   assert.match(adminHtml, /formatLeaveDays\(employee\.mc_taken_days\)/);
-  assert.match(adminHtml, /return \(status === "pending" \|\| item\.leave_date >= today\) && status !== "rejected" && status !== "cancelled"/);
+  assert.match(adminHtml, /return String\(item\.leave_date \|\| ""\)\.startsWith\(`\$\{selectedLeaveMonth\}-`\) && status !== "rejected" && status !== "cancelled"/);
   assert.match(adminHtml, /data-review-leave="\$\{escapeHtml\(request\.id\)\}" data-status="approved"/);
   assert.match(adminHtml, /data-review-leave="\$\{escapeHtml\(request\.id\)\}" data-status="rejected"/);
   assert.match(employeeLeaveRoute, /SELECT id, employee_id, leave_type, leave_date, status/);

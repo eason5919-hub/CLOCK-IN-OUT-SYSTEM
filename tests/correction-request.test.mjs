@@ -232,6 +232,7 @@ test("approved corrections update attendance and highlight changed times", async
   assert.match(adminHtml, /function reportWorkingWindowMinutes/);
   assert.match(adminHtml, /if \(inMinutes <= start \+ 10\) lateShort = 0/);
   assert.match(adminHtml, /if \(isHalfLeaveText\(leaveTaken\)\)/);
+  assert.match(adminHtml, /if \(day === 6\) return 0/);
   assert.match(adminHtml, /Math\.max\(0, 240 - reportWorkingWindowMinutes\(attendanceRow, day\)\)/);
   assert.match(adminHtml, /const workShort = Math\.max\(0, requiredMinutes - Number\(attendanceRow\.actualMinutes \|\| 0\)\)/);
   assert.match(adminHtml, /return Math\.min\(requiredMinutes, Math\.max\(lateShort, earlyOut, workShort\)\)/);
